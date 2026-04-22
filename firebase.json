@@ -1,0 +1,93 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "hosting": {
+    "public": "frontend/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/health",
+        "function": {
+          "functionId": "health",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/analyzeImage",
+        "function": {
+          "functionId": "analyzeImage",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/createTicket",
+        "function": {
+          "functionId": "createTicket",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/buildingInfo",
+        "function": {
+          "functionId": "getTenantInfo",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/manageTenantUser",
+        "function": {
+          "functionId": "manageTenantUser",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/img/**",
+        "function": {
+          "functionId": "getImage",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/aud/**",
+        "function": {
+          "functionId": "getAudio",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "auth": {
+    "providers": {}
+  }
+}

@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+/* TikTak CTA Button Styles */
+.cta-circle {
+  border: 6px solid #fdfdfd;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.cta-red {
+  background: radial-gradient(circle at 30% 30%, #ff4d4d 0%, #ef4444 60%, #991b1b 100%);
+  box-shadow: 
+    0 10px 25px rgba(239, 68, 68, 0.4),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.cta-blue {
+  background: radial-gradient(circle at 30% 30%, #60a5fa 0%, #3b82f6 60%, #1d4ed8 100%);
+  box-shadow: 
+    0 8px 20px rgba(59, 130, 246, 0.3),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.2);
+}
+
+.cta-circle:active {
+  transform: scale(0.9) translateY(4px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Pulse animation for the main CTA */
+@keyframes cta-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.animate-cta-pulse {
+  animation: cta-pulse 2s infinite;
+}
+
+/* Spinner Ring around the button */
+.ring-container {
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
+  border-radius: 50%;
+  border: 5px solid transparent;
+  border-top-color: #ef4444;
+  border-right-color: #ef4444;
+  animation: ring-spin 1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
