@@ -52,6 +52,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
     try {
       await onSave(ticket.id, newComment.trim());
       setNewComment('');
+      onClose();
     } finally {
       setLoading(false);
     }

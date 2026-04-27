@@ -104,7 +104,7 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
       
       Respond ONLY with the RAW JSON object.
     `;
-        logger.info("Sending request to Gemini...", { prompt });
+        logger.info("Sending request to Gemini...", { prompt, model: "gemini-2.5-flash" });
         const result = await model.generateContent([
             prompt,
             {
@@ -136,8 +136,12 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
         res.send(finalData);
     }
     catch (error) {
-        logger.error("AI Analysis failed", { message: error.message });
-        res.status(500).send({ error: "Failed to analyze image" });
+        logger.error("AI Analysis failed", {
+            message: error.message,
+            stack: error.stack,
+            errorDetails: error
+        });
+        res.status(500).send({ error: "Failed to analyze image", details: error.message });
     }
 });
 exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) => {

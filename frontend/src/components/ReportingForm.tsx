@@ -59,8 +59,9 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
 
   const isFormValid = summary.trim().length > 0 
     && initialData.category !== '' 
-    && (showLocation ? !!initialData.location : true)
-    && !!initialData.subLocation;
+    && (showLocation 
+      ? (!!initialData.location || !!initialData.subLocation) 
+      : !!initialData.subLocation);
 
   const handleSubmit = () => {
     if (!isFormValid) return;
@@ -154,9 +155,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
                   }`}
                   dir="rtl"
                 >
-                  {!initialData.location && (
-                    <option value="" disabled>{t('select_placeholder', { label: locationLabel })}</option>
-                  )}
+                  <option value="">{t('select_placeholder', { label: locationLabel })}</option>
                   {config.locations.map(f => <option key={f} value={f}>{f.startsWith('-') || !isNaN(Number(f)) ? `\u200E${f}` : f}</option>)}
                 </select>
                 <ChevronDown size={14} className="absolute left-3 top-[34px] text-slate-400 pointer-events-none" />
@@ -173,9 +172,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
                 }`}
                 dir="rtl"
               >
-                {!initialData.subLocation && (
-                  <option value="" disabled>{t('select_placeholder', { label: subLocationLabel })}</option>
-                )}
+                <option value="">{t('select_placeholder', { label: subLocationLabel })}</option>
                 {config.subLocations.map(r => <option key={r} value={r}>{r.startsWith('-') || !isNaN(Number(r)) ? `\u200E${r}` : r}</option>)}
               </select>
               <ChevronDown size={14} className="absolute left-3 top-[34px] text-slate-400 pointer-events-none" />

@@ -4,9 +4,10 @@ import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
 import { CommentModal } from '../../components/admin/CommentModal';
+import { ClosureModal } from '../../components/admin/ClosureModal';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { AlertCircle, Clock, CheckCircle2, Check, Search, X, Calendar, MessageSquare, LogOut, Mic } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle2, Check, Search, X, Calendar, MessageSquare, LogOut, Mic, ChevronDown, Download } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { he } from 'date-fns/locale';
 
@@ -23,6 +24,8 @@ type Ticket = {
   ticketType?: 'visible' | 'hidden';
   audioId?: string;
   adminComments?: { id: string; text: string; createdAt: string; authorName?: string }[];
+  closureReason?: string;
+  resolutionNote?: string;
 };
 
 export default function AdminDashboard() {
@@ -36,7 +39,10 @@ export default function AdminDashboard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'new' | 'progress' | 'resolved'>('new');
   const [commentTicketId, setCommentTicketId] = useState<string | null>(null);
+  const [closureTicketId, setClosureTicketId] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+
 
   // Filter State
   const [filters, setFilters] = useState({
@@ -47,7 +53,8 @@ export default function AdminDashboard() {
     subLocation: 'all',
     category: 'all',
     severity: 'all',
-    search: ''
+    search: '',
+    statuses: ['new', 'in-progress', 'closed']
   });
 
   // 1. Localization & Language Setup
@@ -73,6 +80,20 @@ export default function AdminDashboard() {
     if (isEn && mapping[cat] && !cat.match(/[a-z]/i)) return mapping[cat];
     if (!isEn && mapping[cat] && cat.match(/[a-z]/i)) return mapping[cat];
     return cat;
+  };
+
+  const translateClosureReason = (reason: string) => {
+    const mapping: Record<string, { he: string, en: string }> = {
+      'fixed': { he: 'טופל', en: 'Fixed' },
+      'duplicate': { he: 'כפילות', en: 'Duplicate' },
+      'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
+      'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
+      'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+      'rejected': { he: 'נדחה', en: 'Rejected' }
+    };
+    const entry = mapping[reason];
+    if (!entry) return reason;
+    return isEn ? entry.en : entry.he;
   };
 
   const uiLabels = {
@@ -105,8 +126,10 @@ export default function AdminDashboard() {
       time: isHe ? 'טווח זמן' : 'Time Range',
       severity: isHe ? 'חומרה' : 'Severity',
       category: isHe ? 'קטגוריה' : 'Category',
+      status: isHe ? 'דיווח' : 'Status',
       all: isHe ? 'הכל' : 'All',
       clear: isHe ? 'נקה הכל' : 'Clear All',
+      export: isHe ? 'ייצא לאקסל' : 'Export CSV',
       ranges: {
         all: isHe ? 'כל הזמן' : 'All Time',
         '1m': isHe ? 'חודש אחרון' : 'Last Month',
@@ -117,6 +140,12 @@ export default function AdminDashboard() {
       }
     }
   };
+
+  const statusOptions = [
+    { id: 'new', label: isHe ? 'חדש' : 'New', values: ['open'] },
+    { id: 'in-progress', label: isHe ? 'בטיפול' : 'In Progress', values: ['in-progress'] },
+    { id: 'closed', label: isHe ? 'סגור' : 'Closed', values: ['resolved', 'dismissed'] },
+  ];
 
   const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
 
@@ -184,6 +213,15 @@ export default function AdminDashboard() {
         }
       }
 
+      // d. Status
+      const mappedStatuses = filters.statuses.flatMap(s => {
+        if (s === 'new') return ['open'];
+        if (s === 'in-progress') return ['in-progress'];
+        if (s === 'closed') return ['resolved', 'dismissed'];
+        return [];
+      });
+      if (!mappedStatuses.includes(t.status)) return false;
+
       return true;
     });
   }, [tickets, filters]);
@@ -231,6 +269,30 @@ export default function AdminDashboard() {
   };
 
 
+  const handleConfirmResolution = async (ticketId: string, reason: string, notes: string) => {
+    if (!tenantId) return;
+    setUpdatingId(ticketId);
+    try {
+      const ticketRef = doc(db, "tenants", tenantId, "tickets", ticketId);
+      await updateDoc(ticketRef, {
+        status: 'resolved',
+        closureReason: reason,
+        resolutionNote: notes,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update local state immediately for snappy UI
+      setTickets(prev => prev.map(t => 
+        t.id === ticketId ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
+      ));
+    } catch (err) {
+      console.error("Resolution failed:", err);
+      alert(isEn ? 'Failed to close ticket' : 'סגירת הפנייה נכשלה');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const handleSaveComment = async (ticketId: string, text: string) => {
     if (!tenantId) return;
     const newComment = {
@@ -276,6 +338,60 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleExportCSV = () => {
+    const headers = [
+      isHe ? 'תאריך' : 'Date',
+      isHe ? 'קטגוריה' : 'Category',
+      isHe ? 'תיאור' : 'Description',
+      uiLabels.location,
+      uiLabels.subLocation,
+      isHe ? 'סטטוס' : 'Status',
+      isHe ? 'חומרה' : 'Urgency',
+      isHe ? 'תמונה' : 'Image',
+      isHe ? 'אודיו' : 'Audio'
+    ];
+
+    const translateStatus = (status: string) => {
+      const mapping: Record<string, { he: string, en: string }> = {
+        'open': { he: 'חדש', en: 'New' },
+        'in-progress': { he: 'בטיפול', en: 'In Progress' },
+        'resolved': { he: 'טופל', en: 'Resolved' },
+        'dismissed': { he: 'בוטל', en: 'Dismissed' }
+      };
+      const entry = mapping[status];
+      if (!entry) return status;
+      return isEn ? entry.en : entry.he;
+    };
+
+    const rows = filteredTickets.map(t => [
+      format(parseISO(t.createdAt), 'dd/MM/yyyy HH:mm'),
+      translateCategory(t.category),
+      t.summary.replace(/"/g, '""'),
+      t.location || '',
+      t.subLocation || '',
+      translateStatus(t.status),
+      uiLabels.urgency[t.urgency],
+      t.imageId ? 'V' : '',
+      t.audioId ? 'V' : ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const fileName = `${tenantConfig?.name || tenantId}_${format(new Date(), 'ddMMyyyy')}_${format(new Date(), 'HHmm')}.csv`;
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const clearFilters = () => {
     setFilters({
       timeRange: 'all',
@@ -285,7 +401,8 @@ export default function AdminDashboard() {
       subLocation: 'all',
       category: 'all',
       severity: 'all',
-      search: ''
+      search: '',
+      statuses: ['new', 'in-progress', 'closed']
     });
   };
 
@@ -325,18 +442,29 @@ export default function AdminDashboard() {
           {colTickets.map(t => (
             <div key={t.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-2">
-                <select
-                  value={t.urgency}
-                  disabled={updatingId === t.id}
-                  onChange={(e) => handleUrgencyUpdate(t.id, e.target.value as Ticket['urgency'])}
-                  className={`text-[10px] font-black px-2 py-1 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-100 text-red-700' :
-                    t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                    }`}
-                >
-                  <option value="High">{uiLabels.urgency.High}</option>
-                  <option value="Moderate">{uiLabels.urgency.Moderate}</option>
-                  <option value="Low">{uiLabels.urgency.Low}</option>
-                </select>
+                <div className="flex gap-1.5 items-center">
+                  <select
+                    value={t.urgency}
+                    disabled={updatingId === t.id}
+                    onChange={(e) => handleUrgencyUpdate(t.id, e.target.value as Ticket['urgency'])}
+                    className={`text-[10px] font-black px-2 py-1 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-100 text-red-700' :
+                      t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                      }`}
+                  >
+                    <option value="High">{uiLabels.urgency.High}</option>
+                    <option value="Moderate">{uiLabels.urgency.Moderate}</option>
+                    <option value="Low">{uiLabels.urgency.Low}</option>
+                  </select>
+
+                  {t.closureReason && (
+                    <span 
+                      title={t.resolutionNote}
+                      className="text-[10px] font-black px-2 py-1 rounded bg-slate-200 text-slate-700 cursor-help"
+                    >
+                      {translateClosureReason(t.closureReason)}
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs text-slate-500">
                   {new Date(t.createdAt).toLocaleDateString(isEn ? 'en-US' : 'he-IL')} {new Date(t.createdAt).toLocaleTimeString(isEn ? 'en-US' : 'he-IL', { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -391,7 +519,7 @@ export default function AdminDashboard() {
                 )}
                 {(t.status === 'open' || t.status === 'in-progress') && (
                   <button
-                    onClick={() => handleStatusUpdate(t.id, 'resolved')}
+                    onClick={() => setClosureTicketId(t.id)}
                     disabled={updatingId === t.id}
                     className="flex-1 flex items-center justify-center gap-1 text-xs font-medium text-green-600 bg-green-50 py-2 rounded border border-green-100 hover:bg-green-100"
                   >
@@ -410,7 +538,7 @@ export default function AdminDashboard() {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50">{isEn ? 'Loading...' : 'טוען...'}</div>;
   if (!user) return <Navigate to="/admin/login" />;
 
-  const hasActiveFilters = filters.search || filters.timeRange !== 'all' || filters.category !== 'all' || filters.location !== 'all' || filters.subLocation !== 'all' || filters.severity !== 'all';
+  const hasActiveFilters = filters.search || filters.timeRange !== 'all' || filters.category !== 'all' || filters.location !== 'all' || filters.subLocation !== 'all' || filters.severity !== 'all' || filters.statuses.length < 3;
 
   return (
     <div className="min-h-screen bg-white" dir={isEn ? 'ltr' : 'rtl'}>
@@ -479,12 +607,20 @@ export default function AdminDashboard() {
             <h3 className="text-slate-500 font-medium mb-1">{uiLabels.stats_closed}</h3>
             <p className="text-5xl font-black text-green-700">{stats.resolved}</p>
           </div>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-64 flex flex-col items-center justify-center">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-[320px] flex flex-col items-center">
             <h3 className="text-sm font-bold text-slate-700 mb-2 w-full text-center">{uiLabels.pie_title}</h3>
             {stats.categoryData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={stats.categoryData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value">
+                <PieChart margin={{ top: 10, bottom: 10 }}>
+                  <Pie 
+                    data={stats.categoryData} 
+                    cx="50%" 
+                    cy="45%" 
+                    innerRadius={35} 
+                    outerRadius={65} 
+                    paddingAngle={2} 
+                    dataKey="value"
+                  >
                     {stats.categoryData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip
@@ -495,7 +631,12 @@ export default function AdminDashboard() {
                     verticalAlign="bottom"
                     align="center"
                     iconType="circle"
-                    wrapperStyle={{ fontSize: '10px' }}
+                    wrapperStyle={{ 
+                      fontSize: '10px', 
+                      paddingTop: '20px',
+                      maxHeight: '100px',
+                      overflowY: 'auto'
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -503,7 +644,7 @@ export default function AdminDashboard() {
               <div className="flex-1 flex items-center justify-center text-slate-400 text-xs italic">{isEn ? 'No category data' : 'אין נתוני קטגוריות'}</div>
             )}
           </div>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-64 flex flex-col items-center justify-center">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-[320px] flex flex-col items-center justify-center">
             <h3 className="text-sm font-bold text-slate-700 mb-2 w-full text-center">{uiLabels.bar_title}</h3>
             {stats.monthlyData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -540,6 +681,54 @@ export default function AdminDashboard() {
                 >
                   {Object.entries(uiLabels.filters.ranges).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                 </select>
+              </div>
+
+              {/* Status (דיווח) - Multi-select */}
+              <div className="flex flex-col gap-1.5 min-w-[120px] relative">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.status}</label>
+                <button
+                  onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer flex items-center justify-between gap-2 min-h-[34px]"
+                >
+                  <span className="truncate">
+                    {filters.statuses.length === 3 
+                      ? uiLabels.filters.all 
+                      : filters.statuses.map(s => statusOptions.find(opt => opt.id === s)?.label).join(', ')}
+                  </span>
+                  <ChevronDown size={14} className={`transition-transform ${isStatusFilterOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isStatusFilterOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsStatusFilterOpen(false)}
+                    />
+                    <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl z-20 py-2 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
+                      {statusOptions.map(option => (
+                        <label 
+                          key={option.id}
+                          className="flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
+                        >
+                          <input 
+                            type="checkbox"
+                            checked={filters.statuses.includes(option.id)}
+                            onChange={(e) => {
+                              const newStatuses = e.target.checked
+                                ? [...filters.statuses, option.id]
+                                : filters.statuses.filter(s => s !== option.id);
+                              if (newStatuses.length > 0) {
+                                setFilters({ ...filters, statuses: newStatuses });
+                              }
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-bold text-slate-700">{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Severity */}
@@ -597,8 +786,8 @@ export default function AdminDashboard() {
               </div>
 
               {/* Clear Highlights - Unified Button */}
-              {hasActiveFilters && (
-                <div className="flex flex-col justify-end">
+              <div className="flex flex-col justify-end gap-2 xl:flex-row">
+                {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
                     className="h-[38px] flex items-center justify-center gap-2 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 px-4 rounded-xl transition-all shadow-sm group border border-slate-200"
@@ -607,30 +796,39 @@ export default function AdminDashboard() {
                     <X size={16} className="group-hover:rotate-90 transition-transform" />
                     <span className="text-xs font-bold hidden xl:inline">{uiLabels.filters.clear}</span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Search - Flexible width - Move to LEFT (logical end in RTL) */}
             <div className="flex-1 w-full lg:w-auto flex flex-col gap-1.5">
               <label className="text-xs font-bold text-slate-500 px-1">{uiLabels.filters.search}</label>
-              <div className="relative">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  placeholder={uiLabels.filters.search}
-                  value={filters.search}
-                  onChange={e => setFilters({ ...filters, search: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-10 py-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-inner"
-                />
-                {filters.search && (
-                  <button
-                    onClick={() => setFilters({ ...filters, search: '' })}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder={uiLabels.filters.search}
+                    value={filters.search}
+                    onChange={e => setFilters({ ...filters, search: e.target.value })}
+                    className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-10 py-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-inner"
+                  />
+                  {filters.search && (
+                    <button
+                      onClick={() => setFilters({ ...filters, search: '' })}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={handleExportCSV}
+                  className="h-[38px] w-[38px] flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-md group border border-blue-500 shrink-0"
+                  title="ייצא מסנן"
+                >
+                  <Download size={18} />
+                </button>
               </div>
             </div>
           </div>
@@ -701,6 +899,13 @@ export default function AdminDashboard() {
           ticket={tickets.find(t => t.id === commentTicketId) || null}
           onSave={handleSaveComment}
           onDelete={handleDeleteComment}
+          isEn={isEn}
+        />
+        <ClosureModal
+          isOpen={!!closureTicketId}
+          onClose={() => setClosureTicketId(null)}
+          ticket={tickets.find(t => t.id === closureTicketId) || null}
+          onConfirm={handleConfirmResolution}
           isEn={isEn}
         />
       </main>

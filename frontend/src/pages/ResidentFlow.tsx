@@ -210,7 +210,11 @@ export default function ResidentFlow() {
         category: ticketData.category,
         urgency: ticketData.urgency,
         imageId: ticketData.ticketType === 'visible' ? ticketData.imageId : undefined,
-        audioId: ticketData.audioBase64 ? ticketData.imageId : undefined
+        audioId: ticketData.audioBase64 ? ticketData.imageId : undefined,
+        labels: {
+          locationLabel: config.uiConfig?.locationLabel || t('floor'),
+          subLocationLabel: config.uiConfig?.subLocationLabel || t('resource')
+        }
       });
 
       // Redirect to WhatsApp

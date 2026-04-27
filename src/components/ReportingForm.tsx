@@ -59,8 +59,9 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
 
   const isFormValid = summary.trim().length > 0 
     && initialData.category !== '' 
-    && (showLocation ? !!initialData.location : true)
-    && !!initialData.subLocation;
+    && (showLocation 
+      ? (!!initialData.location || !!initialData.subLocation) 
+      : !!initialData.subLocation);
 
   const handleSubmit = () => {
     if (!isFormValid) return;

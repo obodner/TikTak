@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "name": "tiktak",
   "version": "1.0.0",
   "description": "",
@@ -17,46 +16,4 @@
   "keywords": [],
   "author": "",
   "license": "ISC"
-=======
-  "name": "frontend",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "engines": {
-    "node": "22"
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "lint": "eslint ."
-  },
-  "dependencies": {
-    "browser-image-compression": "^2.0.2",
-    "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
-    "firebase": "^12.12.0",
-    "i18next": "^24.2.2",
-    "lucide-react": "^1.8.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-i18next": "^15.4.1",
-    "react-router-dom": "^7.3.0",
-    "recharts": "^3.8.1",
-    "tailwind-merge": "^3.5.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
-    "@types/node": "^20.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "eslint": "^9.0.0",
-    "eslint-plugin-react-hooks": "^5.0.0",
-    "eslint-plugin-react-refresh": "^0.4.16",
-    "tailwindcss": "^4.0.0",
-    "typescript": "~5.7.2",
-    "vite": "^6.2.0"
-  }
->>>>>>> cc0c6dcb4f96d3e3ac66b33245e7dd221d49ef43
 }

@@ -65,8 +65,8 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
       ? "Respond in Hebrew ONLY. Summarize as a short Hebrew sentence."
       : "Respond in English ONLY. Summarize as a short English sentence.";
 
-    const entityContext = type === 'municipality' 
-      ? "a public space or city maintenance hazard (e.g. pothole, broken street light, waste)" 
+    const entityContext = type === 'municipality'
+      ? "a public space or city maintenance hazard (e.g. pothole, broken street light, waste)"
       : "a building maintenance issue (e.g. leak, broken bulb, elevator failure)";
 
     const prompt = `
@@ -85,7 +85,7 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
       Respond ONLY with the RAW JSON object.
     `;
 
-    logger.info("Sending request to Gemini...", { prompt });
+    logger.info("Sending request to Gemini...", { prompt, model: "gemini-2.5-flash" });
 
     const result = await model.generateContent([
       prompt,
@@ -104,7 +104,7 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
 
     // Ensure the upload completes before returning
     await uploadPromise;
-    
+
     const finalData = JSON.parse(cleanJson || "{}");
     finalData.imageId = imageId;
 
@@ -127,8 +127,12 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
 
     res.send(finalData);
   } catch (error: any) {
-    logger.error("AI Analysis failed", { message: error.message });
-    res.status(500).send({ error: "Failed to analyze image" });
+    logger.error("AI Analysis failed", {
+      message: error.message,
+      stack: error.stack,
+      errorDetails: error
+    });
+    res.status(500).send({ error: "Failed to analyze image", details: error.message });
   }
 });
 
@@ -153,9 +157,9 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
       .get();
 
     if (recentTickets.size >= 3) {
-      res.status(429).send({ 
-        error: "Rate limit exceeded", 
-        message: "Max 3 reports per minute per tenant." 
+      res.status(429).send({
+        error: "Rate limit exceeded",
+        message: "Max 3 reports per minute per tenant."
       });
       return;
     }
@@ -180,7 +184,7 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
       const audioFile = bucket.file(`tenants/${tenantId}/${imageId}.webm`);
       const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
       logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes`);
-      
+
       await audioFile.save(audioBuffer, {
         metadata: { contentType: "audio/webm" }
       });
@@ -293,7 +297,7 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
     // 1. Authorization: Verify caller is an admin of the tenant
     const tenantRef = db.collection("tenants").doc(tenantId);
     const tenantDoc = await tenantRef.get();
-    
+
     if (!tenantDoc.exists) {
       res.status(404).send({ error: "Tenant not found" });
       return;
@@ -323,7 +327,7 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
         if (existingUsers.size >= 5) {
           throw new Error("Maximum of 5 users reached for this tenant");
         }
-        
+
         // a. Create in Firebase Auth
         const userRecord = await auth.createUser({
           email,
