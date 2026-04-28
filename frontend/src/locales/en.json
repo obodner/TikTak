@@ -34,7 +34,10 @@
     "sent_short": "Sent.",
     "in_progress_short": "Handling.",
     "urgency_label": "Report Urgency",
-    "rate_limit_error": "Too many reports sent in the last minute. Please wait a moment and try again."
+    "rate_limit_error": "Too many reports sent in the last minute. Please wait a moment and try again.",
+    "phone_label": "Phone Number",
+    "phone_placeholder": "0501234567",
+    "phone_error": "Valid number starts with 0 and contains 9-10 digits"
   }
 }
 

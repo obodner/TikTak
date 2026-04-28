@@ -146,9 +146,24 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
 });
 exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     try {
-        const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType } = req.body;
+        const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone } = req.body;
         if (!tenantId || !imageId) {
             res.status(400).send({ error: "Missing tenantId or imageId" });
+            return;
+        }
+        if (!reporterPhone) {
+            res.status(400).send({ error: "Missing reporter phone number" });
+            return;
+        }
+        const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+        const tenantType = tenantDoc.data()?.type || 'building';
+        const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
+        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+        if (!reporterDoc.exists) {
+            res.status(403).send({
+                error: "Unauthorized",
+                message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור השתתפות במערכת הדיווחים.`
+            });
             return;
         }
         const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
@@ -173,6 +188,7 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) =
             ticketType: ticketType || 'visible',
             imageId,
             audioId: req.body.audioBase64 ? imageId : null,
+            reporterPhone: reporterPhone || null,
             status: 'open',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -188,7 +204,11 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) =
             logger.info("Audio note uploaded successfully", { tenantId, ticketId: imageId });
         }
         await db.collection("tenants").doc(tenantId).collection("tickets").doc(imageId).set(ticketData);
-        res.status(200).send({ success: true, ticketId: imageId });
+        res.status(200).send({
+            success: true,
+            ticketId: imageId,
+            reporterName: reporterDoc.data()?.name || reporterPhone
+        });
     }
     catch (error) {
         res.status(500).send({ error: "Failed to save ticket" });

@@ -15,7 +15,7 @@ interface TicketData {
 
 interface ReportingFormProps {
   initialData: TicketData;
-  onSend: (finalSummary: string) => void;
+  onSend: (finalSummary: string, phone: string) => void;
   onUpdate: (updates: Partial<TicketData>) => void;
   config: {
     locations: string[];
@@ -41,7 +41,16 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const [summary, setSummary] = useState(initialData.summary);
+  const [phone, setPhone] = useState('');
+  const [isPhoneTouched, setIsPhoneTouched] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const savedPhone = localStorage.getItem('tiktak_reporter_phone');
+    if (savedPhone) {
+      setPhone(savedPhone);
+    }
+  }, []);
 
   const locationLabel = config.uiConfig?.locationLabel || t('floor');
   const subLocationLabel = config.uiConfig?.subLocationLabel || t('resource');
@@ -57,18 +66,23 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
 
   const MAX_CHARS = 250;
 
+  const isPhoneValid = /^0\d{8,9}$/.test(phone);
+
   const isFormValid = summary.trim().length > 0 
     && initialData.category !== '' 
     && (showLocation 
       ? (!!initialData.location || !!initialData.subLocation) 
-      : !!initialData.subLocation);
+      : !!initialData.subLocation)
+    && isPhoneValid;
 
   const handleSubmit = () => {
     if (!isFormValid) return;
+    setIsPhoneTouched(true);
     if ('vibrate' in navigator) {
       navigator.vibrate(50);
     }
-    onSend(summary);
+    localStorage.setItem('tiktak_reporter_phone', phone);
+    onSend(summary, phone);
   };
 
   const clearText = () => {
@@ -195,6 +209,31 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
               {config.categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <ChevronDown size={14} className="absolute left-3 top-[34px] text-blue-400 pointer-events-none" />
+          </div>
+
+          <div className="relative">
+            <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">
+              {t('phone_label') || 'מספר טלפון'} *
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, ''); // only digits
+                if (val.length <= 10) setPhone(val);
+              }}
+              onBlur={() => setIsPhoneTouched(true)}
+              className={`w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 font-bold text-sm outline-none text-right ${
+                !phone ? 'text-slate-400' : 'text-blue-900'
+              } ${isPhoneTouched && !isPhoneValid ? 'ring-2 ring-red-500' : ''}`}
+              placeholder={t('phone_placeholder') || '0501234567'}
+              dir="ltr"
+            />
+            {isPhoneTouched && !isPhoneValid && (
+              <span className="text-[10px] text-red-500 font-bold block mt-1 px-1">
+                {t('phone_error') || 'מספר תקין מתחיל ב-0 ומכיל 9-10 ספרות'}
+              </span>
+            )}
           </div>
 
           <div>

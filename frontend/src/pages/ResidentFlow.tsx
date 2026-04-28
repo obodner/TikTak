@@ -32,8 +32,8 @@ export default function ResidentFlow() {
   const location = searchParams.get('l') || searchParams.get('location') || searchParams.get('f') || searchParams.get('floor');
   const subLocation = searchParams.get('sl') || searchParams.get('subLocation') || searchParams.get('r') || searchParams.get('resource');
 
-  // State
   const [state, setState] = useState<FlowState>('idle');
+  const [authError, setAuthError] = useState('');
   const [ticketData, setTicketData] = useState<TicketData>({ 
     summary: '', 
     category: '', 
@@ -170,10 +170,11 @@ export default function ResidentFlow() {
     if (updates.subLocation) setSelectedSubLocation(updates.subLocation);
   };
 
-  const handleFinalSend = async (finalSummary: string) => {
+  const handleFinalSend = async (finalSummary: string, phone: string) => {
     setState('sending');
 
     try {
+      setAuthError(''); // Clear previous error
       // Step 2: Final Ticket Creation in DB
       const createResponse = await fetch('/api/createTicket', {
         method: 'POST',
@@ -187,7 +188,8 @@ export default function ResidentFlow() {
           location: ticketData.location || null,
           subLocation: ticketData.subLocation || null,
           ticketType: ticketData.ticketType,
-          audioBase64: ticketData.audioBase64
+          audioBase64: ticketData.audioBase64,
+          reporterPhone: phone
         })
       });
 
@@ -196,8 +198,17 @@ export default function ResidentFlow() {
           setState('rate-limited');
           return;
         }
+        if (createResponse.status === 403) {
+          const errorData = await createResponse.json().catch(() => ({}));
+          setAuthError(errorData.message || 'מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ועד הבית לאישור.');
+          setState('editing'); // revert to editing so user can fix phone number
+          return;
+        }
         throw new Error(`Failed to save ticket`);
       }
+
+      const createData = await createResponse.json();
+      const reporterName = createData.reporterName || phone;
 
       // Generate WhatsApp Link
       const waLink = generateWhatsAppLink({
@@ -211,6 +222,7 @@ export default function ResidentFlow() {
         urgency: ticketData.urgency,
         imageId: ticketData.ticketType === 'visible' ? ticketData.imageId : undefined,
         audioId: ticketData.audioBase64 ? ticketData.imageId : undefined,
+        reporterName: reporterName,
         labels: {
           locationLabel: config.uiConfig?.locationLabel || t('floor'),
           subLocationLabel: config.uiConfig?.subLocationLabel || t('resource')
@@ -284,22 +296,30 @@ export default function ResidentFlow() {
           </button>
         </div>
       ) : (
-        <ReportingForm
-          initialData={{
-            ...ticketData,
-            urgency: (ticketData.urgency as 'High' | 'Moderate' | 'Low') || 'Low'
-          }}
-          onSend={handleFinalSend}
-          onUpdate={updateTicketContext}
-          config={{
-            locations: config.locations,
-            subLocations: config.subLocations,
-            categories: config.categories,
-            uiConfig: config.uiConfig
-          }}
-          status={state === 'rate-limited' ? 'error' : state as any}
-          errorType={state === 'rate-limited' ? 'rate-limit' : undefined}
-        />
+        <div className="w-full flex flex-col gap-4">
+          {authError && (
+            <div className="bg-red-50 text-red-700 p-4 rounded-2xl border border-red-200 flex items-start gap-3 shadow-sm animate-in slide-in-from-top-2">
+              <AlertTriangle className="shrink-0 mt-0.5 text-red-600" size={20} />
+              <p className="text-sm font-bold leading-tight">{authError}</p>
+            </div>
+          )}
+          <ReportingForm
+            initialData={{
+              ...ticketData,
+              urgency: (ticketData.urgency as 'High' | 'Moderate' | 'Low') || 'Low'
+            }}
+            onSend={handleFinalSend}
+            onUpdate={updateTicketContext}
+            config={{
+              locations: config.locations,
+              subLocations: config.subLocations,
+              categories: config.categories,
+              uiConfig: config.uiConfig
+            }}
+            status={state === 'rate-limited' ? 'error' : state as any}
+            errorType={state === 'rate-limited' ? 'rate-limit' : undefined}
+          />
+        </div>
       )}
     </main>
     </div>

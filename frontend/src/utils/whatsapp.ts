@@ -13,8 +13,9 @@ export const generateWhatsAppLink = (params: {
     subLocationLabel?: string;
   };
   audioId?: string;
+  reporterName?: string;
 }) => {
-  const { phone, summary, tenantId, tenantName, category, location, subLocation, imageId, urgency, labels } = params;
+  const { phone, summary, tenantId, tenantName, category, location, subLocation, imageId, urgency, labels, reporterName } = params;
   
   const displayName = tenantName || tenantId;
   const locationLabel = labels?.locationLabel || 'קומה';
@@ -41,6 +42,7 @@ export const generateWhatsAppLink = (params: {
   body += `*דחיפות:* ${displayUrgency}\n`;
   if (displayLocation) body += `*${locationLabel}:* ${displayLocation}\n`;
   if (subLocation) body += `*${subLocationLabel}:* ${subLocation}\n`;
+  if (reporterName) body += `*מדווח:* ${reporterName}\n`;
   
   if (imageId) {
     body += `\n*תמונה:* https://tiktak2026.web.app/img/${tenantId}/${imageId}\n`;

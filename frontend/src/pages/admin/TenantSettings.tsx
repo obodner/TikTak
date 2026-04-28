@@ -6,6 +6,7 @@ import { useAuthState } from '../../hooks/useAuthState';
 import { Save, ArrowRight, Globe, Layout, ListTodo } from 'lucide-react';
 import { ListEditor } from '../../components/admin/ListEditor';
 import { UserManagement } from '../../components/admin/UserManagement';
+import { CsvUploadPanel } from '../../components/admin/CsvUploadPanel';
 
 export default function TenantSettings() {
   const { tenantId } = useParams();
@@ -185,6 +186,9 @@ export default function TenantSettings() {
               </div>
             )}
           </div>
+
+          {/* Section 2: CSV Upload Panel */}
+          <CsvUploadPanel tenantId={tenantId as string} />
         </div>
 
         {/* Sidebar: UI & Meta Config */}
