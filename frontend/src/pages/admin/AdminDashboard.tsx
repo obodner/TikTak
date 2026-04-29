@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Navigate, Link } from 'react-router-dom';
-import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
+import { generateStatusUpdateLink } from '../../utils/whatsapp';
+import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
 import { CommentModal } from '../../components/admin/CommentModal';
@@ -26,6 +27,8 @@ type Ticket = {
   adminComments?: { id: string; text: string; createdAt: string; authorName?: string }[];
   closureReason?: string;
   resolutionNote?: string;
+  reporterName?: string;
+  reporterPhone?: string;
 };
 
 export default function AdminDashboard() {
@@ -41,7 +44,9 @@ export default function AdminDashboard() {
   const [commentTicketId, setCommentTicketId] = useState<string | null>(null);
   const [closureTicketId, setClosureTicketId] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
+  const [myTenants, setMyTenants] = useState<{ id: string, name?: string }[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const navigate = useNavigate();
 
 
   // Filter State
@@ -166,12 +171,17 @@ export default function AdminDashboard() {
       const parsed: Ticket[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
       setTickets(parsed);
 
-      // Fetch current admin profile
+      // Fetch current admin profile and user's tenants
       if (user.uid) {
         const uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
         if (uDoc.exists()) {
           setAdminProfile({ firstName: uDoc.data().firstName, lastName: uDoc.data().lastName });
         }
+
+        const tenantsRef = collection(db, "tenants");
+        const tQuery = query(tenantsRef, where("adminUids", "array-contains", user.uid));
+        const tSnap = await getDocs(tQuery);
+        setMyTenants(tSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
       }
     } catch (err: any) {
       console.error("Failed to fetch dashboard data:", err);
@@ -244,6 +254,16 @@ export default function AdminDashboard() {
         updatedAt: new Date().toISOString()
       });
       await fetchData();
+
+      // Automatically offer to notify if reporter exists
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (ticket && ticket.reporterPhone && newStatus !== 'dismissed') {
+        setTimeout(() => {
+          if (window.confirm(isEn ? 'Update successful. Notify resident via WhatsApp?' : 'העדכון הצליח. האם לשלוח עדכון למדווח בוואטסאפ?')) {
+            handleNotifyResident({ ...ticket, status: newStatus });
+          }
+        }, 100);
+      }
     } catch (err) {
       console.error("Update failed:", err);
     } finally {
@@ -285,6 +305,21 @@ export default function AdminDashboard() {
       setTickets(prev => prev.map(t => 
         t.id === ticketId ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
       ));
+
+      // Automatically offer to notify if reporter exists
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (ticket && ticket.reporterPhone) {
+        setTimeout(() => {
+          if (window.confirm(isEn ? 'Ticket closed. Notify resident via WhatsApp?' : 'הפנייה נסגרה. האם לשלוח עדכון למדווח בוואטסאפ?')) {
+            handleNotifyResident({ 
+              ...ticket, 
+              status: 'resolved', 
+              closureReason: reason, 
+              resolutionNote: notes 
+            });
+          }
+        }, 100);
+      }
     } catch (err) {
       console.error("Resolution failed:", err);
       alert(isEn ? 'Failed to close ticket' : 'סגירת הפנייה נכשלה');
@@ -336,6 +371,30 @@ export default function AdminDashboard() {
       console.error(err);
       alert(isEn ? 'Failed to delete' : 'המחיקה נכשלה');
     }
+  };
+
+  const handleNotifyResident = (t: Ticket) => {
+    if (!t.reporterPhone) {
+      alert(isEn ? 'No reporter phone number available' : 'אין מספר טלפון של המדווח');
+      return;
+    }
+    
+    const statusMap: Record<string, 'open' | 'in-progress' | 'resolved'> = {
+      'open': 'open',
+      'in-progress': 'in-progress',
+      'resolved': 'resolved',
+      'dismissed': 'resolved'
+    };
+
+    const link = generateStatusUpdateLink({
+      phone: t.reporterPhone,
+      category: translateCategory(t.category),
+      status: statusMap[t.status] || 'open',
+      location: t.location,
+      closureReason: t.closureReason ? translateClosureReason(t.closureReason) : undefined
+    });
+
+    window.open(link, '_blank');
   };
 
   const handleExportCSV = () => {
@@ -483,6 +542,11 @@ export default function AdminDashboard() {
                     {uiLabels.subLocation}: <span dir="ltr">{t.subLocation}</span>
                   </span>
                 )}
+                {t.reporterName && (
+                  <span className="bg-blue-50 text-blue-700 border border-blue-100 text-xs px-2 py-1 rounded-sm font-bold flex items-center gap-1">
+                    {isEn ? 'Reporter' : 'מדווח'}: <span>{t.reporterName}</span>
+                  </span>
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -556,10 +620,28 @@ export default function AdminDashboard() {
             
             <span className="text-slate-600 font-light text-xl md:text-2xl hidden sm:inline">|</span>
             
-            {/* Middle: Tenant Name */}
-            <span className="text-sm md:text-lg text-slate-300 font-medium truncate max-w-[120px] sm:max-w-[200px] md:max-w-none">
-              {tenantConfig?.name || tenantId}
-            </span>
+            {/* Middle: Tenant Switcher or Name */}
+            {myTenants.length > 1 ? (
+              <div className="relative">
+                <select
+                  value={tenantId}
+                  onChange={(e) => navigate(`/admin/${e.target.value}/dashboard`)}
+                  className="bg-slate-800 text-slate-200 text-sm md:text-lg font-medium py-1 pl-8 pr-3 md:px-4 md:pl-10 rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none cursor-pointer hover:bg-slate-700 transition-colors truncate max-w-[150px] sm:max-w-[200px] md:max-w-none"
+                  dir={isEn ? "ltr" : "rtl"}
+                >
+                  {myTenants.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name || t.id}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className={`absolute top-1/2 -translate-y-1/2 ${isEn ? 'right-2' : 'left-2'} text-slate-400 pointer-events-none`} size={16} />
+              </div>
+            ) : (
+              <span className="text-sm md:text-lg text-slate-300 font-medium truncate max-w-[120px] sm:max-w-[200px] md:max-w-none">
+                {tenantConfig?.name || tenantId}
+              </span>
+            )}
             
             <span className="text-slate-600 font-light text-xl md:text-2xl hidden md:inline">|</span>
             

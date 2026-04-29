@@ -194,6 +194,7 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
       imageId,
       audioId: req.body.audioBase64 ? imageId : null,
       reporterPhone: reporterPhone || null,
+      reporterName: reporterDoc.data()?.name || null,
       status: 'open',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

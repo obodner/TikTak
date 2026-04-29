@@ -4,6 +4,8 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TenantSettings from './pages/admin/TenantSettings';
 
+import { SessionEnforcer } from './components/admin/SessionEnforcer';
+
 export default function App() {
   return (
     <Routes>
@@ -16,8 +18,16 @@ export default function App() {
       <Route path="/admin/login" element={<AdminLogin />} />
       
       {/* Protected Admin Routes */}
-      <Route path="/admin/:tenantId/dashboard" element={<AdminDashboard />} />
-      <Route path="/admin/:tenantId/settings" element={<TenantSettings />} />
+      <Route path="/admin/:tenantId/dashboard" element={
+        <SessionEnforcer>
+          <AdminDashboard />
+        </SessionEnforcer>
+      } />
+      <Route path="/admin/:tenantId/settings" element={
+        <SessionEnforcer>
+          <TenantSettings />
+        </SessionEnforcer>
+      } />
       
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
