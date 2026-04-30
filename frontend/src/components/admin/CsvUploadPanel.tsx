@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, Save, Users, Download, Database } from 'lucide-react';
-import { collection, doc, writeBatch, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { collection, doc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
+import { db, auth } from '../../lib/firebase';
+import { logAction } from '../../utils/auditLogger';
 
 interface CsvUploadPanelProps {
   tenantId: string;
+  callerName: string;
 }
 
 interface ParsedRecord {
@@ -12,7 +14,7 @@ interface ParsedRecord {
   phone: string;
 }
 
-export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
+export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, callerName }) => {
   const [file, setFile] = useState<File | null>(null);
   const [records, setRecords] = useState<ParsedRecord[]>([]);
   const [error, setError] = useState<string>('');
@@ -21,11 +23,18 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [dbRecords, setDbRecords] = useState<ParsedRecord[]>([]);
   const [isLoadingDb, setIsLoadingDb] = useState(true);
+  const [lastUpload, setLastUpload] = useState<{ fileName: string, uploadedAt: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchReporters = async () => {
     setIsLoadingDb(true);
     try {
+      // Fetch Metadata from Tenant doc
+      const tSnap = await getDoc(doc(db, "tenants", tenantId));
+      if (tSnap.exists()) {
+        setLastUpload(tSnap.data().lastReporterUpload || null);
+      }
+
       const snapshot = await getDocs(collection(db, 'tenants', tenantId, 'reporters'));
       const existing = snapshot.docs.map(doc => ({
         name: doc.data().name,
@@ -63,23 +72,63 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
     setIsProcessing(true);
     const reader = new FileReader();
 
-    // Use UTF-8 to ensure Hebrew characters are read correctly
     reader.onload = (event) => {
       try {
-        const text = event.target?.result as string;
-        if (!text) throw new Error('הקובץ ריק');
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        if (!arrayBuffer) throw new Error('הקובץ ריק');
 
-        const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
-        if (lines.length < 2) throw new Error('הקובץ חייב להכיל שורת כותרת ולפחות שורת נתונים אחת');
+        const encodings = ['utf-8', 'windows-1255', 'iso-8859-8', 'utf-16'];
 
-        // Parse Headers
-        const headers = lines[0].split(',').map(h => h.trim());
-        const nameIdx = headers.findIndex(h => h === 'שם');
-        const phoneIdx = headers.findIndex(h => h === 'טלפון');
+        let text = '';
+        let headers: string[] = [];
+        let delimiter = ',';
+        let lines: string[] = [];
+        let nameIdx = -1;
+        let phoneIdx = -1;
+
+        // Try different encodings
+        for (const encoding of encodings) {
+          try {
+            const decoder = new TextDecoder(encoding);
+            text = decoder.decode(arrayBuffer);
+            
+            // Strip BOM and invisible chars
+            text = text.replace(/^\uFEFF/, '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+            
+            lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+            if (lines.length < 1) continue;
+
+            const firstLine = lines[0];
+            // Detect delimiter: comma, semicolon, or tab
+            const commaCount = (firstLine.match(/,/g) || []).length;
+            const semiCount = (firstLine.match(/;/g) || []).length;
+            const tabCount = (firstLine.match(/\t/g) || []).length;
+            
+            if (semiCount > commaCount && semiCount > tabCount) delimiter = ';';
+            else if (tabCount > commaCount && tabCount > semiCount) delimiter = '\t';
+            else delimiter = ',';
+
+            headers = firstLine.split(delimiter).map(h => h.trim().replace(/["']/g, ''));
+            
+            // Look for headers that CONTAIN "שם" and "טלפון"
+            nameIdx = headers.findIndex(h => h.includes('שם'));
+            phoneIdx = headers.findIndex(h => h.includes('טלפון'));
+
+            if (nameIdx !== -1 && phoneIdx !== -1) {
+              console.log(`Successfully detected encoding: ${encoding} with delimiter: ${delimiter}`);
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
 
         if (nameIdx === -1 || phoneIdx === -1) {
-          throw new Error('הקובץ חייב לכלול את העמודות המדויקות: "שם" ו-"טלפון"');
+          console.log('Headers found (last attempt):', headers);
+          throw new Error(`העמודות "שם" ו-"טלפון" לא נמצאו. נא לוודא שהקובץ נשמר בפורמט CSV (UTF-8) או CSV רגיל.`);
         }
+
+        if (lines.length < 2) throw new Error('הקובץ חייב להכיל שורת כותרת ולפחות שורת נתונים אחת');
 
         const parsedRecords: ParsedRecord[] = [];
         const nameRegex = /^[\u0590-\u05FFa-zA-Z0-9\s-]+$/;
@@ -88,9 +137,9 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
         const seenPhones = new Set<string>();
         
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map(c => c.trim());
+          const cols = lines[i].split(delimiter).map(c => c.trim().replace(/["']/g, ''));
           const name = cols[nameIdx] || '';
-          const phone = cols[phoneIdx] || '';
+          let phone = cols[phoneIdx] || '';
 
           // Allow empty rows at the end to be skipped silently
           if (!name && !phone) continue;
@@ -103,7 +152,12 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
             throw new Error(`שורה ${i + 1}: השם מכיל תווים לא חוקיים ("${name}"). מותרים רק אותיות, מספרים, רווחים ומקפים.`);
           }
 
-          const cleanPhone = phone.replace(/-/g, '');
+          // Fix for Excel stripping leading zeros
+          let cleanPhone = phone.replace(/[^0-9]/g, '');
+          if (cleanPhone.length === 9 && !cleanPhone.startsWith('0')) {
+            cleanPhone = '0' + cleanPhone;
+          }
+
           if (!phoneRegex.test(cleanPhone)) {
             throw new Error(`שורה ${i + 1}: מספר הטלפון לא תקין ("${phone}"). מספר תקין מתחיל ב-0 ומכיל 9-10 ספרות (ניתן לכלול מקפים).`);
           }
@@ -140,7 +194,7 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
       setIsProcessing(false);
     };
 
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
   };
 
   const handleClear = () => {
@@ -200,6 +254,33 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
         await batch.commit();
       }
 
+      // 3. Update Metadata in Tenant Doc
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, 'tenants', tenantId), {
+        lastReporterUpload: {
+          fileName: file?.name || 'unknown.csv',
+          uploadedAt: now
+        }
+      });
+      setLastUpload({ fileName: file?.name || 'unknown.csv', uploadedAt: now });
+
+      // Audit Log
+      await logAction({
+        tenantId,
+        action: 'REPORTER_LIST_UPDATE',
+        actor: { 
+          uid: auth.currentUser?.uid || 'unknown', 
+          name: callerName, 
+          type: 'admin' 
+        },
+        details: { 
+          actionName: 'REPORTER_LIST_UPLOAD', 
+          recordCount: records.length,
+          fileName: file?.name,
+          uploadedAt: now
+        }
+      });
+
       setSuccessMessage(`נשמרו ${records.length} מדווחים בהצלחה למסד הנתונים (כל הרשומות הקודמות הוחלפו).`);
       setFile(null); // Clear the staged file
       setRecords([]); // Clear the staged records
@@ -231,9 +312,20 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
-      <div className="flex items-center gap-2 mb-4">
-        <Users className="text-blue-600" size={18} />
-        <h3 className="font-bold text-slate-800">העלאת רשימת מדווחים מורשים (CSV)</h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Users className="text-blue-600" size={18} />
+          <h3 className="font-bold text-slate-800">העלאת רשימת מדווחים מורשים (CSV)</h3>
+        </div>
+        {lastUpload && (
+          <div className="flex flex-col items-end text-[10px] text-slate-400 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-100">
+            <div className="flex items-center gap-1">
+              <span>קובץ אחרון:</span>
+              <span className="text-slate-600 truncate max-w-[80px]" dir="ltr">{lastUpload.fileName}</span>
+            </div>
+            <div>{new Date(lastUpload.uploadedAt).toLocaleString('he-IL')}</div>
+          </div>
+        )}
       </div>
 
       <div className="text-sm text-slate-500 mb-6">
@@ -267,10 +359,13 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId }) => {
       )}
 
       {!isProcessing && records.length === 0 && (
-        <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-          <Upload className="text-slate-400 mb-3" size={32} />
-          <p className="font-bold text-slate-700">לחץ להעלאת קובץ CSV</p>
-        </div>
+        <button 
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full flex items-center justify-center gap-3 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 font-bold py-4 rounded-xl transition-all active:scale-[0.98] group"
+        >
+          <Upload className="text-blue-600 group-hover:scale-110 transition-transform" size={20} />
+          <span>לחץ להעלאת קובץ CSV</span>
+        </button>
       )}
 
       {isLoadingDb && records.length === 0 && (

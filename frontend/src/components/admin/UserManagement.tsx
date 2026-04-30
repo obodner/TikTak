@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { UserPlus, Trash2, Mail, Phone, ShieldCheck, Key, Loader2, X, Pencil, Info } from 'lucide-react';
+import { logAction } from '../../utils/auditLogger';
 
 interface User {
   id: string;
@@ -14,9 +15,10 @@ interface User {
 interface UserManagementProps {
   tenantId: string;
   callerUid: string;
+  callerName: string;
 }
 
-export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, callerUid }) => {
+export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, callerUid, callerName }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -72,6 +74,27 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Server error');
 
+      // Audit Log
+      const auditActionMap: Record<string, any> = {
+        'create': 'USER_ADDED',
+        'update': 'USER_UPDATE',
+        'delete': 'USER_DELETED',
+        'resetPassword': 'USER_UPDATE'
+      };
+
+      if (auditActionMap[action]) {
+        await logAction({
+          tenantId,
+          action: auditActionMap[action],
+          actor: { uid: callerUid, name: callerName, type: 'admin' }, 
+          details: { 
+            targetEmail: data.email, 
+            targetUid: result.uid || data.uid,
+            actionName: action
+          }
+        });
+      }
+
       setMsg('הפעולה בוצעה בהצלחה');
       setModalOpen(false);
       setEditingId(null);
@@ -103,8 +126,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
   };
 
   const handleDelete = (uid: string) => {
-    if (window.confirm('האם אתה בטוח שברצונך למחוק משתמש זה? פעולה זו סופית.')) {
-      callManager('delete', { uid });
+    const userToDelete = users.find(u => u.id === uid);
+    const fullName = userToDelete ? `${userToDelete.firstName} ${userToDelete.lastName}` : 'משתמש';
+    if (window.confirm(`האם אתה בטוח שברצונך למחוק את ${fullName}? פעולה זו סופית.`)) {
+      callManager('delete', { uid, email: userToDelete?.email });
     }
   };
 

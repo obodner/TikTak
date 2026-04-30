@@ -20,7 +20,8 @@ interface AuditLog {
   actor: {
     uid: string;
     name: string;
-    email: string;
+    email?: string;
+    type: 'admin' | 'resident';
   };
   details: {
     ticketId?: string;

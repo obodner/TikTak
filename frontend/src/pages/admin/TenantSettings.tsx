@@ -7,6 +7,7 @@ import { Save, ArrowRight, Globe, Layout, ListTodo } from 'lucide-react';
 import { ListEditor } from '../../components/admin/ListEditor';
 import { UserManagement } from '../../components/admin/UserManagement';
 import { CsvUploadPanel } from '../../components/admin/CsvUploadPanel';
+import { logAction } from '../../utils/auditLogger';
 
 export default function TenantSettings() {
   const { tenantId } = useParams();
@@ -30,6 +31,16 @@ export default function TenantSettings() {
     subLocationLabel: '',
     showLocation: true
   });
+  
+  const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
+  const [initialConfig, setInitialConfig] = useState<any>(null);
+
+  const getAuditActor = () => ({
+    uid: user?.uid || 'unknown',
+    name: adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin'),
+    email: user?.email || undefined,
+    type: 'admin' as const
+  });
 
   useEffect(() => {
     if (!user || !tenantId) return;
@@ -52,6 +63,18 @@ export default function TenantSettings() {
             subLocationLabel: '',
             showLocation: true
           });
+
+          // Store initial state for audit log changes
+          setInitialConfig({
+            type: data.type || 'building',
+            language: data.language || 'he',
+            config: {
+              locations: config.locations || config.floors || [],
+              subLocations: config.subLocations || config.resources || [],
+              categories: config.categories || []
+            },
+            uiConfig: data.uiConfig || { locationLabel: '', subLocationLabel: '', showLocation: true }
+          });
         } else {
           setError(`Error: Tenant ${tenantId} not found.`);
         }
@@ -63,6 +86,22 @@ export default function TenantSettings() {
       }
     }
     loadData();
+  }, [user, tenantId]);
+
+  useEffect(() => {
+    if (!user || !tenantId) return;
+    async function loadProfile() {
+      try {
+        const pRef = doc(db, "tenants", tenantId as string, "adminUsers", user!.uid);
+        const pSnap = await getDoc(pRef);
+        if (pSnap.exists()) {
+          setAdminProfile(pSnap.data() as any);
+        }
+      } catch (err) {
+        console.error("Profile load failed", err);
+      }
+    }
+    loadProfile();
   }, [user, tenantId]);
 
   const handleSave = async () => {
@@ -82,6 +121,51 @@ export default function TenantSettings() {
         uiConfig,
         updatedAt: new Date().toISOString()
       });
+
+      // Audit Log - Data Reduction (only log changed fields)
+      if (initialConfig) {
+        const diff: any = { previous: {}, next: {} };
+        let hasChanges = false;
+
+        const compare = (key: string, oldVal: any, newVal: any) => {
+          if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+            diff.previous[key] = oldVal;
+            diff.next[key] = newVal;
+            hasChanges = true;
+          }
+        };
+
+        compare('type', initialConfig.type, type);
+        compare('language', initialConfig.language, language);
+        compare('locations', initialConfig.config.locations, locations);
+        compare('subLocations', initialConfig.config.subLocations, subLocations);
+        compare('categories', initialConfig.config.categories, categories);
+        compare('uiConfig', initialConfig.uiConfig, uiConfig);
+
+        if (hasChanges) {
+          await logAction({
+            tenantId,
+            action: 'CONFIGURATION_UPDATE',
+            actor: getAuditActor(),
+            details: { 
+              changedFields: Object.keys(diff.next)
+            },
+            changes: {
+              previousValue: diff.previous,
+              newValue: diff.next
+            }
+          });
+        }
+      }
+
+      // Update initial config for next potential save in same session
+      setInitialConfig({
+        type,
+        language,
+        config: { locations, subLocations, categories },
+        uiConfig
+      });
+
       setMessage('ההגדרות נשמרו בהצלחה!');
     } catch (err) {
       console.error(err);
@@ -188,7 +272,10 @@ export default function TenantSettings() {
           </div>
 
           {/* Section 2: CSV Upload Panel */}
-          <CsvUploadPanel tenantId={tenantId as string} />
+          <CsvUploadPanel 
+            tenantId={tenantId as string} 
+            callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')} 
+          />
         </div>
 
         {/* Sidebar: UI & Meta Config */}
@@ -264,7 +351,11 @@ export default function TenantSettings() {
           </div>
 
           {!loading && (
-            <UserManagement tenantId={tenantId as string} callerUid={user?.uid || ''} />
+            <UserManagement 
+              tenantId={tenantId as string} 
+              callerUid={user?.uid || ''} 
+              callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')}
+            />
           )}
 
           <button 

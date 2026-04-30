@@ -11,6 +11,40 @@ initializeApp();
 const db = getFirestore();
 const storage = getStorage();
 
+async function recordAuditLog(params: {
+  tenantId: string;
+  action: string;
+  level: 'INFO' | 'WARN' | 'ERROR';
+  actor: { uid: string; name: string; email?: string; type: 'admin' | 'resident' };
+  details: any;
+}) {
+  const { tenantId, action, level, actor, details } = params;
+  const createdAt = new Date().toISOString();
+  // Set expireAt to 7 years from now
+  const expireAt = new Date();
+  expireAt.setFullYear(expireAt.getFullYear() + 7);
+
+  const logData = {
+    action,
+    level,
+    actor,
+    details,
+    metadata: {
+      tenantId,
+      platform: 'backend',
+    },
+    createdAt,
+    expireAt: admin.firestore.Timestamp.fromDate(expireAt),
+    appId: 'tiktak',
+  };
+
+  try {
+    await db.collection("tenants").doc(tenantId).collection("auditLogs").add(logData);
+  } catch (err) {
+    logger.error("Failed to write audit log", { error: err, logData });
+  }
+}
+
 export const health = onRequest({ cors: true }, (request, response) => {
   logger.info("Health check requested", { structuredData: true });
   response.send({ status: "ok", timestamp: new Date().toISOString() });
@@ -214,12 +248,56 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
     }
 
     await db.collection("tenants").doc(tenantId).collection("tickets").doc(imageId).set(ticketData);
+
+    // Record Audit Log (Success)
+    await recordAuditLog({
+      tenantId,
+      action: 'TICKET_CREATED',
+      level: 'INFO',
+      actor: { 
+        uid: reporterPhone, 
+        name: reporterDoc.data()?.name || reporterPhone, 
+        type: 'resident' 
+      },
+      details: { 
+        ticketId: imageId, 
+        category, 
+        urgency, 
+        location: location || null, 
+        subLocation: subLocation || null,
+        hasImage: !!imageId,
+        hasAudio: !!req.body.audioBase64 
+      }
+    });
+
     res.status(200).send({ 
       success: true, 
       ticketId: imageId, 
       reporterName: reporterDoc.data()?.name || reporterPhone 
     });
   } catch (error: any) {
+    logger.error("createTicket failed", { error, body: req.body });
+    
+    // Record Audit Log (Error)
+    if (req.body.tenantId && req.body.reporterPhone) {
+      await recordAuditLog({
+        tenantId: req.body.tenantId,
+        action: 'TICKET_CREATED',
+        level: 'ERROR',
+        actor: { 
+          uid: req.body.reporterPhone, 
+          name: 'Resident', // In error state we might not have the name yet
+          type: 'resident' 
+        },
+        details: { 
+          error: error.message,
+          category: req.body.category,
+          location: req.body.location,
+          subLocation: req.body.subLocation
+        }
+      });
+    }
+
     res.status(500).send({ error: "Failed to save ticket" });
   }
 });

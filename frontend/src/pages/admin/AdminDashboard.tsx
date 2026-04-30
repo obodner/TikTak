@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
 import { generateStatusUpdateLink } from '../../utils/whatsapp';
+import { logAction } from '../../utils/auditLogger';
 import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
@@ -60,6 +61,13 @@ export default function AdminDashboard() {
     severity: 'all',
     search: '',
     statuses: ['new', 'in-progress', 'closed']
+  });
+
+  const getAuditActor = () => ({
+    uid: user?.uid || 'unknown',
+    name: adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin'),
+    email: user?.email || undefined,
+    type: 'admin' as const
   });
 
   // 1. Localization & Language Setup
@@ -253,10 +261,20 @@ export default function AdminDashboard() {
         status: newStatus,
         updatedAt: new Date().toISOString()
       });
+
+      // Audit Log
+      const ticket = tickets.find(t => t.id === ticketId);
+      await logAction({
+        tenantId,
+        action: 'TICKET_STATUS_UPDATE',
+        actor: getAuditActor(),
+        details: { ticketId, newStatus },
+        changes: ticket ? { previousValue: { status: ticket.status }, newValue: { status: newStatus } } : null
+      });
+
       await fetchData();
 
       // Automatically offer to notify if reporter exists
-      const ticket = tickets.find(t => t.id === ticketId);
       if (ticket && ticket.reporterPhone && newStatus !== 'dismissed') {
         setTimeout(() => {
           if (window.confirm(isEn ? 'Update successful. Notify resident via WhatsApp?' : 'העדכון הצליח. האם לשלוח עדכון למדווח בוואטסאפ?')) {
@@ -279,6 +297,17 @@ export default function AdminDashboard() {
         urgency: newUrgency,
         updatedAt: new Date().toISOString()
       });
+
+      // Audit Log
+      const ticket = tickets.find(t => t.id === ticketId);
+      await logAction({
+        tenantId,
+        action: 'TICKET_URGENCY_UPDATE',
+        actor: getAuditActor(),
+        details: { ticketId, newUrgency },
+        changes: ticket ? { previousValue: { urgency: ticket.urgency }, newValue: { urgency: newUrgency } } : null
+      });
+
       setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, urgency: newUrgency } : t));
     } catch (err) {
       console.error("Urgency update failed:", err);
@@ -301,13 +330,25 @@ export default function AdminDashboard() {
         updatedAt: new Date().toISOString()
       });
       
+      // Audit Log
+      const ticket = tickets.find(t => t.id === ticketId);
+      await logAction({
+        tenantId,
+        action: 'TICKET_STATUS_UPDATE',
+        actor: getAuditActor(),
+        details: { ticketId, newStatus: 'resolved', closureReason: reason, resolutionNote: notes },
+        changes: ticket ? { 
+          previousValue: { status: ticket.status }, 
+          newValue: { status: 'resolved', closureReason: reason } 
+        } : null
+      });
+      
       // Update local state immediately for snappy UI
       setTickets(prev => prev.map(t => 
         t.id === ticketId ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
       ));
 
       // Automatically offer to notify if reporter exists
-      const ticket = tickets.find(t => t.id === ticketId);
       if (ticket && ticket.reporterPhone) {
         setTimeout(() => {
           if (window.confirm(isEn ? 'Ticket closed. Notify resident via WhatsApp?' : 'הפנייה נסגרה. האם לשלוח עדכון למדווח בוואטסאפ?')) {
@@ -341,6 +382,15 @@ export default function AdminDashboard() {
       await updateDoc(doc(db, "tenants", tenantId, "tickets", ticketId), {
         adminComments: arrayUnion(newComment)
       });
+
+      // Audit Log
+      await logAction({
+        tenantId,
+        action: 'COMMENT_CREATED',
+        actor: getAuditActor(),
+        details: { ticketId, commentId: newComment.id, text: newComment.text }
+      });
+
       setTickets(prev => prev.map(t => 
         t.id === ticketId 
           ? { ...t, adminComments: [...(t.adminComments || []), newComment] } 
@@ -364,6 +414,16 @@ export default function AdminDashboard() {
       await updateDoc(doc(db, "tenants", tenantId, "tickets", ticketId), {
         adminComments: updatedComments
       });
+
+      // Audit Log
+      const deletedComment = ticket.adminComments.find(c => c.id === commentId);
+      await logAction({
+        tenantId,
+        action: 'COMMENT_DELETED',
+        actor: getAuditActor(),
+        details: { ticketId, commentId, text: deletedComment?.text }
+      });
+
       setTickets(prev => prev.map(t => 
         t.id === ticketId ? { ...t, adminComments: updatedComments } : t
       ));

@@ -24,6 +24,12 @@ service cloud.firestore {
       match /reporters/{reporterId} {
         allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids;
       }
+
+      // Audit Logs subcollection
+      match /auditLogs/{logId} {
+        allow read, create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids;
+        allow update, delete: if false; // Immutable logs
+      }
     }
   }
 }

@@ -54,7 +54,7 @@ As specified by the user, ensuring full context including `actor` identity, `ses
     "createdAt": "ISO_8601",
     "expireAt": "TIMESTAMP (7 Years)",
     "level": "INFO | WARN | ERROR",
-    "actor": { "uid": "string", "name": "string", "email": "string" },
+    "actor": { "uid": "string", "name": "string", "email": "string", "type": "admin | resident" },
     "sessionId": "string",
     "action": "TICKET_CREATED | TICKET_STATUS_UPDATE | TICKET_URGENCY_UPDATE | COMMENT_CREATED | COMMENT_DELETED | USER_ADDED | USER_DELETED | USER_UPDATE | CONFIGURATION_UPDATE | LOGIN",
     "targetResource": "string",

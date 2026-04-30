@@ -5,8 +5,15 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import TenantSettings from './pages/admin/TenantSettings';
 
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
+import { useEffect } from 'react';
 
 export default function App() {
+  useEffect(() => {
+    if (!sessionStorage.getItem('tiktak_session_id')) {
+      sessionStorage.setItem('tiktak_session_id', Math.random().toString(36).substring(2, 15));
+    }
+  }, []);
+
   return (
     <Routes>
       {/* Resident facing UI -> strictly public */}

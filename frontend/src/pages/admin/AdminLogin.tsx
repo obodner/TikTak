@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { logAction, resetAuditSession } from '../../utils/auditLogger';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -58,6 +59,8 @@ export default function AdminLogin() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
 
+      resetAuditSession(); // New: Generate new session ID upon successful login
+
       // Reset strikes
       setFailedAttempts(0);
 
@@ -80,7 +83,25 @@ export default function AdminLogin() {
 
       // 3. Handle multi-tenancy or single tenant
       if (foundTenants.length === 1) {
-        navigate(`/admin/${foundTenants[0].id}/dashboard`);
+        const t = foundTenants[0];
+        
+        // Fetch full name for audit log
+        let actorName = email.split('@')[0];
+        try {
+          const uDoc = await getDoc(doc(db, "tenants", t.id, "adminUsers", uid));
+          if (uDoc.exists()) {
+            const uData = uDoc.data();
+            actorName = `${uData.firstName} ${uData.lastName}`;
+          }
+        } catch (e) { console.error(e); }
+
+        await logAction({
+          tenantId: t.id,
+          action: 'LOGIN',
+          actor: { uid: uid, name: actorName, email, type: 'admin' },
+          details: { tenantName: t.name }
+        });
+        navigate(`/admin/${t.id}/dashboard`);
       } else {
         setTenants(foundTenants);
       }
@@ -137,7 +158,29 @@ export default function AdminLogin() {
             {tenants.map(t => (
               <button 
                 key={t.id}
-                onClick={() => navigate(`/admin/${t.id}/dashboard`)}
+                onClick={async () => {
+                  let actorName = auth.currentUser?.email?.split('@')[0] || 'Admin';
+                  try {
+                    const uDoc = await getDoc(doc(db, "tenants", t.id, "adminUsers", auth.currentUser?.uid as string));
+                    if (uDoc.exists()) {
+                      const uData = uDoc.data();
+                      actorName = `${uData.firstName} ${uData.lastName}`;
+                    }
+                  } catch (e) { console.error(e); }
+
+                  await logAction({
+                    tenantId: t.id,
+                    action: 'LOGIN',
+                    actor: { 
+                      uid: auth.currentUser?.uid || 'unknown', 
+                      name: actorName, 
+                      email: auth.currentUser?.email || undefined, 
+                      type: 'admin' 
+                    },
+                    details: { tenantName: t.name }
+                  });
+                  navigate(`/admin/${t.id}/dashboard`);
+                }}
                 className="p-4 border border-slate-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-right shadow-sm active:scale-95"
               >
                 <div className="font-bold text-slate-800">{t.name || 'מבנה ללא שם'}</div>
