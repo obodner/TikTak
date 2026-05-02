@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { UserPlus, Trash2, Mail, Phone, ShieldCheck, Key, Loader2, X, Pencil, Info } from 'lucide-react';
+import { ConfirmModal, ConfirmType } from './ConfirmModal';
 import { logAction } from '../../utils/auditLogger';
 
 interface User {
@@ -34,6 +35,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
     email: '',
     mobile: '',
     password: ''
+  });
+
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: ConfirmType;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'warning'
   });
 
   const fetchUsers = async () => {
@@ -128,15 +142,24 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
   const handleDelete = (uid: string) => {
     const userToDelete = users.find(u => u.id === uid);
     const fullName = userToDelete ? `${userToDelete.firstName} ${userToDelete.lastName}` : 'משתמש';
-    if (window.confirm(`האם אתה בטוח שברצונך למחוק את ${fullName}? פעולה זו סופית.`)) {
-      callManager('delete', { uid, email: userToDelete?.email });
-    }
+    
+    setConfirmState({
+      isOpen: true,
+      title: 'מחיקת משתמש',
+      message: `האם אתה בטוח שברצונך למחוק את ${fullName}? פעולה זו סופית.`,
+      type: 'danger',
+      onConfirm: () => callManager('delete', { uid, email: userToDelete?.email })
+    });
   };
 
   const handleResetPassword = (email: string) => {
-    if (window.confirm('האם לשלוח קישור לאיפוס סיסמה למשתמש?')) {
-      callManager('resetPassword', { email });
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'איפוס סיסמה',
+      message: 'האם לשלוח קישור לאיפוס סיסמה למשתמש?',
+      type: 'warning',
+      onConfirm: () => callManager('resetPassword', { email })
+    });
   };
 
   const handlePhoneChange = (val: string) => {
@@ -307,6 +330,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmState.onConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        type={confirmState.type}
+      />
     </div>
   );
 };

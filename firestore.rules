@@ -3,33 +3,36 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
   
-    // The frontend fetches tenant configuration via the secure Cloud Function /api/getTenantInfo
-    // Direct client-side read access to root configuration is restricted for security.
+    // Helper: Check if user has Super Admin role via Custom Claims
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.role == 'super';
+    }
+
+    // Helper: Check if user is a tenant admin
+    function isTenantAdmin(tenantId) {
+      return request.auth != null && (
+        isSuperAdmin() || 
+        request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids
+      );
+    }
     
     match /tenants/{tenantId} {
-      // Admins can read their own tenant document if their UID is in the adminUids array
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.adminUids;
+      allow read, update: if isTenantAdmin(tenantId);
       
-      // Cascading rules for the tickets subcollection
-      match /tickets/{ticketId} {
-        allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids;
+      match /{allSubcollections=**} {
+        allow read, write: if isTenantAdmin(tenantId);
       }
+    }
 
-      // New: Admin Users subcollection
-      match /adminUsers/{adminUserId} {
-        allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids;
-      }
-
-      // New: Authorized Reporters subcollection
-      match /reporters/{reporterId} {
-        allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids;
-      }
-
-      // Audit Logs subcollection
-      match /auditLogs/{logId} {
-        allow read, create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.adminUids;
-        allow update, delete: if false; // Immutable logs
-      }
+    // Centralized Audit Logs (Root Collection)
+    match /audit_logs/{logId} {
+      // Anyone logged in can create a log (from the app logic)
+      allow create: if request.auth != null; 
+      
+      // Only Super Admins can read the global audit feed
+      allow read: if isSuperAdmin();
+      
+      allow update, delete: if false; // Immutable
     }
   }
 }

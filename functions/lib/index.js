@@ -51,6 +51,7 @@ async function recordAuditLog(params) {
     const expireAt = new Date();
     expireAt.setFullYear(expireAt.getFullYear() + 7);
     const logData = {
+        tenantId,
         action,
         level,
         actor,
@@ -64,7 +65,7 @@ async function recordAuditLog(params) {
         appId: 'tiktak',
     };
     try {
-        await db.collection("tenants").doc(tenantId).collection("auditLogs").add(logData);
+        await db.collection("audit_logs").add(logData);
     }
     catch (err) {
         logger.error("Failed to write audit log", { error: err, logData });
@@ -172,14 +173,16 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
 exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     try {
         const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone } = req.body;
-        if (!tenantId || !imageId) {
-            res.status(400).send({ error: "Missing tenantId or imageId" });
+        if (!tenantId) {
+            res.status(400).send({ error: "Missing tenantId" });
             return;
         }
         if (!reporterPhone) {
             res.status(400).send({ error: "Missing reporter phone number" });
             return;
         }
+        const isRealImage = imageId && typeof imageId === 'string' && !imageId.startsWith('hidden-');
+        const finalImageId = isRealImage ? imageId : null;
         const tenantDoc = await db.collection("tenants").doc(tenantId).get();
         const tenantType = tenantDoc.data()?.type || 'building';
         const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
@@ -204,56 +207,80 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) =
             });
             return;
         }
-        const ticketData = {
-            summary,
-            category,
-            urgency,
-            location: location || null,
-            subLocation: subLocation || null,
-            ticketType: ticketType || 'visible',
-            imageId,
-            audioId: req.body.audioBase64 ? imageId : null,
-            reporterPhone: reporterPhone || null,
-            reporterName: reporterDoc.data()?.name || null,
-            status: 'open',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-        if (req.body.audioBase64) {
-            const bucket = admin.storage().bucket();
-            const audioFile = bucket.file(`tenants/${tenantId}/${imageId}.webm`);
-            const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
-            logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes`);
-            await audioFile.save(audioBuffer, {
-                metadata: { contentType: "audio/webm" }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const ticketsCol = db.collection("tenants").doc(tenantId).collection("tickets");
+        const ticketRef = isRealImage ? ticketsCol.doc(imageId) : ticketsCol.doc();
+        const ticketId = ticketRef.id;
+        let ticketNumber = 0;
+        try {
+            ticketNumber = await db.runTransaction(async (transaction) => {
+                const tenantSnap = await transaction.get(tenantRef);
+                const tenantData = tenantSnap.data() || {};
+                const currentCount = tenantData.lastTicketNumber || 0;
+                const nextNumber = currentCount + 1;
+                transaction.update(tenantRef, { lastTicketNumber: nextNumber });
+                const ticketData = {
+                    summary,
+                    category,
+                    urgency,
+                    location: location || null,
+                    subLocation: subLocation || null,
+                    ticketType: ticketType || 'visible',
+                    imageId: finalImageId,
+                    audioId: req.body.audioBase64 ? ticketId : null,
+                    reporterPhone: reporterPhone || null,
+                    reporterName: reporterDoc.data()?.name || null,
+                    status: 'open',
+                    ticketNumber: nextNumber,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    adminComments: []
+                };
+                transaction.set(ticketRef, ticketData);
+                return nextNumber;
             });
-            logger.info("Audio note uploaded successfully", { tenantId, ticketId: imageId });
-        }
-        await db.collection("tenants").doc(tenantId).collection("tickets").doc(imageId).set(ticketData);
-        await recordAuditLog({
-            tenantId,
-            action: 'TICKET_CREATED',
-            level: 'INFO',
-            actor: {
-                uid: reporterPhone,
-                name: reporterDoc.data()?.name || reporterPhone,
-                type: 'resident'
-            },
-            details: {
-                ticketId: imageId,
-                category,
-                urgency,
-                location: location || null,
-                subLocation: subLocation || null,
-                hasImage: !!imageId,
-                hasAudio: !!req.body.audioBase64
+            if (req.body.audioBase64) {
+                const bucket = admin.storage().bucket();
+                const audioFile = bucket.file(`tenants/${tenantId}/${imageId}.webm`);
+                const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
+                logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes`);
+                await audioFile.save(audioBuffer, {
+                    metadata: { contentType: "audio/webm" }
+                });
+                logger.info("Audio note uploaded successfully", { tenantId, ticketId: imageId });
             }
-        });
-        res.status(200).send({
-            success: true,
-            ticketId: imageId,
-            reporterName: reporterDoc.data()?.name || reporterPhone
-        });
+            await recordAuditLog({
+                tenantId,
+                action: 'TICKET_CREATED',
+                level: 'INFO',
+                actor: {
+                    uid: reporterPhone,
+                    name: reporterDoc.data()?.name || reporterPhone,
+                    type: 'resident'
+                },
+                details: {
+                    ticketId: isRealImage ? imageId : ticketId,
+                    ticketNumber,
+                    summary,
+                    category,
+                    urgency,
+                    location: location || null,
+                    subLocation: subLocation || null,
+                    hasImage: isRealImage,
+                    hasAudio: !!req.body.audioBase64
+                }
+            });
+            res.status(200).send({
+                success: true,
+                ticketId: imageId,
+                ticketNumber,
+                reporterName: reporterDoc.data()?.name || reporterPhone
+            });
+        }
+        catch (txError) {
+            logger.error("Transaction failed", { error: txError.message });
+            res.status(500).send({ error: "Failed to create ticket", details: txError.message });
+        }
     }
     catch (error) {
         logger.error("createTicket failed", { error, body: req.body });

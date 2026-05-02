@@ -57,6 +57,7 @@ export default function ResidentFlow() {
   
   const [selectedLocation, setSelectedLocation] = useState(location || '');
   const [selectedSubLocation, setSelectedSubLocation] = useState(subLocation || '');
+  const [ticketNumber, setTicketNumber] = useState<number | null>(null);
 
   // Fetch tenant metadata
   useEffect(() => {
@@ -148,14 +149,13 @@ export default function ResidentFlow() {
   };
 
   const handleManualReport = () => {
-    // Generate a unique ID for the hidden ticket
-    const tempId = `hidden-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Manual report without camera capture
     
     setTicketData({
       summary: '',
       category: '',
       urgency: 'Low',
-      imageId: tempId,
+      imageId: undefined,
       location: selectedLocation || undefined,
       subLocation: selectedSubLocation || undefined,
       ticketType: 'hidden'
@@ -209,6 +209,8 @@ export default function ResidentFlow() {
 
       const createData = await createResponse.json();
       const reporterName = createData.reporterName || phone;
+      const tNum = createData.ticketNumber;
+      setTicketNumber(tNum);
 
       // Generate WhatsApp Link
       const waLink = generateWhatsAppLink({
@@ -223,6 +225,7 @@ export default function ResidentFlow() {
         imageId: ticketData.ticketType === 'visible' ? ticketData.imageId : undefined,
         audioId: ticketData.audioBase64 ? ticketData.imageId : undefined,
         reporterName: reporterName,
+        ticketNumber: tNum,
         labels: {
           locationLabel: config.uiConfig?.locationLabel || t('floor'),
           subLocationLabel: config.uiConfig?.subLocationLabel || t('resource')
@@ -318,6 +321,7 @@ export default function ResidentFlow() {
             }}
             status={state === 'rate-limited' ? 'error' : state as any}
             errorType={state === 'rate-limited' ? 'rate-limit' : undefined}
+            ticketNumber={ticketNumber}
           />
         </div>
       )}

@@ -22,10 +22,12 @@ export const generateWhatsAppLink = (params: {
   };
   audioId?: string;
   reporterName?: string;
+  ticketNumber?: number;
 }) => {
-  const { phone, summary, tenantId, tenantName, category, location, subLocation, imageId, urgency, labels, reporterName } = params;
+  const { phone, summary, tenantId, tenantName, category, location, subLocation, imageId, urgency, labels, reporterName, ticketNumber } = params;
 
   const displayName = tenantName || tenantId;
+  const ticketIdStr = ticketNumber ? ` (#${ticketNumber})` : '';
   const locationLabel = labels?.locationLabel || 'קומה';
   const subLocationLabel = labels?.subLocationLabel || 'מיקום';
 
@@ -41,8 +43,8 @@ export const generateWhatsAppLink = (params: {
   const displayLocation = location?.startsWith('-') ? `\u200E${location}` : location;
 
   // Isolated bold tag to ensure it 'sticks' even with RTL/LTR mixed content
-  let body = `*דיווח חדש: TikTak*\n`;
-  if (displayUrgency === 'דחוף 🚨') body = `*דיווח דחוף 🚨: TikTak*\n`;
+  let body = `*דיווח חדש${ticketIdStr}: TikTak*\n`;
+  if (displayUrgency === 'דחוף 🚨') body = `*דיווח דחוף 🚨${ticketIdStr}: TikTak*\n`;
   body += `*דיווח עבור:* ${displayName}\n\n`;
 
   body += `*תיאור:* ${summary || 'אין תיאור'}\n`;
@@ -75,19 +77,21 @@ export const generateStatusUpdateLink = (params: {
   location?: string;
   tenantName?: string;
   closureReason?: string;
+  ticketNumber?: number;
 }) => {
-  const { phone, category, status, location, closureReason } = params;
+  const { phone, category, status, location, closureReason, ticketNumber } = params;
 
+  const ticketIdStr = ticketNumber ? ` (#${ticketNumber})` : '';
   const locationText = location ? ` ב-${location}` : '';
   let body = `*עדכון מTikTak*\n`;
 
   if (status === 'open') {
-    body += `הסטטוס של הדיווח שלך בנושא "${category}"${locationText} נרשם במערכת ועודכן ל: סטטוס *חדש*.`;
+    body += `הסטטוס של הדיווח שלך${ticketIdStr} בנושא "${category}"${locationText} נרשם במערכת ועודכן ל: סטטוס *חדש*.`;
   } else if (status === 'in-progress') {
-    body += `*היי, אנחנו על זה!*\nהדיווח שלך על "${category}"${locationText} כרגע בטיפול. נעדכן כשיסתיים.`;
+    body += `*היי, אנחנו על זה!*\nהדיווח שלך${ticketIdStr} על "${category}"${locationText} כרגע בטיפול. נעדכן כשיסתיים.`;
   } else if (status === 'resolved') {
     const reasonText = closureReason ? ` (${closureReason})` : '';
-    body += `*חדשות טובות!*\nהדיווח שלך בנושא "${category}"${locationText} סומן כטופל${reasonText}. תודה שעזרת לשמור על הבית! ✅`;
+    body += `*חדשות טובות!*\nהדיווח שלך${ticketIdStr} בנושא "${category}"${locationText} סומן כטופל${reasonText}. תודה שעזרת לשמור על הבית! ✅`;
   }
 
   const encodedBody = encodeURIComponent(body);

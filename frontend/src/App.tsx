@@ -3,8 +3,10 @@ import ResidentFlow from './pages/ResidentFlow';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TenantSettings from './pages/admin/TenantSettings';
+import SuperAdminDashboard from './pages/admin/SuperAdminDashboard';
 
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
+import { SuperAdminEnforcer } from './components/admin/SuperAdminEnforcer';
 import { useEffect } from 'react';
 
 export default function App() {
@@ -25,6 +27,11 @@ export default function App() {
       <Route path="/admin/login" element={<AdminLogin />} />
       
       {/* Protected Admin Routes */}
+      <Route path="/admin/god-view" element={
+        <SuperAdminEnforcer>
+          <SuperAdminDashboard />
+        </SuperAdminEnforcer>
+      } />
       <Route path="/admin/:tenantId/dashboard" element={
         <SessionEnforcer>
           <AdminDashboard />

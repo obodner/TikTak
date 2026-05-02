@@ -42,6 +42,7 @@ export const logAction = async (params: {
   expireAt.setFullYear(expireAt.getFullYear() + 7);
 
   const logData = {
+    tenantId, // Top-level for easy filtering
     action,
     level,
     actor,
@@ -55,7 +56,7 @@ export const logAction = async (params: {
     },
     createdAt: new Date().toISOString(),
     expireAt: Timestamp.fromDate(expireAt),
-    expireAtHuman: expireAt.toISOString(), // Added for human readability in DB
+    expireAtHuman: expireAt.toISOString(),
     appId: 'tiktak',
     sessionId: 'session_' + (sessionStorage.getItem('tiktak_session_id') || 'unregistered')
   };
@@ -63,7 +64,7 @@ export const logAction = async (params: {
   const cleanData = JSON.parse(JSON.stringify(logData, (_, v) => v === undefined ? null : v));
 
   try {
-    const logsRef = collection(db, 'tenants', tenantId, 'auditLogs');
+    const logsRef = collection(db, 'audit_logs');
     await addDoc(logsRef, cleanData);
   } catch (err) {
     console.error('Failed to log audit action:', err);

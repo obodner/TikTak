@@ -16,10 +16,11 @@ interface CommentModalProps {
   ticket: {
     id: string;
     category: string;
+    ticketNumber?: number;
     adminComments?: Comment[];
   } | null;
-  onSave: (ticketId: string, text: string) => Promise<void>;
-  onDelete: (ticketId: string, commentId: string) => Promise<void>;
+  onSave: (ticket: any, text: string) => Promise<void>;
+  onDelete: (ticket: any, comment: Comment) => Promise<void>;
   isEn: boolean;
 }
 
@@ -50,7 +51,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
     if (!newComment.trim()) return;
     setLoading(true);
     try {
-      await onSave(ticket.id, newComment.trim());
+      await onSave(ticket, newComment.trim());
       setNewComment('');
       onClose();
     } finally {
@@ -107,7 +108,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
                     </div>
                   </div>
                   <button 
-                    onClick={() => onDelete(ticket.id, c.id)}
+                    onClick={() => onDelete(ticket, c)}
                     className="p-1.5 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                     title={labels.discard}
                   >

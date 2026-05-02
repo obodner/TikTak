@@ -2,14 +2,16 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
 import { generateStatusUpdateLink } from '../../utils/whatsapp';
 import { logAction } from '../../utils/auditLogger';
-import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, where } from 'firebase/firestore';
+import { ConfirmModal, ConfirmType } from '../../components/admin/ConfirmModal';
+import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, arrayRemove, where, limit } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
 import { CommentModal } from '../../components/admin/CommentModal';
 import { ClosureModal } from '../../components/admin/ClosureModal';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { AlertCircle, Clock, CheckCircle2, Check, Search, X, Calendar, MessageSquare, LogOut, Mic, ChevronDown, Download } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { he } from 'date-fns/locale';
 
@@ -30,10 +32,12 @@ type Ticket = {
   resolutionNote?: string;
   reporterName?: string;
   reporterPhone?: string;
+  ticketNumber?: number;
 };
 
 export default function AdminDashboard() {
   const { tenantId } = useParams();
+  const [isSuper, setIsSuper] = useState(false);
   const { user, loading: authLoading } = useAuthState();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -47,6 +51,28 @@ export default function AdminDashboard() {
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
   const [myTenants, setMyTenants] = useState<{ id: string, name?: string }[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: ConfirmType;
+    onConfirm?: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'warning'
+  });
+
+  const showConfirm = (title: string, message: string, onConfirm?: () => void, type: ConfirmType = 'warning', confirmLabel?: string, cancelLabel?: string) => {
+    setConfirmState({ isOpen: true, title, message, onConfirm, type, confirmLabel, cancelLabel });
+  };
+
+  const showAlert = (title: string, message: string, type: ConfirmType = 'danger') => {
+    setConfirmState({ isOpen: true, title, message, type });
+  };
   const navigate = useNavigate();
 
 
@@ -65,7 +91,9 @@ export default function AdminDashboard() {
 
   const getAuditActor = () => ({
     uid: user?.uid || 'unknown',
-    name: adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin'),
+    name: adminProfile 
+      ? `${adminProfile.firstName} ${adminProfile.lastName}` 
+      : (user?.displayName || user?.email || 'Admin'),
     email: user?.email || undefined,
     type: 'admin' as const
   });
@@ -120,6 +148,8 @@ export default function AdminDashboard() {
     image: isEn ? 'Image' : 'תמונה',
     start: isEn ? 'Start' : 'התחל',
     close: isEn ? 'Close' : 'סגור',
+    reopen: isEn ? 'Reopen' : 'פתח מחדש',
+    back: isEn ? 'Back to New' : 'החזר לחדש',
     location: tenantConfig?.uiConfig?.locationLabel || (isEn ? 'Location' : 'קומה'),
     subLocation: tenantConfig?.uiConfig?.subLocationLabel || (isEn ? 'Sub-Location' : 'מקום'),
     settings: isEn ? 'Tenant Settings' : 'הגדרות',
@@ -181,15 +211,49 @@ export default function AdminDashboard() {
 
       // Fetch current admin profile and user's tenants
       if (user.uid) {
-        const uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
+        const token = await user.getIdTokenResult();
+        const superRole = token.claims.role === 'super';
+        setIsSuper(superRole);
+
+        let userTenants: { id: string, name?: string }[] = [];
+        if (superRole) {
+          const allTenantsSnap = await getDocs(collection(db, "tenants"));
+          userTenants = allTenantsSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
+        } else {
+          const tenantsRef = collection(db, "tenants");
+          const tQuery = query(tenantsRef, where("adminUids", "array-contains", user.uid));
+          const tSnap = await getDocs(tQuery);
+          userTenants = tSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
+        }
+        setMyTenants(userTenants);
+
+        let uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
+        
+        // Fallback: If not found in current tenant (common for Super Admins switching context),
+        // find ANY tenant where this user is an admin and fetch their profile from there.
+        if (!uDoc.exists()) {
+          try {
+            const adminQuery = query(
+              collection(db, "tenants"), 
+              where("adminUids", "array-contains", user.uid), 
+              limit(1)
+            );
+            const adminSnap = await getDocs(adminQuery);
+            if (!adminSnap.empty) {
+              const fallbackTenantId = adminSnap.docs[0].id;
+              const fallbackDoc = await getDoc(doc(db, "tenants", fallbackTenantId, "adminUsers", user.uid));
+              if (fallbackDoc.exists()) {
+                uDoc = fallbackDoc;
+              }
+            }
+          } catch (e) {
+            console.error("Profile fallback search failed:", e);
+          }
+        }
+
         if (uDoc.exists()) {
           setAdminProfile({ firstName: uDoc.data().firstName, lastName: uDoc.data().lastName });
         }
-
-        const tenantsRef = collection(db, "tenants");
-        const tQuery = query(tenantsRef, where("adminUids", "array-contains", user.uid));
-        const tSnap = await getDocs(tQuery);
-        setMyTenants(tSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
       }
     } catch (err: any) {
       console.error("Failed to fetch dashboard data:", err);
@@ -268,19 +332,15 @@ export default function AdminDashboard() {
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
         actor: getAuditActor(),
-        details: { ticketId, newStatus },
+        details: { ticketId, ticketNumber: ticket?.ticketNumber, newStatus },
         changes: ticket ? { previousValue: { status: ticket.status }, newValue: { status: newStatus } } : null
       });
 
       await fetchData();
 
-      // Automatically offer to notify if reporter exists
+      // Automatically notify if reporter exists
       if (ticket && ticket.reporterPhone && newStatus !== 'dismissed') {
-        setTimeout(() => {
-          if (window.confirm(isEn ? 'Update successful. Notify resident via WhatsApp?' : 'העדכון הצליח. האם לשלוח עדכון למדווח בוואטסאפ?')) {
-            handleNotifyResident({ ...ticket, status: newStatus });
-          }
-        }, 100);
+        handleNotifyResident({ ...ticket, status: newStatus });
       }
     } catch (err) {
       console.error("Update failed:", err);
@@ -304,14 +364,17 @@ export default function AdminDashboard() {
         tenantId,
         action: 'TICKET_URGENCY_UPDATE',
         actor: getAuditActor(),
-        details: { ticketId, newUrgency },
+        details: { ticketId, ticketNumber: ticket?.ticketNumber, newUrgency },
         changes: ticket ? { previousValue: { urgency: ticket.urgency }, newValue: { urgency: newUrgency } } : null
       });
 
       setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, urgency: newUrgency } : t));
     } catch (err) {
       console.error("Urgency update failed:", err);
-      alert(isEn ? 'Failed to update urgency' : 'עדכון הדחיפות נכשל');
+      showAlert(
+        isEn ? 'Error' : 'שגיאה',
+        isEn ? 'Failed to update urgency' : 'עדכון הדחיפות נכשל'
+      );
     } finally {
       setUpdatingId(null);
     }
@@ -336,7 +399,7 @@ export default function AdminDashboard() {
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
         actor: getAuditActor(),
-        details: { ticketId, newStatus: 'resolved', closureReason: reason, resolutionNote: notes },
+        details: { ticketId, ticketNumber: ticket?.ticketNumber, newStatus: 'resolved', closureReason: reason, resolutionNote: notes },
         changes: ticket ? { 
           previousValue: { status: ticket.status }, 
           newValue: { status: 'resolved', closureReason: reason } 
@@ -348,29 +411,29 @@ export default function AdminDashboard() {
         t.id === ticketId ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
       ));
 
-      // Automatically offer to notify if reporter exists
+      // Automatically notify if reporter exists
       if (ticket && ticket.reporterPhone) {
-        setTimeout(() => {
-          if (window.confirm(isEn ? 'Ticket closed. Notify resident via WhatsApp?' : 'הפנייה נסגרה. האם לשלוח עדכון למדווח בוואטסאפ?')) {
-            handleNotifyResident({ 
-              ...ticket, 
-              status: 'resolved', 
-              closureReason: reason, 
-              resolutionNote: notes 
-            });
-          }
-        }, 100);
+        handleNotifyResident({ 
+          ...ticket, 
+          status: 'resolved', 
+          closureReason: reason, 
+          resolutionNote: notes 
+        });
       }
     } catch (err) {
       console.error("Resolution failed:", err);
-      alert(isEn ? 'Failed to close ticket' : 'סגירת הפנייה נכשלה');
+      showAlert(
+        isEn ? 'Error' : 'שגיאה',
+        isEn ? 'Failed to close ticket' : 'סגירת הפנייה נכשלה'
+      );
     } finally {
       setUpdatingId(null);
     }
   };
 
-  const handleSaveComment = async (ticketId: string, text: string) => {
-    if (!tenantId) return;
+  const handleSaveComment = async (ticket: any, text: string) => {
+    if (!tenantId || !ticket) return;
+    const ticketId = ticket.id;
     const newComment = {
       id: Math.random().toString(36).substr(2, 9),
       text,
@@ -388,7 +451,12 @@ export default function AdminDashboard() {
         tenantId,
         action: 'COMMENT_CREATED',
         actor: getAuditActor(),
-        details: { ticketId, commentId: newComment.id, text: newComment.text }
+        details: { 
+          ticketId, 
+          ticketNumber: ticket.ticketNumber, 
+          commentId: newComment.id, 
+          text: newComment.text 
+        }
       });
 
       setTickets(prev => prev.map(t => 
@@ -398,44 +466,54 @@ export default function AdminDashboard() {
       ));
     } catch (err: any) {
       console.error(err);
-      alert(isEn ? 'Failed to save comment' : 'שמירת ההערה נכשלה');
+      showAlert(
+        isEn ? 'Error' : 'שגיאה',
+        isEn ? 'Failed to save comment' : 'שמירת ההערה נכשלה'
+      );
     }
   };
 
-  const handleDeleteComment = async (ticketId: string, commentId: string) => {
-    if (!tenantId) return;
-    if (!window.confirm(isEn ? 'Delete this comment?' : 'למחוק הערה זו?')) return;
+  const handleDeleteComment = async (ticket: any, comment: any) => {
+    if (!tenantId || !ticket) return;
+    const ticketId = ticket.id;
+    showConfirm(
+      isEn ? 'Delete Comment' : 'מחיקת הערה',
+      isEn ? 'Are you sure you want to delete this comment?' : 'האם אתה בטוח שברצונך למחוק הערה זו?',
+      async () => {
+        try {
+          await updateDoc(doc(db, "tenants", tenantId!, "tickets", ticketId), {
+            adminComments: arrayRemove(comment)
+          });
+          
+          // Audit Log
+          await logAction({
+            tenantId: tenantId!,
+            action: 'COMMENT_DELETED',
+            actor: getAuditActor(),
+            details: { ticketId, ticketNumber: ticket.ticketNumber, commentId: comment.id }
+          });
 
-    try {
-      const ticket = tickets.find(t => t.id === ticketId);
-      if (!ticket || !ticket.adminComments) return;
-
-      const updatedComments = ticket.adminComments.filter(c => c.id !== commentId);
-      await updateDoc(doc(db, "tenants", tenantId, "tickets", ticketId), {
-        adminComments: updatedComments
-      });
-
-      // Audit Log
-      const deletedComment = ticket.adminComments.find(c => c.id === commentId);
-      await logAction({
-        tenantId,
-        action: 'COMMENT_DELETED',
-        actor: getAuditActor(),
-        details: { ticketId, commentId, text: deletedComment?.text }
-      });
-
-      setTickets(prev => prev.map(t => 
-        t.id === ticketId ? { ...t, adminComments: updatedComments } : t
-      ));
-    } catch (err: any) {
-      console.error(err);
-      alert(isEn ? 'Failed to delete' : 'המחיקה נכשלה');
-    }
+          setTickets(prev => prev.map(t => 
+            t.id === ticketId 
+              ? { ...t, adminComments: (t.adminComments || []).filter(c => c.id !== comment.id) } 
+              : t
+          ));
+        } catch (err) {
+          console.error("Delete failed:", err);
+          showAlert(isEn ? 'Error' : 'שגיאה', isEn ? 'Failed to delete' : 'המחיקה נכשלה');
+        }
+      },
+      'danger'
+    );
   };
 
   const handleNotifyResident = (t: Ticket) => {
     if (!t.reporterPhone) {
-      alert(isEn ? 'No reporter phone number available' : 'אין מספר טלפון של המדווח');
+      showAlert(
+        isEn ? 'Missing Information' : 'מידע חסר',
+        isEn ? 'No reporter phone number available' : 'אין מספר טלפון של המדווח',
+        'warning'
+      );
       return;
     }
     
@@ -451,7 +529,8 @@ export default function AdminDashboard() {
       category: translateCategory(t.category),
       status: statusMap[t.status] || 'open',
       location: t.location,
-      closureReason: t.closureReason ? translateClosureReason(t.closureReason) : undefined
+      closureReason: t.closureReason ? translateClosureReason(t.closureReason) : undefined,
+      ticketNumber: t.ticketNumber
     });
 
     window.open(link, '_blank');
@@ -459,6 +538,7 @@ export default function AdminDashboard() {
 
   const handleExportCSV = () => {
     const headers = [
+      '#',
       isHe ? 'תאריך' : 'Date',
       isHe ? 'קטגוריה' : 'Category',
       isHe ? 'תיאור' : 'Description',
@@ -483,6 +563,7 @@ export default function AdminDashboard() {
     };
 
     const rows = filteredTickets.map(t => [
+      t.ticketNumber || '',
       format(parseISO(t.createdAt), 'dd/MM/yyyy HH:mm'),
       translateCategory(t.category),
       t.summary.replace(/"/g, '""'),
@@ -547,114 +628,172 @@ export default function AdminDashboard() {
     return { open, resolved, categoryData, monthlyData };
   }, [filteredTickets, isEn]);
 
-  const renderColumn = (title: string, status: string[], icon: any, colorClass: string) => {
-    const colTickets = filteredTickets.filter(t => status.includes(t.status));
+  const onDragEnd = async (result: any) => {
+    const { destination, source, draggableId } = result;
 
+    if (!destination) return;
+
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    ) {
+      return;
+    }
+
+    const ticketId = draggableId;
+    const newStatus = destination.droppableId;
+
+    // Optimistically update local state for smoothness
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: newStatus } : t));
+
+    try {
+      await handleStatusUpdate(ticketId, newStatus);
+    } catch (error) {
+      console.error("Failed to update status via drag and drop:", error);
+      fetchData(); // Revert on failure
+    }
+  };
+
+  const renderColumn = (statusKey: string, title: string, colorClass: string, statuses: string[]) => {
+    const columnTickets = filteredTickets.filter(t => statuses.includes(t.status));
+    
     return (
-      <div className={`flex flex-col bg-slate-100 rounded-xl p-4 min-h-[500px] border-t-4 ${colorClass}`}>
-        <div className="flex items-center gap-2 mb-4 text-slate-800 font-bold text-lg">
-          {icon}
-          <h2>{title} ({colTickets.length})</h2>
+      <div className="flex flex-col bg-slate-100/50 rounded-2xl p-4 min-h-[500px]">
+        <div className="flex items-center justify-between mb-4 px-2">
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-slate-800">{title}</h3>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colorClass}`}>
+              {columnTickets.length}
+            </span>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {colTickets.map(t => (
-            <div key={t.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex gap-1.5 items-center">
-                  <select
-                    value={t.urgency}
-                    disabled={updatingId === t.id}
-                    onChange={(e) => handleUrgencyUpdate(t.id, e.target.value as Ticket['urgency'])}
-                    className={`text-[10px] font-black px-2 py-1 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-100 text-red-700' :
-                      t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+        <Droppable droppableId={statusKey}>
+          {(provided, snapshot) => (
+            <div
+              {...provided.droppableProps}
+              ref={provided.innerRef}
+              className={`flex-1 flex flex-col gap-4 transition-colors rounded-xl p-1 ${
+                snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
+              }`}
+            >
+              {columnTickets.map((t, index) => (
+                <Draggable key={t.id} draggableId={t.id} index={index}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      className={`bg-white p-4 rounded-2xl shadow-sm border border-slate-200 transition-all cursor-grab active:cursor-grabbing relative group ${
+                        snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
                       }`}
-                  >
-                    <option value="High">{uiLabels.urgency.High}</option>
-                    <option value="Moderate">{uiLabels.urgency.Moderate}</option>
-                    <option value="Low">{uiLabels.urgency.Low}</option>
-                  </select>
-
-                  {t.closureReason && (
-                    <span 
-                      title={t.resolutionNote}
-                      className="text-[10px] font-black px-2 py-1 rounded bg-slate-200 text-slate-700 cursor-help"
+                      onClick={() => {
+                        if (snapshot.isDragging) return;
+                      }}
                     >
-                      {translateClosureReason(t.closureReason)}
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-slate-500">
-                  {new Date(t.createdAt).toLocaleDateString(isEn ? 'en-US' : 'he-IL')} {new Date(t.createdAt).toLocaleTimeString(isEn ? 'en-US' : 'he-IL', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-              <p className="font-bold text-slate-800 mb-1 leading-snug">{translateCategory(t.category)}</p>
-              <p className="text-sm text-slate-600 mb-3 line-clamp-4 break-words leading-relaxed">{t.summary}</p>
+                      {/* Top Row: #/Urgency (Right) and Date/Time (Left) */}
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={t.urgency}
+                            disabled={updatingId === t.id}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => handleUrgencyUpdate(t.id, e.target.value as Ticket['urgency'])}
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${
+                              t.urgency === 'High' ? 'bg-red-100 text-red-700' : 
+                              t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' : 
+                              'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            <option value="High">{uiLabels.urgency.High}</option>
+                            <option value="Moderate">{uiLabels.urgency.Moderate}</option>
+                            <option value="Low">{uiLabels.urgency.Low}</option>
+                          </select>
+                          <span className="text-[10px] font-bold text-slate-300 tracking-tighter">#{t.ticketNumber}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-medium text-left">
+                          {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
+                        </div>
+                      </div>
 
-              <div className="flex flex-wrap gap-1 mb-3">
-                {t.location && (
-                  <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-sm font-bold flex items-center gap-1">
-                    {uiLabels.location}: <span dir="ltr">{t.location}</span>
-                  </span>
-                )}
-                {t.subLocation && (
-                  <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-sm font-bold flex items-center gap-1">
-                    {uiLabels.subLocation}: <span dir="ltr">{t.subLocation}</span>
-                  </span>
-                )}
-                {t.reporterName && (
-                  <span className="bg-blue-50 text-blue-700 border border-blue-100 text-xs px-2 py-1 rounded-sm font-bold flex items-center gap-1">
-                    {isEn ? 'Reporter' : 'מדווח'}: <span>{t.reporterName}</span>
-                  </span>
-                )}
-              </div>
+                      {/* Category & Summary */}
+                      <div className="mb-4">
+                        <div className="text-sm font-extrabold text-slate-800 mb-1">
+                          {translateCategory(t.category)}
+                        </div>
+                        <p className="text-sm text-slate-600 line-clamp-3 leading-relaxed">
+                          {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
+                        </p>
+                      </div>
+                      
+                      {/* Interaction Row: Comment (Right), Image, Audio */}
+                      <div className="flex items-center gap-3 pt-3 border-t border-slate-50 mb-2">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCommentTicketId(t.id);
+                          }}
+                          className="flex items-center gap-1.5 p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                        >
+                          <MessageSquare size={18} className={t.adminComments?.length ? 'text-blue-500' : ''} />
+                          {t.adminComments && t.adminComments.length > 0 && (
+                            <span className="text-xs font-bold text-slate-500">{t.adminComments.length}</span>
+                          )}
+                        </button>
+                        
+                        {t.imageId && typeof t.imageId === 'string' && t.imageId.length > 5 && (
+                          <a 
+                            href={`/img/${tenantId}/${t.imageId}`} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            title={isEn ? "View Image" : "צפה בתמונה"}
+                          >
+                            <ImageIcon size={18} />
+                          </a>
+                        )}
+                        
+                        {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
+                          <a 
+                            href={`/aud/${tenantId}/${t.audioId}`} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            title={isEn ? "Play Audio" : "נגן הקלטה"}
+                          >
+                            <Mic size={18} />
+                          </a>
+                        )}
+                      </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCommentTicketId(t.id)}
-                  className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-all shadow-sm relative group"
-                  title={isEn ? "Internal Notes" : "הערות פנימיות"}
-                >
-                  <MessageSquare size={16} className={t.adminComments?.length ? 'text-blue-600' : ''} />
-                  {t.adminComments && t.adminComments.length > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-white animate-in zoom-in">
-                      {t.adminComments.length}
-                    </span>
+                      {/* Bottom Info: Reporter (Right), Location, Sublocation */}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold">
+                        {t.reporterName && (
+                          <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                            {t.reporterName}
+                          </span>
+                        )}
+                        {t.location && (
+                          <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
+                            {t.location}
+                          </span>
+                        )}
+                        {t.subLocation && (
+                          <span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded">
+                            {t.subLocation}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   )}
-                </button>
-                {t.imageId && !t.imageId.startsWith('hidden-') && (
-                  <a href={`/img/${tenantId}/${t.imageId}`} target="_blank" rel="noreferrer" className="flex-1 text-center text-xs font-medium text-blue-600 bg-blue-50 py-2 rounded border border-blue-100 hover:bg-blue-100 flex items-center justify-center">
-                    {uiLabels.image}
-                  </a>
-                )}
-                {t.audioId && (
-                  <a href={`/aud/${tenantId}/${t.audioId}`} target="_blank" rel="noreferrer" className="w-10 flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors" title={isEn ? "Play Audio" : "נגן הקלטה"}>
-                    <Mic size={16} />
-                  </a>
-                )}
-                {t.status === 'open' && (
-                  <button
-                    onClick={() => handleStatusUpdate(t.id, 'in-progress')}
-                    disabled={updatingId === t.id}
-                    className="flex-1 flex items-center justify-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 py-2 rounded border border-amber-100 hover:bg-amber-100"
-                  >
-                    <Clock size={12} /> {uiLabels.start}
-                  </button>
-                )}
-                {(t.status === 'open' || t.status === 'in-progress') && (
-                  <button
-                    onClick={() => setClosureTicketId(t.id)}
-                    disabled={updatingId === t.id}
-                    className="flex-1 flex items-center justify-center gap-1 text-xs font-medium text-green-600 bg-green-50 py-2 rounded border border-green-100 hover:bg-green-100"
-                  >
-                    <Check size={12} /> {uiLabels.close}
-                  </button>
-                )}
-              </div>
+                </Draggable>
+              ))}
+              {provided.placeholder}
             </div>
-          ))}
-          {colTickets.length === 0 && <p className="text-slate-400 text-sm text-center py-8">{uiLabels.no_tickets}</p>}
-        </div>
+          )}
+        </Droppable>
       </div>
     );
   };
@@ -669,7 +808,6 @@ export default function AdminDashboard() {
       <header className="bg-slate-900 text-white p-3 md:p-5 sticky top-0 z-50 shadow-md border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex justify-between items-center px-2 md:px-4">
           <div className="flex items-center gap-2 md:gap-4 text-right" dir={isEn ? "ltr" : "rtl"}>
-            {/* Right: Logo */}
             <div className="flex items-center justify-center transition-transform hover:scale-105 shrink-0">
               <img 
                 src="/logo_transparent.png" 
@@ -680,7 +818,6 @@ export default function AdminDashboard() {
             
             <span className="text-slate-600 font-light text-xl md:text-2xl hidden sm:inline">|</span>
             
-            {/* Middle: Tenant Switcher or Name */}
             {myTenants.length > 1 ? (
               <div className="relative">
                 <select
@@ -705,13 +842,20 @@ export default function AdminDashboard() {
             
             <span className="text-slate-600 font-light text-xl md:text-2xl hidden md:inline">|</span>
             
-            {/* Left: Page Name */}
             <span className="text-sm md:text-lg text-white font-bold whitespace-nowrap hidden md:inline">
               {isEn ? 'Dashboard' : 'דשבורד'}
             </span>
           </div>
           
           <div className="flex items-center gap-2 md:gap-3">
+            {isSuper && (
+              <Link 
+                to="/admin/god-view" 
+                className="hidden sm:flex items-center gap-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 px-3 md:px-4 py-2 rounded-lg transition-all shadow-lg shadow-blue-900/20"
+              >
+                <Shield size={14} /> {isEn ? 'God Mode' : 'מצב אל'}
+              </Link>
+            )}
             <Link 
               to={`/admin/${tenantId}/settings`} 
               className="text-xs font-bold bg-slate-800 hover:bg-slate-700 px-3 md:px-4 py-2 rounded-lg transition-all border border-slate-700 flex items-center gap-2"
@@ -739,7 +883,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Analytics Top Bar */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100 shadow-sm flex flex-col justify-center">
             <h3 className="text-slate-500 font-medium mb-1">{uiLabels.stats_open}</h3>
@@ -808,12 +951,9 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Filter Bar */}
         <section className="bg-slate-50/50 p-3 rounded-2xl border border-slate-200 shadow-sm backdrop-blur-sm">
           <div className="flex flex-col lg:flex-row items-end gap-4">
-            {/* Dropdowns - Fixed width or compact */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:flex xl:flex-nowrap gap-3 w-full lg:w-auto">
-              {/* Time Range */}
               <div className="flex flex-col gap-1.5 min-w-[120px]">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.time}</label>
                 <select
@@ -825,7 +965,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {/* Status (דיווח) - Multi-select */}
               <div className="flex flex-col gap-1.5 min-w-[120px] relative">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.status}</label>
                 <button
@@ -873,7 +1012,6 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              {/* Severity */}
               <div className="flex flex-col gap-1.5 min-w-[100px]">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.severity}</label>
                 <select
@@ -888,7 +1026,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {/* Category */}
               <div className="flex flex-col gap-1.5 min-w-[120px]">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.category}</label>
                 <select
@@ -901,7 +1038,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {/* Location */}
               <div className="flex flex-col gap-1.5 min-w-[120px]">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.location}</label>
                 <select
@@ -914,7 +1050,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {/* Sub-Location */}
               <div className="flex flex-col gap-1.5 min-w-[120px]">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.subLocation}</label>
                 <select
@@ -927,7 +1062,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {/* Clear Highlights - Unified Button */}
               <div className="flex flex-col justify-end gap-2 xl:flex-row">
                 {hasActiveFilters && (
                   <button
@@ -942,7 +1076,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Search - Flexible width - Move to LEFT (logical end in RTL) */}
             <div className="flex-1 w-full lg:w-auto flex flex-col gap-1.5">
               <label className="text-xs font-bold text-slate-500 px-1">{uiLabels.filters.search}</label>
               <div className="flex gap-2">
@@ -975,7 +1108,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Custom Dates Row - Secondary */}
           {filters.timeRange === 'custom' && (
             <div className="mt-4 pt-4 border-t border-slate-200 flex items-center gap-4 animate-in slide-in-from-top-2">
               <div className="flex items-center gap-3">
@@ -994,13 +1126,11 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* Kanban Board */}
         {loading ? (
           <div className="py-20 text-center text-slate-500">{uiLabels.loading}</div>
         ) : (
-          <section className="flex flex-col gap-4">
-            {/* Mobile Tab Switcher */}
-            <div className="flex lg:hidden bg-slate-100 p-1 rounded-xl">
+          <section className="mt-8">
+            <div className="flex lg:hidden bg-slate-100 p-1 rounded-xl mb-6">
               <button
                 onClick={() => setActiveTab('new')}
                 className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'new' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
@@ -1020,18 +1150,19 @@ export default function AdminDashboard() {
                 {uiLabels.tab_resolved}
               </button>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className={activeTab === 'new' ? 'block' : 'hidden lg:block'}>
-                {renderColumn(uiLabels.new, ['open'], <AlertCircle className="text-red-500" />, 'border-red-500')}
+            <DragDropContext onDragEnd={onDragEnd}>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className={activeTab === 'new' ? 'block' : 'hidden lg:block'}>
+                  {renderColumn('open', uiLabels.new, 'bg-blue-100 text-blue-700', ['open'])}
+                </div>
+                <div className={activeTab === 'progress' ? 'block' : 'hidden lg:block'}>
+                  {renderColumn('in-progress', uiLabels.progress, 'bg-amber-100 text-amber-700', ['in-progress', 'progress'])}
+                </div>
+                <div className={activeTab === 'resolved' ? 'block' : 'hidden lg:block'}>
+                  {renderColumn('resolved', uiLabels.resolved, 'bg-green-100 text-green-700', ['resolved', 'dismissed'])}
+                </div>
               </div>
-              <div className={activeTab === 'progress' ? 'block' : 'hidden lg:block'}>
-                {renderColumn(uiLabels.progress, ['in-progress'], <Clock className="text-amber-500" />, 'border-amber-500')}
-              </div>
-              <div className={activeTab === 'resolved' ? 'block' : 'hidden lg:block'}>
-                {renderColumn(uiLabels.resolved, ['resolved', 'dismissed'], <CheckCircle2 className="text-green-500" />, 'border-green-500')}
-              </div>
-            </div>
+            </DragDropContext>
           </section>
         )}
 
@@ -1048,6 +1179,18 @@ export default function AdminDashboard() {
           onClose={() => setClosureTicketId(null)}
           ticket={tickets.find(t => t.id === closureTicketId) || null}
           onConfirm={handleConfirmResolution}
+          isEn={isEn}
+        />
+
+        <ConfirmModal
+          isOpen={confirmState.isOpen}
+          onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+          onConfirm={confirmState.onConfirm}
+          title={confirmState.title}
+          message={confirmState.message}
+          type={confirmState.type}
+          confirmLabel={confirmState.confirmLabel}
+          cancelLabel={confirmState.cancelLabel}
           isEn={isEn}
         />
       </main>

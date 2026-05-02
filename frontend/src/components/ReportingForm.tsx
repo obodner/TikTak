@@ -29,6 +29,7 @@ interface ReportingFormProps {
   };
   status: 'editing' | 'sending' | 'success' | 'error';
   errorType?: 'rate-limit';
+  ticketNumber?: number | null;
 }
 
 export const ReportingForm: React.FC<ReportingFormProps> = ({ 
@@ -37,7 +38,8 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
   onUpdate,
   config,
   status,
-  errorType
+  errorType,
+  ticketNumber
 }) => {
   const { t } = useTranslation();
   const [summary, setSummary] = useState(initialData.summary);
@@ -95,6 +97,11 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
       <div className="flex flex-col items-center justify-center gap-4 p-8 animate-in zoom-in duration-300">
         <CheckCircle2 size={80} className="text-green-500" />
         <h2 className="text-2xl font-black text-blue-900">{t('success')}</h2>
+        {ticketNumber && (
+          <div className="bg-blue-50 px-6 py-2 rounded-full border border-blue-100 mt-2 shadow-sm animate-bounce">
+            <p className="text-blue-700 font-black text-2xl">#{ticketNumber}</p>
+          </div>
+        )}
       </div>
     );
   }

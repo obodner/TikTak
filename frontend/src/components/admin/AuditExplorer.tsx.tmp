@@ -1,0 +1,52 @@
+import { useState, useEffect } from 'react';
+import { collection, query, orderBy, limit, getDocs, where, startAfter, QueryConstraint } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { Search, EyeOff, X, Filter, Copy, Check } from 'lucide-react';
+import { format, parseISO, subMonths, startOfDay } from 'date-fns';
+
+interface AuditLog {
+  id: string;
+  tenantId: string;
+  action: string;
+  level: string;
+  actor: {
+    uid: string;
+    name: string;
+    email?: string;
+    type: string;
+  };
+  details: any;
+  changes?: { previousValue: any; newValue: any } | null;
+  createdAt: string;
+  metadata: any;
+}
+
+interface AuditExplorerProps {
+  isEn?: boolean;
+}
+
+export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
+  const [showRaw, setShowRaw] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Filters
+  const [filters, setFilters] = useState({
+    tenantId: 'all',
+    action: 'all',
+    actorSearch: '',
+    category: 'all',
+    urgency: 'all',
+    timeRange: '1m',
+    customStartDate: '',
+    search: '',
+  });
+
+  const handleCopy = (log: AuditLog) => {
+    navigator.clipboard.writeText(JSON.stringify(log, null, 2));
+    setCopiedId(log.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
