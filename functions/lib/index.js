@@ -382,6 +382,7 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
             res.status(400).send({ error: "Missing required fields" });
             return;
         }
+        const auth = admin.auth();
         const tenantRef = db.collection("tenants").doc(tenantId);
         const tenantDoc = await tenantRef.get();
         if (!tenantDoc.exists) {
@@ -390,11 +391,22 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
         }
         const tData = tenantDoc.data() || {};
         const adminUids = tData.adminUids || [];
-        if (!adminUids.includes(callerUid)) {
-            res.status(403).send({ error: "Unauthorized: Caller is not a tenant admin" });
+        let isAuthorized = adminUids.includes(callerUid);
+        if (!isAuthorized && callerUid) {
+            try {
+                const callerUser = await auth.getUser(callerUid);
+                if (callerUser.customClaims?.role === 'super') {
+                    isAuthorized = true;
+                }
+            }
+            catch (e) {
+                console.error("Auth check failed for caller:", callerUid, e);
+            }
+        }
+        if (!isAuthorized) {
+            res.status(403).send({ error: "Unauthorized: Caller must be a tenant admin or super admin" });
             return;
         }
-        const auth = admin.auth();
         switch (action) {
             case 'create': {
                 const { email, password, firstName, lastName, mobile } = userData;

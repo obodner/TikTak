@@ -1062,18 +1062,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              <div className="flex flex-col justify-end gap-2 xl:flex-row">
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="h-[38px] flex items-center justify-center gap-2 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 px-4 rounded-xl transition-all shadow-sm group border border-slate-200"
-                    title={uiLabels.filters.clear}
-                  >
-                    <X size={16} className="group-hover:rotate-90 transition-transform" />
-                    <span className="text-xs font-bold hidden xl:inline">{uiLabels.filters.clear}</span>
-                  </button>
-                )}
-              </div>
             </div>
 
             <div className="flex-1 w-full lg:w-auto flex flex-col gap-1.5">
@@ -1104,6 +1092,16 @@ export default function AdminDashboard() {
                 >
                   <Download size={18} />
                 </button>
+                
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="h-[38px] w-[38px] flex items-center justify-center bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-all border border-slate-200 shadow-sm group shrink-0"
+                    title={uiLabels.filters.clear}
+                  >
+                    <X size={18} className="group-hover:rotate-90 transition-transform" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -232,6 +232,24 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         return isEn
           ? `${actor} updated ticket ${urgTicketRef} urgency to ${log.details.newUrgency}`
           : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;
+      case 'CONFIGURATION_UPDATE':
+        return isEn
+          ? `${actor} updated building settings for ${tenantName}`
+          : `${actor} עדכן את הגדרות הבניין עבור ${tenantName}`;
+      case 'REPORTER_LIST_UPDATE':
+        return isEn
+          ? `${actor} imported/updated the reporter list for ${tenantName}`
+          : `${actor} ייבא/עדכן את רשימת המורשים עבור ${tenantName}`;
+      case 'USER_ADDED':
+        const targetUser = log.details.email || log.details.uid || '';
+        return isEn
+          ? `${actor} added a new admin user (${targetUser}) to ${tenantName}`
+          : `${actor} הוסיף משתמש ניהול חדש (${targetUser}) עבור ${tenantName}`;
+      case 'USER_DELETED':
+        const delUser = log.details.email || log.details.uid || '';
+        return isEn
+          ? `${actor} removed admin user (${delUser}) from ${tenantName}`
+          : `${actor} הסיר משתמש ניהול (${delUser}) עבור ${tenantName}`;
       case 'LOGIN':
         return isEn ? `${actor} logged in` : `${actor} התחבר למערכת`;
       default:

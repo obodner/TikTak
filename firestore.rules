@@ -17,7 +17,12 @@ service cloud.firestore {
     }
     
     match /tenants/{tenantId} {
-      allow read, update: if isTenantAdmin(tenantId);
+      // For get/list on the tenant itself, resource.data is more efficient and supports queries
+      allow read: if request.auth != null && (
+        isSuperAdmin() || 
+        request.auth.uid in resource.data.adminUids
+      );
+      allow update: if isTenantAdmin(tenantId);
       
       match /{allSubcollections=**} {
         allow read, write: if isTenantAdmin(tenantId);

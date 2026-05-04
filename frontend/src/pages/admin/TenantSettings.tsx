@@ -53,7 +53,7 @@ export default function TenantSettings() {
           const config = data.config || {};
           
           setTenantName(data.name || '');
-          setType(data.type || 'building');
+          setType((data.type?.toLowerCase() || 'building') as 'building' | 'municipality');
           setLanguage(data.language || 'he');
           setLocations(config.locations || config.floors || []);
           setSubLocations(config.subLocations || config.resources || []);

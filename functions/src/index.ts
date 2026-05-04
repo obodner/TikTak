@@ -434,7 +434,8 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
       return;
     }
 
-    // 1. Authorization: Verify caller is an admin of the tenant
+    // 1. Authorization: Verify caller is an admin of the tenant OR a Super Admin
+    const auth = admin.auth();
     const tenantRef = db.collection("tenants").doc(tenantId);
     const tenantDoc = await tenantRef.get();
 
@@ -446,12 +447,23 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
     const tData = tenantDoc.data() || {};
     const adminUids = tData.adminUids || [];
 
-    if (!adminUids.includes(callerUid)) {
-      res.status(403).send({ error: "Unauthorized: Caller is not a tenant admin" });
-      return;
+    let isAuthorized = adminUids.includes(callerUid);
+
+    if (!isAuthorized && callerUid) {
+      try {
+        const callerUser = await auth.getUser(callerUid);
+        if (callerUser.customClaims?.role === 'super') {
+          isAuthorized = true;
+        }
+      } catch (e) {
+        console.error("Auth check failed for caller:", callerUid, e);
+      }
     }
 
-    const auth = admin.auth();
+    if (!isAuthorized) {
+      res.status(403).send({ error: "Unauthorized: Caller must be a tenant admin or super admin" });
+      return;
+    }
 
     switch (action) {
       case 'create': {

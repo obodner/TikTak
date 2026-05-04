@@ -292,19 +292,21 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
     }
   };
 
-  const handleDownload = () => {
-    if (records.length === 0) return;
+  const handleDownload = (isDb = false) => {
+    const listToDownload = isDb ? dbRecords : records;
+    if (listToDownload.length === 0) return;
     
     // Add BOM for Hebrew support in Excel
     const BOM = "\uFEFF";
     const header = "שם,טלפון\n";
-    const csvContent = records.map(r => `${r.name},${r.phone}`).join('\n');
+    const csvContent = listToDownload.map(r => `${r.name},${r.phone}`).join('\n');
     const blob = new Blob([BOM + header + csvContent], { type: 'text/csv;charset=utf-8;' });
     
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `tiktak_reporters_${new Date().getTime()}.csv`);
+    const fileName = `tiktak_reporters_list.csv`;
+    link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -317,15 +319,50 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
           <Users className="text-blue-600" size={18} />
           <h3 className="font-bold text-slate-800">העלאת רשימת מדווחים מורשים (CSV)</h3>
         </div>
-        {lastUpload && (
-          <div className="flex flex-col items-end text-[10px] text-slate-400 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-100">
-            <div className="flex items-center gap-1">
-              <span>קובץ אחרון:</span>
-              <span className="text-slate-600 truncate max-w-[80px]" dir="ltr">{lastUpload.fileName}</span>
+        
+        <div className="flex items-center gap-3">
+          {/* Always enabled Download (if we have DB records or staged records) */}
+          <button 
+            onClick={() => handleDownload(records.length === 0)}
+            disabled={dbRecords.length === 0 && records.length === 0}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-30"
+            title="הורד רשימה כקובץ CSV"
+          >
+            <Download size={16} />
+            <span className="hidden sm:inline">הורדה</span>
+          </button>
+
+          {/* Always enabled Upload */}
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isProcessing || isSaving}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+            title="העלה רשימה חדשה"
+          >
+            <Upload size={16} />
+            <span className="hidden sm:inline">העלאה</span>
+          </button>
+
+          {lastUpload && (
+            <div className="flex flex-col items-start text-[10px] bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 hidden md:flex min-w-[100px]">
+              <span className="text-slate-400 font-bold mb-0.5">קובץ אחרון:</span>
+              <span 
+                className="text-slate-700 font-bold truncate max-w-[120px] mb-0.5" 
+                dir="ltr"
+                title={lastUpload.fileName}
+              >
+                {lastUpload.fileName}
+              </span>
+              <span className="text-slate-400 font-bold">
+                {new Date(lastUpload.uploadedAt).toLocaleString('he-IL', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                })}, {new Date(lastUpload.uploadedAt).toLocaleDateString('he-IL')}
+              </span>
             </div>
-            <div>{new Date(lastUpload.uploadedAt).toLocaleString('he-IL')}</div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="text-sm text-slate-500 mb-6">
@@ -358,15 +395,6 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
         </div>
       )}
 
-      {!isProcessing && records.length === 0 && (
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-3 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 font-bold py-4 rounded-xl transition-all active:scale-[0.98] group"
-        >
-          <Upload className="text-blue-600 group-hover:scale-110 transition-transform" size={20} />
-          <span>לחץ להעלאת קובץ CSV</span>
-        </button>
-      )}
 
       {isLoadingDb && records.length === 0 && (
         <div className="flex justify-center p-4 mt-4">
@@ -417,12 +445,6 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
               <span className="font-bold text-sm shrink-0">({records.length} רשומות)</span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button onClick={handleDownload} className="text-slate-400 hover:text-blue-600 transition-colors p-1" title="הורד רשימה">
-                <Download size={18} />
-              </button>
-              <button onClick={() => fileInputRef.current?.click()} className="text-slate-400 hover:text-blue-600 transition-colors p-1" title="העלה קובץ חדש">
-                <Upload size={18} />
-              </button>
               <button onClick={handleClear} className="text-slate-400 hover:text-red-500 transition-colors p-1" title="נקה">
                 <Trash2 size={18} />
               </button>
