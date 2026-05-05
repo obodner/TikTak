@@ -223,7 +223,7 @@ export default function ResidentFlow() {
         category: ticketData.category,
         urgency: ticketData.urgency,
         imageId: ticketData.ticketType === 'visible' ? ticketData.imageId : undefined,
-        audioId: ticketData.audioBase64 ? ticketData.imageId : undefined,
+        audioId: createData.audioId,
         reporterName: reporterName,
         ticketNumber: tNum,
         labels: {

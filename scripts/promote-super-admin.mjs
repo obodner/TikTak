@@ -28,7 +28,7 @@ async function promote() {
     });
 
     await admin.auth().setCustomUserClaims(uid, { role: 'super' });
-    
+
     console.log(`Successfully promoted user ${uid} to Super Admin.`);
     console.log('The user must sign out and sign back in for the changes to take effect.');
     process.exit(0);

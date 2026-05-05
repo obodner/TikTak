@@ -267,14 +267,14 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
       // If audio is provided, upload to GCS (Done outside transaction)
       if (req.body.audioBase64) {
         const bucket = admin.storage().bucket();
-        const audioFile = bucket.file(`tenants/${tenantId}/${imageId}.webm`);
+        const audioFile = bucket.file(`tenants/${tenantId}/${ticketId}.webm`);
         const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
         logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes`);
 
         await audioFile.save(audioBuffer, {
           metadata: { contentType: "audio/webm" }
         });
-        logger.info("Audio note uploaded successfully", { tenantId, ticketId: imageId });
+        logger.info("Audio note uploaded successfully", { tenantId, ticketId });
       }
 
       // Record Audit Log (Success)
@@ -302,7 +302,8 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
 
       res.status(200).send({
         success: true,
-        ticketId: imageId,
+        ticketId: ticketId,
+        audioId: req.body.audioBase64 ? ticketId : null,
         ticketNumber,
         reporterName: reporterDoc.data()?.name || reporterPhone
       });

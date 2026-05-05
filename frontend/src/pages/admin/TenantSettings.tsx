@@ -66,6 +66,7 @@ export default function TenantSettings() {
 
           // Store initial state for audit log changes
           setInitialConfig({
+            name: data.name || '',
             type: data.type || 'building',
             language: data.language || 'he',
             config: {
@@ -111,6 +112,7 @@ export default function TenantSettings() {
     try {
       const docRef = doc(db, "tenants", tenantId);
       await updateDoc(docRef, {
+        name: tenantName,
         type,
         language,
         config: {
@@ -135,6 +137,7 @@ export default function TenantSettings() {
           }
         };
 
+        compare('name', initialConfig.name, tenantName);
         compare('type', initialConfig.type, type);
         compare('language', initialConfig.language, language);
         compare('locations', initialConfig.config.locations, locations);
@@ -160,6 +163,7 @@ export default function TenantSettings() {
 
       // Update initial config for next potential save in same session
       setInitialConfig({
+        name: tenantName,
         type,
         language,
         config: { locations, subLocations, categories },
@@ -315,6 +319,17 @@ export default function TenantSettings() {
             </div>
             
             <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-1">שם הישות (תצוגה)</label>
+                <input 
+                  type="text"
+                  placeholder="שם העירייה / הבניין"
+                  className="w-full border border-slate-200 rounded-lg p-2 text-sm font-bold"
+                  value={tenantName}
+                  onChange={(e) => setTenantName(e.target.value)}
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">תווית מיקום ראשי</label>
                 <input 
