@@ -39,10 +39,12 @@ async function recordAuditLog(params: {
     appId: 'tiktak',
   };
 
+  const cleanData = JSON.parse(JSON.stringify(logData, (_, v) => v === undefined ? null : v));
+
   try {
-    await db.collection("audit_logs").add(logData);
+    await db.collection("audit_logs").add(cleanData);
   } catch (err) {
-    logger.error("Failed to write audit log", { error: err, logData });
+    logger.error("Failed to write audit log", { error: err, logData: cleanData });
   }
 }
 
@@ -176,7 +178,7 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
  */
 export const createTicket = onRequest({ cors: true }, async (req, res) => {
   try {
-    const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone } = req.body;
+    const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone, source } = req.body;
 
     if (!tenantId) {
       res.status(400).send({ error: "Missing tenantId" });
@@ -249,6 +251,7 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
           location: location || null,
           subLocation: subLocation || null,
           ticketType: ticketType || 'visible',
+          source: source || (isRealImage ? 'ai_camera' : 'manual'),
           imageId: finalImageId,
           audioId: req.body.audioBase64 ? ticketId : null,
           reporterPhone: reporterPhone || null,
@@ -295,6 +298,7 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
           urgency,
           location: location || null,
           subLocation: subLocation || null,
+          source: source || (isRealImage ? 'ai_camera' : 'manual'),
           hasImage: isRealImage,
           hasAudio: !!req.body.audioBase64
         }
@@ -353,7 +357,9 @@ export const getTenantInfo = onRequest({ cors: true }, async (req, res) => {
       res.status(404).send({ error: "Tenant not found" });
       return;
     }
-    res.send(doc.data());
+    const tData = doc.data();
+    logger.info("Returning tenant info", { tenantId, hasQuickTap: !!tData?.quickTap, quickTapEnabled: tData?.quickTap?.enabled });
+    res.send(tData);
   } catch (error) {
     res.status(500).send({ error: "Database error" });
   }

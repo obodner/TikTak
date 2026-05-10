@@ -8,12 +8,14 @@ interface CameraTriggerProps {
   onCapture: (file: File) => void;
   onManualReport: () => void;
   isLoading?: boolean;
+  middleContent?: React.ReactNode;
 }
 
 export const CameraTrigger: React.FC<CameraTriggerProps> = ({ 
   onCapture, 
   onManualReport,
-  isLoading
+  isLoading,
+  middleContent
 }) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +72,12 @@ export const CameraTrigger: React.FC<CameraTriggerProps> = ({
           </p>
         </div>
       </div>
+
+      {middleContent && (
+        <div className="w-full">
+          {middleContent}
+        </div>
+      )}
 
       {/* Blue Circle: Manual Report */}
       <div className="flex flex-col items-center gap-4">

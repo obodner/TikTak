@@ -23,6 +23,7 @@ export const generateWhatsAppLink = (params: {
   audioId?: string;
   reporterName?: string;
   ticketNumber?: number;
+  isQuickTap?: boolean;
 }) => {
   const { phone, summary, tenantId, tenantName, category, location, subLocation, imageId, urgency, labels, reporterName, ticketNumber } = params;
 
@@ -43,7 +44,8 @@ export const generateWhatsAppLink = (params: {
   const displayLocation = location?.startsWith('-') ? `\u200E${location}` : location;
 
   // Isolated bold tag to ensure it 'sticks' even with RTL/LTR mixed content
-  let body = `*דיווח חדש${ticketIdStr}: TikTak*\n`;
+  const headerPrefix = params.isQuickTap ? '⚡ דיווח מהיר' : 'דיווח חדש';
+  let body = `*${headerPrefix}${ticketIdStr}: TikTak*\n`;
   if (displayUrgency === 'דחוף 🚨') body = `*דיווח דחוף 🚨${ticketIdStr}: TikTak*\n`;
   body += `*דיווח עבור:* ${displayName}\n\n`;
 

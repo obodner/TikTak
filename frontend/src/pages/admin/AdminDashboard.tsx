@@ -11,8 +11,9 @@ import { ClosureModal } from '../../components/admin/ClosureModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, Image as ImageIcon } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { HelpModal } from '../../components/admin/HelpModal';
 import { he } from 'date-fns/locale';
 
 type Ticket = {
@@ -33,6 +34,7 @@ type Ticket = {
   reporterName?: string;
   reporterPhone?: string;
   ticketNumber?: number;
+  source?: 'ai_camera' | 'manual' | 'quicktap';
 };
 
 export default function AdminDashboard() {
@@ -51,6 +53,7 @@ export default function AdminDashboard() {
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
   const [myTenants, setMyTenants] = useState<{ id: string, name?: string }[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
     title: string;
@@ -86,7 +89,8 @@ export default function AdminDashboard() {
     category: 'all',
     severity: 'all',
     search: '',
-    statuses: ['new', 'in-progress', 'closed']
+    statuses: ['new', 'in-progress', 'closed'],
+    source: 'all'
   });
 
   const getAuditActor = () => ({
@@ -180,7 +184,8 @@ export default function AdminDashboard() {
         '6m': isHe ? 'חצי שנה אחרונה' : 'Last 6 Months',
         '12m': isHe ? 'שנה אחרונה' : 'Last Year',
         custom: isHe ? 'טווח מותאם' : 'Custom Range'
-      }
+      },
+      source: isHe ? 'מקור' : 'Source'
     }
   };
 
@@ -303,6 +308,9 @@ export default function AdminDashboard() {
         return [];
       });
       if (!mappedStatuses.includes(t.status)) return false;
+
+      // e. Source
+      if (filters.source !== 'all' && t.source !== filters.source) return false;
 
       return true;
     });
@@ -602,7 +610,8 @@ export default function AdminDashboard() {
       category: 'all',
       severity: 'all',
       search: '',
-      statuses: ['new', 'in-progress', 'closed']
+      statuses: ['new', 'in-progress', 'closed'],
+      source: 'all'
     });
   };
 
@@ -709,7 +718,12 @@ export default function AdminDashboard() {
                             <option value="Moderate">{uiLabels.urgency.Moderate}</option>
                             <option value="Low">{uiLabels.urgency.Low}</option>
                           </select>
-                          <span className="text-[10px] font-bold text-slate-300 tracking-tighter">#{t.ticketNumber}</span>
+                          <span className="text-[11px] font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
+                          {t.source === 'quicktap' && (
+                            <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5" title="QuickTap">
+                              ⚡ QuickTap
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400 font-medium text-left">
                           {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
@@ -864,6 +878,14 @@ export default function AdminDashboard() {
               <span className="hidden md:inline">{uiLabels.settings}</span>
               <span className="md:hidden">⚙️</span>
             </Link>
+            <button 
+              onClick={() => setIsHelpOpen(true)}
+              className="text-xs font-bold bg-blue-600/20 hover:bg-blue-600/30 text-blue-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-blue-500/30 flex items-center gap-2"
+              title={isHe ? "עזרה ומדריך" : "Help & Guide"}
+            >
+              <HelpCircle size={16} />
+              <span className="hidden md:inline">{isHe ? 'עזרה' : 'Help'}</span>
+            </button>
             <button 
               onClick={handleLogout}
               className="text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-red-500/30 flex items-center gap-2"
@@ -1062,6 +1084,20 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
+              <div className="flex flex-col gap-1.5 min-w-[120px]">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.source}</label>
+                <select
+                  value={filters.source}
+                  onChange={e => setFilters({ ...filters, source: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  <option value="ai_camera">{isEn ? 'AI Camera' : 'מצלמת AI'}</option>
+                  <option value="manual">{isEn ? 'Manual' : 'ידני'}</option>
+                  <option value="quicktap">{isEn ? 'QuickTap' : 'QuickTap ⚡'}</option>
+                </select>
+              </div>
+
             </div>
 
             <div className="flex-1 w-full lg:w-auto flex flex-col gap-1.5">
@@ -1172,12 +1208,22 @@ export default function AdminDashboard() {
           onDelete={handleDeleteComment}
           isEn={isEn}
         />
-        <ClosureModal
-          isOpen={!!closureTicketId}
-          onClose={() => setClosureTicketId(null)}
-          ticket={tickets.find(t => t.id === closureTicketId) || null}
-          onConfirm={handleConfirmResolution}
-          isEn={isEn}
+        {closureTicketId && (
+          <ClosureModal
+            isOpen={!!closureTicketId}
+            onClose={() => setClosureTicketId(null)}
+            ticket={tickets.find(t => t.id === closureTicketId) || null}
+            onConfirm={handleConfirmResolution}
+            isEn={isEn}
+          />
+        )}
+
+        <HelpModal 
+          isOpen={isHelpOpen} 
+          onClose={() => setIsHelpOpen(false)} 
+          language={isEn ? 'en' : 'he'} 
+          tenantId={tenantId || ''}
+          tenantName={tenantConfig?.name || ''}
         />
 
         <ConfirmModal

@@ -79,7 +79,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
   const actions = [
     'TICKET_CREATED', 'TICKET_STATUS_UPDATE', 'TICKET_URGENCY_UPDATE',
     'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED',
-    'CONFIGURATION_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN'
+    'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN'
   ];
 
   useEffect(() => {
@@ -236,6 +236,11 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         return isEn
           ? `${actor} updated building settings for ${tenantName}`
           : `${actor} עדכן את הגדרות הבניין עבור ${tenantName}`;
+      case 'QUICKTAP_CONFIG_UPDATE':
+        const itemsCount = log.details.quickTapItemsCount !== undefined ? ` (${log.details.quickTapItemsCount} כפתורים)` : '';
+        return isEn
+          ? `${actor} updated QuickTap configuration for ${tenantName}${itemsCount}`
+          : `${actor} עדכן את הגדרות הדיווח המהיר (QuickTap) עבור ${tenantName}${itemsCount}`;
       case 'REPORTER_LIST_UPDATE':
         return isEn
           ? `${actor} imported/updated the reporter list for ${tenantName}`

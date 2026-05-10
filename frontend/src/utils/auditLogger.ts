@@ -11,6 +11,7 @@ export type AuditAction =
   | 'USER_DELETED' 
   | 'USER_UPDATE' 
   | 'CONFIGURATION_UPDATE' 
+  | 'QUICKTAP_CONFIG_UPDATE'
   | 'REPORTER_LIST_UPDATE'
   | 'LOGIN';
 

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, Navigate, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
-import { Save, ArrowRight, Globe, Layout, ListTodo } from 'lucide-react';
+import { HelpModal } from '../../components/admin/HelpModal';
+import { Save, ArrowRight, Globe, Layout, ListTodo, HelpCircle } from 'lucide-react';
 import { ListEditor } from '../../components/admin/ListEditor';
 import { UserManagement } from '../../components/admin/UserManagement';
 import { CsvUploadPanel } from '../../components/admin/CsvUploadPanel';
+import { QuickTapEditor, QuickTapItem } from '../../components/admin/QuickTapEditor';
 import { logAction } from '../../utils/auditLogger';
 
 export default function TenantSettings() {
@@ -18,6 +20,7 @@ export default function TenantSettings() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [tenantName, setTenantName] = useState('');
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   
   // Configuration State
   const [type, setType] = useState<'building' | 'municipality'>('building');
@@ -25,6 +28,7 @@ export default function TenantSettings() {
   const [locations, setLocations] = useState<string[]>([]);
   const [subLocations, setSubLocations] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [quickTap, setQuickTap] = useState<{ items: QuickTapItem[] }>({ items: [] });
   
   const [uiConfig, setUiConfig] = useState({
     locationLabel: '',
@@ -37,7 +41,9 @@ export default function TenantSettings() {
 
   const getAuditActor = () => ({
     uid: user?.uid || 'unknown',
-    name: adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin'),
+    name: adminProfile 
+      ? `${adminProfile.firstName} ${adminProfile.lastName}` 
+      : (user?.displayName || user?.email || 'Admin'),
     email: user?.email || undefined,
     type: 'admin' as const
   });
@@ -58,6 +64,7 @@ export default function TenantSettings() {
           setLocations(config.locations || config.floors || []);
           setSubLocations(config.subLocations || config.resources || []);
           setCategories(config.categories || []);
+          setQuickTap(data.quickTap || { items: [] });
           setUiConfig(data.uiConfig || {
             locationLabel: '',
             subLocationLabel: '',
@@ -74,6 +81,7 @@ export default function TenantSettings() {
               subLocations: config.subLocations || config.resources || [],
               categories: config.categories || []
             },
+            quickTap: data.quickTap || { items: [] },
             uiConfig: data.uiConfig || { locationLabel: '', subLocationLabel: '', showLocation: true }
           });
         } else {
@@ -97,6 +105,21 @@ export default function TenantSettings() {
         const pSnap = await getDoc(pRef);
         if (pSnap.exists()) {
           setAdminProfile(pSnap.data() as any);
+        } else {
+          // Fallback: search other tenants
+          const adminQuery = query(
+            collection(db, "tenants"), 
+            where("adminUids", "array-contains", user!.uid), 
+            limit(1)
+          );
+          const adminSnap = await getDocs(adminQuery);
+          if (!adminSnap.empty) {
+            const fallbackTenantId = adminSnap.docs[0].id;
+            const fallbackDoc = await getDoc(doc(db, "tenants", fallbackTenantId, "adminUsers", user!.uid));
+            if (fallbackDoc.exists()) {
+              setAdminProfile(fallbackDoc.data() as any);
+            }
+          }
         }
       } catch (err) {
         console.error("Profile load failed", err);
@@ -105,10 +128,15 @@ export default function TenantSettings() {
     loadProfile();
   }, [user, tenantId]);
 
-  const handleSave = async () => {
+  const handleSave = async (quickTapOverrideItems?: QuickTapItem[]) => {
     if (!user || !tenantId) return;
     setSaving(true);
     setMessage('');
+
+    const currentQuickTap = quickTapOverrideItems 
+      ? { ...quickTap, items: quickTapOverrideItems }
+      : quickTap;
+
     try {
       const docRef = doc(db, "tenants", tenantId);
       await updateDoc(docRef, {
@@ -120,6 +148,7 @@ export default function TenantSettings() {
           subLocations,
           categories
         },
+        quickTap: currentQuickTap,
         uiConfig,
         updatedAt: new Date().toISOString()
       });
@@ -143,15 +172,18 @@ export default function TenantSettings() {
         compare('locations', initialConfig.config.locations, locations);
         compare('subLocations', initialConfig.config.subLocations, subLocations);
         compare('categories', initialConfig.config.categories, categories);
+        compare('quickTap', initialConfig.quickTap, currentQuickTap);
         compare('uiConfig', initialConfig.uiConfig, uiConfig);
 
         if (hasChanges) {
+          const isQuickTapOnly = Object.keys(diff.next).length === 1 && diff.next.quickTap;
           await logAction({
             tenantId,
-            action: 'CONFIGURATION_UPDATE',
+            action: isQuickTapOnly ? 'QUICKTAP_CONFIG_UPDATE' : 'CONFIGURATION_UPDATE',
             actor: getAuditActor(),
             details: { 
-              changedFields: Object.keys(diff.next)
+              changedFields: Object.keys(diff.next),
+              ...(isQuickTapOnly && { itemCount: currentQuickTap.items.length })
             },
             changes: {
               previousValue: diff.previous,
@@ -167,13 +199,16 @@ export default function TenantSettings() {
         type,
         language,
         config: { locations, subLocations, categories },
+        quickTap: currentQuickTap,
         uiConfig
       });
 
       setMessage('ההגדרות נשמרו בהצלחה!');
+      setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error(err);
       setMessage('שגיאה בשמירת ההגדרות.');
+      setTimeout(() => setMessage(''), 3000);
     } finally {
       setSaving(false);
     }
@@ -221,6 +256,14 @@ export default function TenantSettings() {
               <ArrowRight size={16} />
               <span className="hidden md:inline">חזרה לדשבורד</span>
             </Link>
+
+            <button 
+              onClick={() => setIsHelpOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all"
+              title="עזרה"
+            >
+              <HelpCircle size={24} />
+            </button>
           </div>
         </div>
       </header>
@@ -270,6 +313,15 @@ export default function TenantSettings() {
                   onChange={setCategories}
                   placeholder="למשל: חשמל, ניקיון, בור בכביש"
                   helperText="הקטגוריות שה-AI יסווג אליהן את הדיווחים."
+                />
+
+                <QuickTapEditor 
+                  items={quickTap.items}
+                  categories={categories}
+                  locations={locations}
+                  subLocations={subLocations}
+                  onChange={(items) => setQuickTap({ items })}
+                  onSave={handleSave}
                 />
               </div>
             )}
@@ -374,7 +426,7 @@ export default function TenantSettings() {
           )}
 
           <button 
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={saving}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
           >
@@ -384,6 +436,14 @@ export default function TenantSettings() {
           {message && <div className="text-center text-sm font-bold text-green-600 bg-green-50 py-2 rounded-lg border border-green-100">{message}</div>}
         </div>
       </main>
+
+      <HelpModal 
+        isOpen={isHelpOpen} 
+        onClose={() => setIsHelpOpen(false)} 
+        language={language === 'he' ? 'he' : 'en'} 
+        tenantId={tenantId || ''}
+        tenantName={tenantName}
+      />
     </div>
   );
 }

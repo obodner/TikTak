@@ -3,6 +3,8 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { CameraTrigger } from '../components/CameraTrigger';
 import { ReportingForm } from '../components/ReportingForm';
+import { QuickTapPills } from '../components/QuickTapPills';
+import { QuickTapItem } from '../components/admin/QuickTapEditor';
 import { compressImage } from '../utils/compression';
 import { generateWhatsAppLink } from '../utils/whatsapp';
 import { AlertTriangle } from 'lucide-react';
@@ -53,11 +55,28 @@ export default function ResidentFlow() {
       subLocationLabel?: string;
       showLocation?: boolean;
     };
+    quickTap?: {
+      enabled: boolean;
+      items: QuickTapItem[];
+    };
   }>({ locations: [], subLocations: [], categories: [] });
+  
+  const [activeQuickTap, setActiveQuickTap] = useState<QuickTapItem | null>(null);
+  const [isQuickTapSending, setIsQuickTapSending] = useState(false);
   
   const [selectedLocation, setSelectedLocation] = useState(location || '');
   const [selectedSubLocation, setSelectedSubLocation] = useState(subLocation || '');
   const [ticketNumber, setTicketNumber] = useState<number | null>(null);
+  const [reporterPhone, setReporterPhone] = useState<string>('');
+  const [phoneInput, setPhoneInput] = useState<string>('');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('tiktak_reporter_phone');
+    if (saved) {
+      setReporterPhone(saved);
+      setPhoneInput(saved);
+    }
+  }, []);
 
   // Fetch tenant metadata
   useEffect(() => {
@@ -83,7 +102,8 @@ export default function ResidentFlow() {
             locations: data.config?.locations || data.config?.floors || [],
             subLocations: data.config?.subLocations || data.config?.resources || [],
             categories: data.config?.categories || [],
-            uiConfig: data.uiConfig
+            uiConfig: data.uiConfig,
+            quickTap: data.quickTap
           });
         }
       } catch (err) {
@@ -240,6 +260,81 @@ export default function ResidentFlow() {
     }
   };
 
+  const handleQuickTapConfirm = async () => {
+    if (!activeQuickTap) return;
+    setIsQuickTapSending(true);
+    
+    // QuickTap logic: Pre-fill ticket data and send immediately
+    const q = activeQuickTap;
+    const finalPhone = reporterPhone || phoneInput;
+    const isPhoneValid = /^0\d{8,9}$/.test(finalPhone);
+    
+    if (!isPhoneValid) {
+        setIsQuickTapSending(false);
+        return;
+    }
+
+    // Persist if valid
+    localStorage.setItem('tiktak_reporter_phone', finalPhone);
+    setReporterPhone(finalPhone);
+
+    try {
+      const quickTicketData = {
+        summary: q.summary,
+        category: q.category,
+        urgency: q.urgency,
+        location: q.location || null,
+        subLocation: q.subLocation || null,
+        ticketType: 'hidden' as const,
+        source: 'quicktap'
+      };
+
+      const response = await fetch('/api/createTicket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          ...quickTicketData,
+          reporterPhone: finalPhone
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to create QuickTap ticket');
+      
+      const createData = await response.json();
+      const reporterName = createData.reporterName || finalPhone;
+      const tNum = createData.ticketNumber;
+
+      const waLink = generateWhatsAppLink({
+        phone: vaadPhone || '972522684838',
+        summary: quickTicketData.summary,
+        tenantId,
+        tenantName: tenantName || address,
+        location: quickTicketData.location || undefined,
+        subLocation: quickTicketData.subLocation || undefined,
+        category: quickTicketData.category,
+        urgency: quickTicketData.urgency,
+        reporterName: reporterName,
+        ticketNumber: tNum,
+        isQuickTap: true,
+        labels: {
+          locationLabel: config.uiConfig?.locationLabel || t('floor'),
+          subLocationLabel: config.uiConfig?.subLocationLabel || t('resource')
+        }
+      });
+
+      setTicketNumber(tNum);
+      window.location.href = waLink;
+      setState('success');
+      setActiveQuickTap(null);
+    } catch (err) {
+      console.error(err);
+      setState('error');
+    } finally {
+      setIsQuickTapSending(false);
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-[100dvh] bg-white relative overflow-hidden" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       {/* 1. TOP BAR (IDENTITY + CONTEXT) - Persistent across all states */}
@@ -279,6 +374,14 @@ export default function ResidentFlow() {
               onCapture={handleCapture}
               onManualReport={handleManualReport}
               isLoading={state === 'analyzing' || isConfigLoading}
+              middleContent={
+                config.quickTap?.items && config.quickTap.items.length > 0 ? (
+                  <QuickTapPills 
+                    items={config.quickTap.items} 
+                    onSelect={setActiveQuickTap} 
+                  />
+                ) : null
+              }
             />
           </div>
         ) : state === 'invalid' ? (
@@ -326,6 +429,94 @@ export default function ResidentFlow() {
         </div>
       )}
     </main>
+
+    {/* QUICKTAP CONFIRMATION MODAL */}
+    {activeQuickTap && (
+      <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isQuickTapSending && setActiveQuickTap(null)} />
+        
+        <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
+          <div className="p-8 text-center">
+            <div className="text-6xl mb-4">{activeQuickTap.emoji}</div>
+            <h2 className="text-2xl font-black text-slate-900 mb-2 leading-tight">
+              {activeQuickTap.summary}
+            </h2>
+            
+            <div className="space-y-3 my-6 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-right" dir="rtl">
+              {activeQuickTap.summary && (
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-slate-400 text-xs font-bold uppercase">תיאור</span>
+                  <span className="text-slate-800 font-bold">{activeQuickTap.summary}</span>
+                </div>
+              )}
+              {activeQuickTap.location && (
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-slate-400 text-xs font-bold uppercase">{config.uiConfig?.locationLabel || t('floor')}</span>
+                  <span className="text-slate-800 font-bold">{activeQuickTap.location}</span>
+                </div>
+              )}
+              {activeQuickTap.subLocation && (
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-slate-400 text-xs font-bold uppercase">{config.uiConfig?.subLocationLabel || t('resource')}</span>
+                  <span className="text-slate-800 font-bold">{activeQuickTap.subLocation}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-slate-400 text-xs font-bold uppercase">דחיפות</span>
+                <span className={cn(
+                    "font-black px-2 py-0.5 rounded text-xs",
+                    activeQuickTap.urgency === 'High' ? "bg-red-100 text-red-700" :
+                    activeQuickTap.urgency === 'Moderate' ? "bg-amber-100 text-amber-700" :
+                    "bg-green-100 text-green-700"
+                )}>
+                    {activeQuickTap.urgency === 'High' ? 'גבוהה' : 
+                     activeQuickTap.urgency === 'Moderate' ? 'בינונית' : 'נמוכה'}
+                </span>
+              </div>
+            </div>
+
+            {/* Phone Input if missing in localStorage */}
+            {!localStorage.getItem('tiktak_reporter_phone') && (
+               <div className="mb-6 text-right" dir="rtl">
+                 <label className="block text-xs font-bold text-slate-500 mb-1 mr-1">מספר טלפון לזיהוי</label>
+                 <input 
+                   type="tel"
+                   value={phoneInput}
+                   placeholder="05X-XXXXXXX"
+                   className="w-full border border-slate-200 rounded-xl p-3 text-center font-bold text-lg focus:ring-2 focus:ring-blue-100 outline-none"
+                   onChange={(e) => {
+                     const val = e.target.value.replace(/\D/g, '');
+                     setPhoneInput(val);
+                   }}
+                 />
+               </div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleQuickTapConfirm}
+                disabled={isQuickTapSending || !/^0\d{8,9}$/.test(phoneInput || reporterPhone)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xl shadow-xl shadow-blue-100 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isQuickTapSending ? 'שולח...' : 'שליחה ⚡'}
+              </button>
+              <button
+                onClick={() => setActiveQuickTap(null)}
+                disabled={isQuickTapSending}
+                className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
+}
+
+// Helper for conditional classes
+function cn(...inputs: any[]) {
+    return inputs.filter(Boolean).join(' ');
 }
