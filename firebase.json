@@ -65,6 +65,13 @@
         }
       },
       {
+        "source": "/api/checkAuth",
+        "function": {
+          "functionId": "checkAuth",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/img/**",
         "function": {
           "functionId": "getImage",

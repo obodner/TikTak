@@ -39,5 +39,11 @@ service cloud.firestore {
       
       allow update, delete: if false; // Immutable
     }
+
+    // Global Holidays Collection
+    match /holidays/{countryCode} {
+      allow read: if request.auth != null;
+      allow write: if isSuperAdmin();
+    }
   }
 }

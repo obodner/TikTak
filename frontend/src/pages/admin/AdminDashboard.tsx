@@ -14,6 +14,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Ba
 import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
+import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
 import { he } from 'date-fns/locale';
 
 type Ticket = {
@@ -35,6 +36,10 @@ type Ticket = {
   reporterPhone?: string;
   ticketNumber?: number;
   source?: 'ai_camera' | 'manual' | 'quicktap';
+  // SLA Fields
+  slaStatus?: 'none' | 'stale-2' | 'stale-5' | 'stale-9';
+  stagnationDays?: number;
+  lastStatusChangeAt?: string;
 };
 
 export default function AdminDashboard() {
@@ -51,6 +56,7 @@ export default function AdminDashboard() {
   const [commentTicketId, setCommentTicketId] = useState<string | null>(null);
   const [closureTicketId, setClosureTicketId] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
+  const [holidays, setHolidays] = useState<string[]>([]);
   const [myTenants, setMyTenants] = useState<{ id: string, name?: string }[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -206,6 +212,14 @@ export default function AdminDashboard() {
       const currentTenant = bDoc.exists() ? bDoc.data() : null;
       setTenantConfig(currentTenant);
 
+      if (currentTenant) {
+        const country = currentTenant.country || 'IL';
+        const hDoc = await getDoc(doc(db, "holidays", country));
+        if (hDoc.exists()) {
+          setHolidays(hDoc.data().holidays.map((h: any) => h.date));
+        }
+      }
+
       const q = query(
         collection(db, "tenants", tenantId as string, "tickets"),
         orderBy("createdAt", "desc")
@@ -324,7 +338,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleStatusUpdate = async (ticketId: string, newStatus: Ticket['status']) => {
+  const handleStatusUpdate = async (ticketId: string, newStatus: Ticket['status'], ticketObj?: Ticket) => {
     if (!tenantId) return;
     setUpdatingId(ticketId);
     try {
@@ -335,12 +349,16 @@ export default function AdminDashboard() {
       });
 
       // Audit Log
-      const ticket = tickets.find(t => t.id === ticketId);
+      const ticket = ticketObj || tickets.find(t => t.id === ticketId);
       await logAction({
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
         actor: getAuditActor(),
-        details: { ticketId, ticketNumber: ticket?.ticketNumber, newStatus },
+        details: { 
+          ticketId, 
+          ticketNumber: ticket?.ticketNumber, 
+          newStatus 
+        },
         changes: ticket ? { previousValue: { status: ticket.status }, newValue: { status: newStatus } } : null
       });
 
@@ -356,27 +374,31 @@ export default function AdminDashboard() {
       setUpdatingId(null);
     }
   };
-  const handleUrgencyUpdate = async (ticketId: string, newUrgency: Ticket['urgency']) => {
+
+  const handleUrgencyUpdate = async (ticket: Ticket, newUrgency: Ticket['urgency']) => {
     if (!tenantId) return;
-    setUpdatingId(ticketId);
+    setUpdatingId(ticket.id);
     try {
-      const ticketRef = doc(db, "tenants", tenantId, "tickets", ticketId);
+      const ticketRef = doc(db, "tenants", tenantId, "tickets", ticket.id);
       await updateDoc(ticketRef, {
         urgency: newUrgency,
         updatedAt: new Date().toISOString()
       });
 
       // Audit Log
-      const ticket = tickets.find(t => t.id === ticketId);
       await logAction({
         tenantId,
         action: 'TICKET_URGENCY_UPDATE',
         actor: getAuditActor(),
-        details: { ticketId, ticketNumber: ticket?.ticketNumber, newUrgency },
-        changes: ticket ? { previousValue: { urgency: ticket.urgency }, newValue: { urgency: newUrgency } } : null
+        details: { 
+          ticketId: ticket.id, 
+          ticketNumber: ticket.ticketNumber, 
+          newUrgency 
+        },
+        changes: { previousValue: { urgency: ticket.urgency }, newValue: { urgency: newUrgency } }
       });
 
-      setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, urgency: newUrgency } : t));
+      setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, urgency: newUrgency } : t));
     } catch (err) {
       console.error("Urgency update failed:", err);
       showAlert(
@@ -389,11 +411,11 @@ export default function AdminDashboard() {
   };
 
 
-  const handleConfirmResolution = async (ticketId: string, reason: string, notes: string) => {
+  const handleConfirmResolution = async (ticket: Ticket, reason: string, notes: string) => {
     if (!tenantId) return;
-    setUpdatingId(ticketId);
+    setUpdatingId(ticket.id);
     try {
-      const ticketRef = doc(db, "tenants", tenantId, "tickets", ticketId);
+      const ticketRef = doc(db, "tenants", tenantId, "tickets", ticket.id);
       await updateDoc(ticketRef, {
         status: 'resolved',
         closureReason: reason,
@@ -402,21 +424,26 @@ export default function AdminDashboard() {
       });
       
       // Audit Log
-      const ticket = tickets.find(t => t.id === ticketId);
       await logAction({
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
         actor: getAuditActor(),
-        details: { ticketId, ticketNumber: ticket?.ticketNumber, newStatus: 'resolved', closureReason: reason, resolutionNote: notes },
-        changes: ticket ? { 
+        details: { 
+          ticketId: ticket.id, 
+          ticketNumber: ticket.ticketNumber, 
+          newStatus: 'resolved', 
+          closureReason: reason, 
+          resolutionNote: notes 
+        },
+        changes: { 
           previousValue: { status: ticket.status }, 
           newValue: { status: 'resolved', closureReason: reason } 
-        } : null
+        }
       });
       
       // Update local state immediately for snappy UI
       setTickets(prev => prev.map(t => 
-        t.id === ticketId ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
+        t.id === ticket.id ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
       ));
 
       // Automatically notify if reporter exists
@@ -650,13 +677,20 @@ export default function AdminDashboard() {
     }
 
     const ticketId = draggableId;
-    const newStatus = destination.droppableId;
+    const ticket = tickets.find(t => t.id === ticketId);
+    const newStatus = destination.droppableId as Ticket['status'];
+
+    // If resolving, open the modal and don't update status yet
+    if (newStatus === 'resolved') {
+      setClosureTicketId(ticketId);
+      return;
+    }
 
     // Optimistically update local state for smoothness
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: newStatus } : t));
 
     try {
-      await handleStatusUpdate(ticketId, newStatus);
+      await handleStatusUpdate(ticketId, newStatus, ticket);
     } catch (error) {
       console.error("Failed to update status via drag and drop:", error);
       fetchData(); // Revert on failure
@@ -693,7 +727,16 @@ export default function AdminDashboard() {
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      className={`bg-white p-4 rounded-2xl shadow-sm border border-slate-200 transition-all cursor-grab active:cursor-grabbing relative group ${
+                      className={`${getSlaColorClasses(
+                        tenantConfig?.slaConfig?.enabled !== false && (t.status === 'open' || t.status === 'in-progress')
+                          ? (t.slaStatus || getSlaStatus(calculateWorkingDays(
+                              t.lastStatusChangeAt || t.createdAt,
+                              new Date(),
+                              tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4],
+                              holidays
+                            )))
+                          : 'none'
+                      )} p-4 rounded-2xl shadow-sm border transition-all cursor-grab active:cursor-grabbing relative group ${
                         snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
                       }`}
                       onClick={() => {
@@ -707,9 +750,9 @@ export default function AdminDashboard() {
                             value={t.urgency}
                             disabled={updatingId === t.id}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => handleUrgencyUpdate(t.id, e.target.value as Ticket['urgency'])}
-                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${
-                              t.urgency === 'High' ? 'bg-red-100 text-red-700' : 
+                            onChange={(e) => handleUrgencyUpdate(t, e.target.value as Ticket['urgency'])}
+                            className={`text-xs font-black px-2 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${
+                              t.urgency === 'High' ? 'bg-red-600 text-white shadow-sm' : 
                               t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' : 
                               'bg-green-100 text-green-700'
                             }`}
@@ -718,24 +761,24 @@ export default function AdminDashboard() {
                             <option value="Moderate">{uiLabels.urgency.Moderate}</option>
                             <option value="Low">{uiLabels.urgency.Low}</option>
                           </select>
-                          <span className="text-[11px] font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
+                          <span className="text-sm font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
                           {t.source === 'quicktap' && (
-                            <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5" title="QuickTap">
+                            <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm" title="QuickTap">
                               ⚡ QuickTap
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-medium text-left">
+                        <div className="text-xs text-slate-400 font-bold text-left">
                           {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
                         </div>
                       </div>
 
                       {/* Category & Summary */}
                       <div className="mb-4">
-                        <div className="text-sm font-extrabold text-slate-800 mb-1">
+                        <div className="text-lg font-black text-slate-900 mb-1 leading-tight">
                           {translateCategory(t.category)}
                         </div>
-                        <p className="text-sm text-slate-600 line-clamp-3 leading-relaxed">
+                        <p className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium">
                           {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
                         </p>
                       </div>
@@ -783,19 +826,19 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* Bottom Info: Reporter (Right), Location, Sublocation */}
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm font-black">
                         {t.reporterName && (
-                          <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                          <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
                             {t.reporterName}
                           </span>
                         )}
                         {t.location && (
-                          <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
+                          <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg">
                             {t.location}
                           </span>
                         )}
                         {t.subLocation && (
-                          <span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded">
+                          <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg">
                             {t.subLocation}
                           </span>
                         )}
@@ -917,36 +960,38 @@ export default function AdminDashboard() {
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-[320px] flex flex-col items-center">
             <h3 className="text-sm font-bold text-slate-700 mb-2 w-full text-center">{uiLabels.pie_title}</h3>
             {stats.categoryData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 10, bottom: 10 }}>
-                  <Pie 
-                    data={stats.categoryData} 
-                    cx="50%" 
-                    cy="45%" 
-                    innerRadius={35} 
-                    outerRadius={65} 
-                    paddingAngle={2} 
-                    dataKey="value"
-                  >
-                    {stats.categoryData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip
-                    formatter={(val: any) => [val, isEn ? 'Tickets' : 'פניות']}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    align="center"
-                    iconType="circle"
-                    wrapperStyle={{ 
-                      fontSize: '10px', 
-                      paddingTop: '20px',
-                      maxHeight: '100px',
-                      overflowY: 'auto'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="w-full flex-1 min-h-0">
+                <ResponsiveContainer width="99%" height={250}>
+                  <PieChart margin={{ top: 10, bottom: 10 }}>
+                    <Pie 
+                      data={stats.categoryData} 
+                      cx="50%" 
+                      cy="45%" 
+                      innerRadius={35} 
+                      outerRadius={65} 
+                      paddingAngle={2} 
+                      dataKey="value"
+                    >
+                      {stats.categoryData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip
+                      formatter={(val: any) => [val, isEn ? 'Tickets' : 'פניות']}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      align="center"
+                      iconType="circle"
+                      wrapperStyle={{ 
+                        fontSize: '10px', 
+                        paddingTop: '20px',
+                        maxHeight: '100px',
+                        overflowY: 'auto'
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-slate-400 text-xs italic">{isEn ? 'No category data' : 'אין נתוני קטגוריות'}</div>
             )}
@@ -954,19 +999,21 @@ export default function AdminDashboard() {
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-[320px] flex flex-col items-center justify-center">
             <h3 className="text-sm font-bold text-slate-700 mb-2 w-full text-center">{uiLabels.bar_title}</h3>
             {stats.monthlyData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.monthlyData} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" fontSize={10} interval={0} tick={{ fontSize: 8 }} />
-                  <YAxis fontSize={10} width={40} tick={{ fontSize: 8 }} />
-                  <Tooltip
-                    cursor={{ fill: '#f8fafc' }}
-                    labelStyle={{ color: '#1e293b', fontWeight: 'bold' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="w-full flex-1 min-h-0">
+                <ResponsiveContainer width="99%" height={250}>
+                  <BarChart data={stats.monthlyData} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" fontSize={10} interval={0} tick={{ fontSize: 8 }} />
+                    <YAxis fontSize={10} width={40} tick={{ fontSize: 8 }} />
+                    <Tooltip
+                      cursor={{ fill: '#f8fafc' }}
+                      labelStyle={{ color: '#1e293b', fontWeight: 'bold' }}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-slate-400 text-xs italic">{isEn ? 'No trends data' : 'אין נתוני מגמות'}</div>
             )}
@@ -1213,7 +1260,7 @@ export default function AdminDashboard() {
             isOpen={!!closureTicketId}
             onClose={() => setClosureTicketId(null)}
             ticket={tickets.find(t => t.id === closureTicketId) || null}
-            onConfirm={handleConfirmResolution}
+            onConfirm={(_, reason, notes) => handleConfirmResolution(tickets.find(t => t.id === closureTicketId)!, reason, notes)}
             isEn={isEn}
           />
         )}

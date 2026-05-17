@@ -50,6 +50,9 @@ export default function ResidentFlow() {
     locations: string[];
     subLocations: string[];
     categories: string[];
+    tenantType?: 'building' | 'municipality';
+    locationLabel?: string;
+    subLocationLabel?: string;
     uiConfig?: {
       locationLabel?: string;
       subLocationLabel?: string;
@@ -59,7 +62,7 @@ export default function ResidentFlow() {
       enabled: boolean;
       items: QuickTapItem[];
     };
-  }>({ locations: [], subLocations: [], categories: [] });
+  }>({ locations: [], subLocations: [], categories: [], tenantType: 'building' });
   
   const [activeQuickTap, setActiveQuickTap] = useState<QuickTapItem | null>(null);
   const [isQuickTapSending, setIsQuickTapSending] = useState(false);
@@ -77,6 +80,10 @@ export default function ResidentFlow() {
       setPhoneInput(saved);
     }
   }, []);
+  
+  const isMunicipality = config.tenantType === 'municipality';
+  const locationLabel = config.uiConfig?.locationLabel || config.locationLabel || (isMunicipality ? (t('area') || 'אזור') : (t('floor') || 'קומה'));
+  const subLocationLabel = config.uiConfig?.subLocationLabel || config.subLocationLabel || (isMunicipality ? (t('street') || 'רחוב') : (t('resource') || 'מיקום'));
 
   // Fetch tenant metadata
   useEffect(() => {
@@ -102,6 +109,9 @@ export default function ResidentFlow() {
             locations: data.config?.locations || data.config?.floors || [],
             subLocations: data.config?.subLocations || data.config?.resources || [],
             categories: data.config?.categories || [],
+            tenantType: data.type || 'building',
+            locationLabel: data.config?.locationLabel,
+            subLocationLabel: data.config?.subLocationLabel,
             uiConfig: data.uiConfig,
             quickTap: data.quickTap
           });
@@ -128,6 +138,27 @@ export default function ResidentFlow() {
       });
       const dataUrl = await base64Promise;
       const base64Image = dataUrl.split(',')[1];
+
+      setAuthError(''); // Clear previous error
+      
+      // Step 0: Pre-check Authorization (if phone is known) to save AI overhead
+      if (reporterPhone) {
+        const authCheckResponse = await fetch('/api/checkAuth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenantId, reporterPhone })
+        });
+        
+        if (authCheckResponse.status === 403) {
+          const authData = await authCheckResponse.json().catch(() => ({}));
+          // Option B: Clear localStorage and show error
+          localStorage.removeItem('tiktak_reporter_phone');
+          setReporterPhone('');
+          setAuthError(authData.message || 'מספר הטלפון השמור אינו מורשה. אנא נסה שוב והזן את מספרך האמיתי.');
+          setState('idle');
+          return;
+        }
+      }
 
       // Step 1: Analyze & Upload Image (No DB write yet)
       const response = await fetch('/api/analyzeImage', {
@@ -247,8 +278,8 @@ export default function ResidentFlow() {
         reporterName: reporterName,
         ticketNumber: tNum,
         labels: {
-          locationLabel: config.uiConfig?.locationLabel || t('floor'),
-          subLocationLabel: config.uiConfig?.subLocationLabel || t('resource')
+          locationLabel,
+          subLocationLabel
         }
       });
 
@@ -299,7 +330,15 @@ export default function ResidentFlow() {
         })
       });
 
-      if (!response.ok) throw new Error('Failed to create QuickTap ticket');
+      if (!response.ok) {
+        if (response.status === 403) {
+          const errorData = await response.json().catch(() => ({}));
+          setAuthError(errorData.message || 'מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ועד הבית לאישור.');
+          setActiveQuickTap(null); // Close the modal
+          return; // Stay on current state (idle)
+        }
+        throw new Error('Failed to create QuickTap ticket');
+      }
       
       const createData = await response.json();
       const reporterName = createData.reporterName || finalPhone;
@@ -318,8 +357,8 @@ export default function ResidentFlow() {
         ticketNumber: tNum,
         isQuickTap: true,
         labels: {
-          locationLabel: config.uiConfig?.locationLabel || t('floor'),
-          subLocationLabel: config.uiConfig?.subLocationLabel || t('resource')
+          locationLabel,
+          subLocationLabel
         }
       });
 
@@ -334,6 +373,7 @@ export default function ResidentFlow() {
       setIsQuickTapSending(false);
     }
   };
+
 
   return (
     <div className="flex flex-col min-h-[100dvh] bg-white relative overflow-hidden" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
@@ -359,6 +399,12 @@ export default function ResidentFlow() {
 
         {state === 'idle' || state === 'analyzing' ? (
           <div className="flex-1 flex flex-col items-center justify-between w-full">
+            {authError && (
+              <div className="bg-red-50 text-red-700 p-4 rounded-2xl border border-red-200 flex items-start gap-3 shadow-sm animate-in slide-in-from-top-2 mb-4 w-full">
+                <AlertTriangle className="shrink-0 mt-0.5 text-red-600" size={20} />
+                <p className="text-sm font-bold leading-tight">{authError}</p>
+              </div>
+            )}
             {/* 2. HERO SECTION */}
             <section className="text-center mb-4 animate-in fade-in slide-in-from-top-4 duration-1000">
               <h1 className="text-blue-900 font-black text-2xl mb-2 leading-tight tracking-tight">
@@ -420,6 +466,9 @@ export default function ResidentFlow() {
               locations: config.locations,
               subLocations: config.subLocations,
               categories: config.categories,
+              tenantType: config.tenantType,
+              locationLabel: config.locationLabel,
+              subLocationLabel: config.subLocationLabel,
               uiConfig: config.uiConfig
             }}
             status={state === 'rate-limited' ? 'error' : state as any}
@@ -451,13 +500,13 @@ export default function ResidentFlow() {
               )}
               {activeQuickTap.location && (
                 <div className="flex justify-between items-center gap-4">
-                  <span className="text-slate-400 text-xs font-bold uppercase">{config.uiConfig?.locationLabel || t('floor')}</span>
+                  <span className="text-slate-400 text-xs font-bold uppercase">{locationLabel}</span>
                   <span className="text-slate-800 font-bold">{activeQuickTap.location}</span>
                 </div>
               )}
               {activeQuickTap.subLocation && (
                 <div className="flex justify-between items-center gap-4">
-                  <span className="text-slate-400 text-xs font-bold uppercase">{config.uiConfig?.subLocationLabel || t('resource')}</span>
+                  <span className="text-slate-400 text-xs font-bold uppercase">{subLocationLabel}</span>
                   <span className="text-slate-800 font-bold">{activeQuickTap.subLocation}</span>
                 </div>
               )}

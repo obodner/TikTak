@@ -33,17 +33,21 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.manageTenantUser = exports.getAudio = exports.getImage = exports.getTenantInfo = exports.createTicket = exports.analyzeImage = exports.health = void 0;
+exports.onTicketUpdate = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.getTenantInfo = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
 const https_1 = require("firebase-functions/v2/https");
+const firestore_1 = require("firebase-functions/v2/firestore");
+const slaEngine_1 = require("./utils/slaEngine");
+var slaCron_1 = require("./slaCron");
+Object.defineProperty(exports, "slaCron", { enumerable: true, get: function () { return slaCron_1.slaCron; } });
 const logger = __importStar(require("firebase-functions/logger"));
 const app_1 = require("firebase-admin/app");
-const firestore_1 = require("firebase-admin/firestore");
+const firestore_2 = require("firebase-admin/firestore");
 const storage_1 = require("firebase-admin/storage");
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const crypto_1 = require("crypto");
 (0, app_1.initializeApp)();
-const db = (0, firestore_1.getFirestore)();
+const db = (0, firestore_2.getFirestore)();
 const storage = (0, storage_1.getStorage)();
 async function recordAuditLog(params) {
     const { tenantId, action, level, actor, details } = params;
@@ -171,6 +175,31 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
         res.status(500).send({ error: "Failed to analyze image", details: error.message });
     }
 });
+exports.checkAuth = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const { tenantId, reporterPhone } = req.body;
+        if (!tenantId || !reporterPhone) {
+            res.status(400).send({ authorized: false, error: "Missing tenantId or reporterPhone" });
+            return;
+        }
+        const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+        const tenantType = tenantDoc.data()?.type || 'building';
+        const contactTarget = tenantType === 'municipality' ? 'למוקד' : 'לוועד הבית';
+        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+        if (!reporterDoc.exists) {
+            res.status(403).send({
+                authorized: false,
+                message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור.`
+            });
+            return;
+        }
+        res.status(200).send({ authorized: true });
+    }
+    catch (error) {
+        logger.error("checkAuth failed", { message: error.message });
+        res.status(500).send({ authorized: false, error: "Internal server error" });
+    }
+});
 exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     try {
         const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone, source } = req.body;
@@ -236,6 +265,11 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) =
                     ticketNumber: nextNumber,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
+                    lastStatusChangeAt: new Date().toISOString(),
+                    total_days_in_new: 0,
+                    total_days_in_progress: 0,
+                    stagnationDays: 0,
+                    slaStatus: 'none',
                     adminComments: []
                 };
                 transaction.set(ticketRef, ticketData);
@@ -422,16 +456,30 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
                     throw new Error("Names must be 20 characters or less");
                 if (!email.includes('@'))
                     throw new Error("Invalid email format");
-                const existingUsers = await tenantRef.collection("adminUsers").get();
-                if (existingUsers.size >= 5) {
+                const existingUsersSnapshot = await tenantRef.collection("adminUsers").get();
+                if (existingUsersSnapshot.size >= 5) {
                     throw new Error("Maximum of 5 users reached for this tenant");
                 }
-                const userRecord = await auth.createUser({
-                    email,
-                    password: password || Math.random().toString(36).slice(-8),
-                    displayName: `${firstName} ${lastName}`
-                });
-                const uid = userRecord.uid;
+                let uid;
+                try {
+                    const existingUser = await auth.getUserByEmail(email);
+                    uid = existingUser.uid;
+                    logger.info("Using existing user for new tenant association", { email, uid, tenantId });
+                }
+                catch (e) {
+                    if (e.code === 'auth/user-not-found') {
+                        const userRecord = await auth.createUser({
+                            email,
+                            password: password || Math.random().toString(36).slice(-8),
+                            displayName: `${firstName} ${lastName}`
+                        });
+                        uid = userRecord.uid;
+                        logger.info("Created new user for tenant association", { email, uid, tenantId });
+                    }
+                    else {
+                        throw e;
+                    }
+                }
                 await tenantRef.collection("adminUsers").doc(uid).set({
                     firstName,
                     lastName,
@@ -453,7 +501,6 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
                 if (adminUids.length <= 1) {
                     throw new Error("Cannot delete the last administrator");
                 }
-                await auth.deleteUser(uid);
                 await tenantRef.collection("adminUsers").doc(uid).delete();
                 await tenantRef.update({
                     adminUids: admin.firestore.FieldValue.arrayRemove(uid)
@@ -489,6 +536,59 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
     catch (err) {
         logger.error("User Management failed", { message: err.message });
         res.status(500).send({ error: err.message });
+    }
+});
+exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)("tenants/{tenantId}/tickets/{ticketId}", async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after)
+        return;
+    const oldStatus = before.status;
+    const newStatus = after.status;
+    if (oldStatus === newStatus)
+        return;
+    const tenantId = event.params.tenantId;
+    const ticketId = event.params.ticketId;
+    const now = new Date();
+    try {
+        const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+        const tenantData = tenantDoc.data();
+        if (!tenantData)
+            return;
+        const country = tenantData.country || "IL";
+        const slaConfig = tenantData.slaConfig || { enabled: true, workingDays: [0, 1, 2, 3, 4] };
+        const holidaysDoc = await db.collection("holidays").doc(country).get();
+        const holidays = (holidaysDoc.data()?.holidays || []).map((h) => h.date);
+        const update = {
+            lastStatusChangeAt: now.toISOString(),
+            updatedAt: now.toISOString()
+        };
+        const startTime = before.lastStatusChangeAt || before.createdAt;
+        if (startTime) {
+            const delta = (0, slaEngine_1.calculateWorkingDays)(startTime, now, slaConfig.workingDays, holidays);
+            if (oldStatus === 'open') {
+                update.total_days_in_new = (before.total_days_in_new || 0) + delta;
+            }
+            else if (oldStatus === 'in-progress') {
+                update.total_days_in_progress = (before.total_days_in_progress || 0) + delta;
+            }
+        }
+        if (newStatus === 'open') {
+            update.total_days_in_new = 0;
+            update.total_days_in_progress = 0;
+            update.slaStatus = 'none';
+            update.stagnationDays = 0;
+        }
+        else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
+            update.total_days_in_progress = 0;
+            update.slaStatus = 'none';
+            update.stagnationDays = 0;
+        }
+        await event.data?.after.ref.update(update);
+        logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });
+    }
+    catch (err) {
+        logger.error("Error in onTicketUpdate trigger", { error: err, tenantId, ticketId });
     }
 });
 //# sourceMappingURL=index.js.map

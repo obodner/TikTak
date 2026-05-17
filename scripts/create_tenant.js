@@ -84,7 +84,17 @@ async function main() {
     name: name,
     type: type,
     language: "he",
+    country: "IL", // Default for new tenants
+    slaConfig: {
+      enabled: true,
+      workingDays: [0, 1, 2, 3, 4] // Default Sun-Thu
+    },
     config: config,
+    uiConfig: {
+      locationLabel: config.locationLabel,
+      subLocationLabel: config.subLocationLabel,
+      showLocation: true
+    },
     adminUids: [],
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()

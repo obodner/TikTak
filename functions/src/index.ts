@@ -1,4 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { calculateWorkingDays } from "./utils/slaEngine";
+export { slaCron } from "./slaCron";
 import * as logger from "firebase-functions/logger";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -174,6 +177,39 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
 });
 
 /**
+ * Lightweight endpoint to check if a phone number is authorized for a given tenant.
+ * Used by the frontend to prevent unnecessary AI analysis overhead for unauthorized users.
+ */
+export const checkAuth = onRequest({ cors: true }, async (req, res) => {
+  try {
+    const { tenantId, reporterPhone } = req.body;
+
+    if (!tenantId || !reporterPhone) {
+      res.status(400).send({ authorized: false, error: "Missing tenantId or reporterPhone" });
+      return;
+    }
+
+    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+    const tenantType = tenantDoc.data()?.type || 'building';
+    const contactTarget = tenantType === 'municipality' ? 'למוקד' : 'לוועד הבית';
+
+    const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+    if (!reporterDoc.exists) {
+      res.status(403).send({
+        authorized: false,
+        message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור.`
+      });
+      return;
+    }
+
+    res.status(200).send({ authorized: true });
+  } catch (error: any) {
+    logger.error("checkAuth failed", { message: error.message });
+    res.status(500).send({ authorized: false, error: "Internal server error" });
+  }
+});
+
+/**
  * Final step: Actually create the ticket in Firestore.
  */
 export const createTicket = onRequest({ cors: true }, async (req, res) => {
@@ -260,6 +296,11 @@ export const createTicket = onRequest({ cors: true }, async (req, res) => {
           ticketNumber: nextNumber, // THE TICKET COUNTER
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          lastStatusChangeAt: new Date().toISOString(), // SLA tracking
+          total_days_in_new: 0,
+          total_days_in_progress: 0,
+          stagnationDays: 0,
+          slaStatus: 'none',
           adminComments: [] as any[]
         };
 
@@ -482,20 +523,33 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
         if (!email.includes('@')) throw new Error("Invalid email format");
 
         // 5-User Limit Check
-        const existingUsers = await tenantRef.collection("adminUsers").get();
-        if (existingUsers.size >= 5) {
+        const existingUsersSnapshot = await tenantRef.collection("adminUsers").get();
+        if (existingUsersSnapshot.size >= 5) {
           throw new Error("Maximum of 5 users reached for this tenant");
         }
 
-        // a. Create in Firebase Auth
-        const userRecord = await auth.createUser({
-          email,
-          password: password || Math.random().toString(36).slice(-8), // Temporary password if not provided
-          displayName: `${firstName} ${lastName}`
-        });
+        let uid: string;
+        try {
+          // Check if user already exists in Firebase Auth
+          const existingUser = await auth.getUserByEmail(email);
+          uid = existingUser.uid;
+          logger.info("Using existing user for new tenant association", { email, uid, tenantId });
+        } catch (e: any) {
+          if (e.code === 'auth/user-not-found') {
+            // a. Create in Firebase Auth
+            const userRecord = await auth.createUser({
+              email,
+              password: password || Math.random().toString(36).slice(-8), // Temporary password if not provided
+              displayName: `${firstName} ${lastName}`
+            });
+            uid = userRecord.uid;
+            logger.info("Created new user for tenant association", { email, uid, tenantId });
+          } else {
+            throw e;
+          }
+        }
 
         // b. Create Metadata in subcollection
-        const uid = userRecord.uid;
         await tenantRef.collection("adminUsers").doc(uid).set({
           firstName,
           lastName,
@@ -523,16 +577,16 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
           throw new Error("Cannot delete the last administrator");
         }
 
-        // a. Delete from Auth
-        await auth.deleteUser(uid);
-
-        // b. Remove from Metadata
+        // a. Remove from Metadata (This tenant only)
         await tenantRef.collection("adminUsers").doc(uid).delete();
 
-        // c. Update core adminUids array
+        // b. Update core adminUids array (This tenant only)
         await tenantRef.update({
           adminUids: admin.firestore.FieldValue.arrayRemove(uid)
         });
+
+        // NOTE: We do NOT delete the user from Firebase Auth globally, 
+        // as they might be associated with other tenants.
 
         res.status(200).send({ success: true });
         break;
@@ -571,3 +625,71 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
   }
 });
 
+
+/**
+ * SLA Tracker: Responds to status changes to update cumulative statistics.
+ */
+export const onTicketUpdate = onDocumentUpdated("tenants/{tenantId}/tickets/{ticketId}", async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+
+  if (!before || !after) return;
+
+  const oldStatus = before.status;
+  const newStatus = after.status;
+
+  // Only proceed if status has changed
+  if (oldStatus === newStatus) return;
+
+  const tenantId = event.params.tenantId;
+  const ticketId = event.params.ticketId;
+  const now = new Date();
+
+  try {
+    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+    const tenantData = tenantDoc.data();
+    if (!tenantData) return;
+
+    const country = tenantData.country || "IL";
+    const slaConfig = tenantData.slaConfig || { enabled: true, workingDays: [0, 1, 2, 3, 4] };
+    
+    // Fetch holidays
+    const holidaysDoc = await db.collection("holidays").doc(country).get();
+    const holidays = (holidaysDoc.data()?.holidays || []).map((h: any) => h.date);
+
+    const update: any = {
+      lastStatusChangeAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    };
+
+    // Calculate working days spent in the OLD state
+    const startTime = before.lastStatusChangeAt || before.createdAt;
+    if (startTime) {
+      const delta = calculateWorkingDays(startTime, now, slaConfig.workingDays, holidays);
+      
+      if (oldStatus === 'open') {
+        update.total_days_in_new = (before.total_days_in_new || 0) + delta;
+      } else if (oldStatus === 'in-progress') {
+        update.total_days_in_progress = (before.total_days_in_progress || 0) + delta;
+      }
+    }
+
+    // Reset logic for reopening
+    if (newStatus === 'open') {
+      update.total_days_in_new = 0;
+      update.total_days_in_progress = 0;
+      update.slaStatus = 'none';
+      update.stagnationDays = 0;
+    } else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
+      update.total_days_in_progress = 0;
+      update.slaStatus = 'none';
+      update.stagnationDays = 0;
+    }
+
+    await event.data?.after.ref.update(update);
+    logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });
+
+  } catch (err) {
+    logger.error("Error in onTicketUpdate trigger", { error: err, tenantId, ticketId });
+  }
+});

@@ -21,6 +21,9 @@ interface ReportingFormProps {
     locations: string[];
     subLocations: string[];
     categories: string[];
+    tenantType?: 'building' | 'municipality';
+    locationLabel?: string;
+    subLocationLabel?: string;
     uiConfig?: {
       locationLabel?: string;
       subLocationLabel?: string;
@@ -54,8 +57,16 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
     }
   }, []);
 
-  const locationLabel = config.uiConfig?.locationLabel || t('floor');
-  const subLocationLabel = config.uiConfig?.subLocationLabel || t('resource');
+  const isMunicipality = config.tenantType === 'municipality';
+  
+  const locationLabel = config.uiConfig?.locationLabel 
+    || config.locationLabel 
+    || (isMunicipality ? (t('area') || 'אזור') : (t('floor') || 'קומה'));
+
+  const subLocationLabel = config.uiConfig?.subLocationLabel 
+    || config.subLocationLabel 
+    || (isMunicipality ? (t('street') || 'רחוב') : (t('resource') || 'מיקום'));
+
   const showLocation = config.uiConfig?.showLocation !== false;
 
   useEffect(() => {

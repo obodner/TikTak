@@ -64,22 +64,38 @@ export default function AdminLogin() {
       // Reset strikes
       setFailedAttempts(0);
 
-      // 2. Lookup tenants
+      // 2. Check for Super Admin role via Custom Claims
+      const idTokenResult = await userCredential.user.getIdTokenResult();
+      const isSuperAdmin = idTokenResult.claims.role === 'super';
+
       const tenantsRef = collection(db, "tenants");
-      const q = query(tenantsRef, where("adminUids", "array-contains", uid));
-      const querySnapshot = await getDocs(q);
+      let foundTenants: { id: string, name?: string, address?: string }[] = [];
 
-      if (querySnapshot.empty) {
-        setError('חשבון זה אינו משויך לאף ישות במערכת. נא לפנות לתמיכה.');
-        await auth.signOut(); // Clean up session
-        return;
+      if (isSuperAdmin) {
+        // Super Admins get access to all tenants
+        const allTenantsSnapshot = await getDocs(tenantsRef);
+        foundTenants = allTenantsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name,
+          address: doc.data().address
+        }));
+      } else {
+        // Regular Admins only see their assigned tenants
+        const q = query(tenantsRef, where("adminUids", "array-contains", uid));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          setError('חשבון זה אינו משויך לאף ישות במערכת. נא לפנות לתמיכה.');
+          await auth.signOut();
+          return;
+        }
+
+        foundTenants = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name,
+          address: doc.data().address
+        }));
       }
-
-      const foundTenants = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name,
-        address: doc.data().address
-      }));
 
       // 3. Handle multi-tenancy or single tenant
       if (foundTenants.length === 1) {

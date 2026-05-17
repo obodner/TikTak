@@ -207,28 +207,28 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
 
     switch (log.action) {
       case 'TICKET_CREATED':
-        const createRef = log.details.ticketNumber ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        const createRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
         const summaryText = log.details.summary ? `: ${log.details.summary}` : '';
         return isEn 
           ? `${actor} reported a new ${log.details.category} issue ${createRef} in ${tenantName}${summaryText}`
           : `${actor} דיווח על תקלה חדשה ${createRef} (${log.details.category}) בבניין ${tenantName}${summaryText}`;
       case 'TICKET_STATUS_UPDATE':
-        const ticketRef = log.details.ticketNumber ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
         return isEn
           ? `${actor} updated ticket ${ticketRef} status to ${log.details.newStatus} in ${tenantName}`
           : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${log.details.newStatus} בבניין ${tenantName}`;
       case 'COMMENT_CREATED':
-        const commTicketRef = log.details.ticketNumber ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        const commTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
         return isEn
           ? `${actor} added a comment to ticket ${commTicketRef}`
           : `${actor} הוסיף הערה לפנייה ${commTicketRef}`;
       case 'COMMENT_DELETED':
-        const delCommTicketRef = log.details.ticketNumber ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        const delCommTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
         return isEn
           ? `${actor} deleted a comment from ticket ${delCommTicketRef}`
           : `${actor} מחק הערה מפנייה ${delCommTicketRef}`;
       case 'TICKET_URGENCY_UPDATE':
-        const urgTicketRef = log.details.ticketNumber ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
         return isEn
           ? `${actor} updated ticket ${urgTicketRef} urgency to ${log.details.newUrgency}`
           : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;

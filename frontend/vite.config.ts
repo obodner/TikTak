@@ -33,6 +33,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/manageTenantUser/, '/manageTenantUser')
       },
+      '/api/checkAuth': {
+        target: 'https://us-central1-tiktak2026.cloudfunctions.net',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/checkAuth/, '/checkAuth')
+      },
       '/img': {
         target: 'https://tiktak2026.web.app',
         changeOrigin: true
