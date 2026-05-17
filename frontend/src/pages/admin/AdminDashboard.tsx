@@ -101,8 +101,8 @@ export default function AdminDashboard() {
 
   const getAuditActor = () => ({
     uid: user?.uid || 'unknown',
-    name: adminProfile 
-      ? `${adminProfile.firstName} ${adminProfile.lastName}` 
+    name: adminProfile
+      ? `${adminProfile.firstName} ${adminProfile.lastName}`
       : (user?.displayName || user?.email || 'Admin'),
     email: user?.email || undefined,
     type: 'admin' as const
@@ -247,14 +247,14 @@ export default function AdminDashboard() {
         setMyTenants(userTenants);
 
         let uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
-        
+
         // Fallback: If not found in current tenant (common for Super Admins switching context),
         // find ANY tenant where this user is an admin and fetch their profile from there.
         if (!uDoc.exists()) {
           try {
             const adminQuery = query(
-              collection(db, "tenants"), 
-              where("adminUids", "array-contains", user.uid), 
+              collection(db, "tenants"),
+              where("adminUids", "array-contains", user.uid),
               limit(1)
             );
             const adminSnap = await getDocs(adminQuery);
@@ -354,10 +354,10 @@ export default function AdminDashboard() {
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
         actor: getAuditActor(),
-        details: { 
-          ticketId, 
-          ticketNumber: ticket?.ticketNumber, 
-          newStatus 
+        details: {
+          ticketId,
+          ticketNumber: ticket?.ticketNumber,
+          newStatus
         },
         changes: ticket ? { previousValue: { status: ticket.status }, newValue: { status: newStatus } } : null
       });
@@ -390,10 +390,10 @@ export default function AdminDashboard() {
         tenantId,
         action: 'TICKET_URGENCY_UPDATE',
         actor: getAuditActor(),
-        details: { 
-          ticketId: ticket.id, 
-          ticketNumber: ticket.ticketNumber, 
-          newUrgency 
+        details: {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          newUrgency
         },
         changes: { previousValue: { urgency: ticket.urgency }, newValue: { urgency: newUrgency } }
       });
@@ -422,37 +422,37 @@ export default function AdminDashboard() {
         resolutionNote: notes,
         updatedAt: new Date().toISOString()
       });
-      
+
       // Audit Log
       await logAction({
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
         actor: getAuditActor(),
-        details: { 
-          ticketId: ticket.id, 
-          ticketNumber: ticket.ticketNumber, 
-          newStatus: 'resolved', 
-          closureReason: reason, 
-          resolutionNote: notes 
+        details: {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          newStatus: 'resolved',
+          closureReason: reason,
+          resolutionNote: notes
         },
-        changes: { 
-          previousValue: { status: ticket.status }, 
-          newValue: { status: 'resolved', closureReason: reason } 
+        changes: {
+          previousValue: { status: ticket.status },
+          newValue: { status: 'resolved', closureReason: reason }
         }
       });
-      
+
       // Update local state immediately for snappy UI
-      setTickets(prev => prev.map(t => 
+      setTickets(prev => prev.map(t =>
         t.id === ticket.id ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
       ));
 
       // Automatically notify if reporter exists
       if (ticket && ticket.reporterPhone) {
-        handleNotifyResident({ 
-          ...ticket, 
-          status: 'resolved', 
-          closureReason: reason, 
-          resolutionNote: notes 
+        handleNotifyResident({
+          ...ticket,
+          status: 'resolved',
+          closureReason: reason,
+          resolutionNote: notes
         });
       }
     } catch (err) {
@@ -486,17 +486,17 @@ export default function AdminDashboard() {
         tenantId,
         action: 'COMMENT_CREATED',
         actor: getAuditActor(),
-        details: { 
-          ticketId, 
-          ticketNumber: ticket.ticketNumber, 
-          commentId: newComment.id, 
-          text: newComment.text 
+        details: {
+          ticketId,
+          ticketNumber: ticket.ticketNumber,
+          commentId: newComment.id,
+          text: newComment.text
         }
       });
 
-      setTickets(prev => prev.map(t => 
-        t.id === ticketId 
-          ? { ...t, adminComments: [...(t.adminComments || []), newComment] } 
+      setTickets(prev => prev.map(t =>
+        t.id === ticketId
+          ? { ...t, adminComments: [...(t.adminComments || []), newComment] }
           : t
       ));
     } catch (err: any) {
@@ -519,7 +519,7 @@ export default function AdminDashboard() {
           await updateDoc(doc(db, "tenants", tenantId!, "tickets", ticketId), {
             adminComments: arrayRemove(comment)
           });
-          
+
           // Audit Log
           await logAction({
             tenantId: tenantId!,
@@ -528,9 +528,9 @@ export default function AdminDashboard() {
             details: { ticketId, ticketNumber: ticket.ticketNumber, commentId: comment.id }
           });
 
-          setTickets(prev => prev.map(t => 
-            t.id === ticketId 
-              ? { ...t, adminComments: (t.adminComments || []).filter(c => c.id !== comment.id) } 
+          setTickets(prev => prev.map(t =>
+            t.id === ticketId
+              ? { ...t, adminComments: (t.adminComments || []).filter(c => c.id !== comment.id) }
               : t
           ));
         } catch (err) {
@@ -551,7 +551,7 @@ export default function AdminDashboard() {
       );
       return;
     }
-    
+
     const statusMap: Record<string, 'open' | 'in-progress' | 'resolved'> = {
       'open': 'open',
       'in-progress': 'in-progress',
@@ -699,7 +699,7 @@ export default function AdminDashboard() {
 
   const renderColumn = (statusKey: string, title: string, colorClass: string, statuses: string[]) => {
     const columnTickets = filteredTickets.filter(t => statuses.includes(t.status));
-    
+
     return (
       <div className="flex flex-col bg-slate-100/50 rounded-2xl p-4 min-h-[500px]">
         <div className="flex items-center justify-between mb-4 px-2">
@@ -716,9 +716,8 @@ export default function AdminDashboard() {
             <div
               {...provided.droppableProps}
               ref={provided.innerRef}
-              className={`flex-1 flex flex-col gap-4 transition-colors rounded-xl p-1 ${
-                snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
-              }`}
+              className={`flex-1 flex flex-col gap-4 transition-colors rounded-xl p-1 ${snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
+                }`}
             >
               {columnTickets.map((t, index) => (
                 <Draggable key={t.id} draggableId={t.id} index={index}>
@@ -730,15 +729,14 @@ export default function AdminDashboard() {
                       className={`${getSlaColorClasses(
                         tenantConfig?.slaConfig?.enabled !== false && (t.status === 'open' || t.status === 'in-progress')
                           ? (t.slaStatus || getSlaStatus(calculateWorkingDays(
-                              t.lastStatusChangeAt || t.createdAt,
-                              new Date(),
-                              tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4],
-                              holidays
-                            )))
+                            t.lastStatusChangeAt || t.createdAt,
+                            new Date(),
+                            tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4],
+                            holidays
+                          )))
                           : 'none'
-                      )} p-4 rounded-2xl shadow-sm border transition-all cursor-grab active:cursor-grabbing relative group ${
-                        snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
-                      }`}
+                      )} p-4 rounded-2xl shadow-sm border transition-all cursor-grab active:cursor-grabbing relative group ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
+                        }`}
                       onClick={() => {
                         if (snapshot.isDragging) return;
                       }}
@@ -751,11 +749,10 @@ export default function AdminDashboard() {
                             disabled={updatingId === t.id}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => handleUrgencyUpdate(t, e.target.value as Ticket['urgency'])}
-                            className={`text-xs font-black px-2 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${
-                              t.urgency === 'High' ? 'bg-red-600 text-white shadow-sm' : 
-                              t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' : 
-                              'bg-green-100 text-green-700'
-                            }`}
+                            className={`text-xs font-black px-2 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-600 text-white shadow-sm' :
+                                t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-green-100 text-green-700'
+                              }`}
                           >
                             <option value="High">{uiLabels.urgency.High}</option>
                             <option value="Moderate">{uiLabels.urgency.Moderate}</option>
@@ -782,10 +779,10 @@ export default function AdminDashboard() {
                           {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
                         </p>
                       </div>
-                      
+
                       {/* Interaction Row: Comment (Right), Image, Audio */}
                       <div className="flex items-center gap-3 pt-3 border-t border-slate-50 mb-2">
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setCommentTicketId(t.id);
@@ -797,11 +794,11 @@ export default function AdminDashboard() {
                             <span className="text-xs font-bold text-slate-500">{t.adminComments.length}</span>
                           )}
                         </button>
-                        
+
                         {t.imageId && typeof t.imageId === 'string' && t.imageId.length > 5 && (
-                          <a 
-                            href={`/img/${tenantId}/${t.imageId}`} 
-                            target="_blank" 
+                          <a
+                            href={`/img/${tenantId}/${t.imageId}`}
+                            target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -810,11 +807,11 @@ export default function AdminDashboard() {
                             <ImageIcon size={18} />
                           </a>
                         )}
-                        
+
                         {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
-                          <a 
-                            href={`/aud/${tenantId}/${t.audioId}`} 
-                            target="_blank" 
+                          <a
+                            href={`/aud/${tenantId}/${t.audioId}`}
+                            target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -866,15 +863,15 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto flex justify-between items-center px-2 md:px-4">
           <div className="flex items-center gap-2 md:gap-4 text-right" dir={isEn ? "ltr" : "rtl"}>
             <div className="flex items-center justify-center transition-transform hover:scale-105 shrink-0">
-              <img 
-                src="/logo_transparent.png" 
-                alt="TikTak" 
-                className="h-12 md:h-20 w-auto object-contain filter drop-shadow-[0_0_1px_rgba(255,255,255,0.5)]" 
+              <img
+                src="/logo_transparent.png"
+                alt="TikTak"
+                className="h-12 md:h-20 w-auto object-contain filter drop-shadow-[0_0_1px_rgba(255,255,255,0.5)]"
               />
             </div>
-            
+
             <span className="text-slate-600 font-light text-xl md:text-2xl hidden sm:inline">|</span>
-            
+
             {myTenants.length > 1 ? (
               <div className="relative">
                 <select
@@ -896,32 +893,32 @@ export default function AdminDashboard() {
                 {tenantConfig?.name || tenantId}
               </span>
             )}
-            
+
             <span className="text-slate-600 font-light text-xl md:text-2xl hidden md:inline">|</span>
-            
+
             <span className="text-sm md:text-lg text-white font-bold whitespace-nowrap hidden md:inline">
               {isEn ? 'Dashboard' : 'דשבורד'}
             </span>
           </div>
-          
+
           <div className="flex items-center gap-2 md:gap-3">
             {isSuper && (
-              <Link 
-                to="/admin/god-view" 
+              <Link
+                to="/admin/god-view"
                 className="hidden sm:flex items-center gap-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 px-3 md:px-4 py-2 rounded-lg transition-all shadow-lg shadow-blue-900/20"
               >
                 <Shield size={14} /> {isEn ? 'God Mode' : 'מצב אל'}
               </Link>
             )}
-            <Link 
-              to={`/admin/${tenantId}/settings`} 
+            <Link
+              to={`/admin/${tenantId}/settings`}
               className="text-xs font-bold bg-slate-800 hover:bg-slate-700 px-3 md:px-4 py-2 rounded-lg transition-all border border-slate-700 flex items-center gap-2"
               title={uiLabels.settings}
             >
               <span className="hidden md:inline">{uiLabels.settings}</span>
               <span className="md:hidden">⚙️</span>
             </Link>
-            <button 
+            <button
               onClick={() => setIsHelpOpen(true)}
               className="text-xs font-bold bg-blue-600/20 hover:bg-blue-600/30 text-blue-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-blue-500/30 flex items-center gap-2"
               title={isHe ? "עזרה ומדריך" : "Help & Guide"}
@@ -929,7 +926,7 @@ export default function AdminDashboard() {
               <HelpCircle size={16} />
               <span className="hidden md:inline">{isHe ? 'עזרה' : 'Help'}</span>
             </button>
-            <button 
+            <button
               onClick={handleLogout}
               className="text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-red-500/30 flex items-center gap-2"
               title={isEn ? "Logout" : "התנתק"}
@@ -963,13 +960,13 @@ export default function AdminDashboard() {
               <div className="w-full flex-1 min-h-0">
                 <ResponsiveContainer width="99%" height={250}>
                   <PieChart margin={{ top: 10, bottom: 10 }}>
-                    <Pie 
-                      data={stats.categoryData} 
-                      cx="50%" 
-                      cy="45%" 
-                      innerRadius={35} 
-                      outerRadius={65} 
-                      paddingAngle={2} 
+                    <Pie
+                      data={stats.categoryData}
+                      cx="50%"
+                      cy="45%"
+                      innerRadius={35}
+                      outerRadius={65}
+                      paddingAngle={2}
                       dataKey="value"
                     >
                       {stats.categoryData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
@@ -982,8 +979,8 @@ export default function AdminDashboard() {
                       verticalAlign="bottom"
                       align="center"
                       iconType="circle"
-                      wrapperStyle={{ 
-                        fontSize: '10px', 
+                      wrapperStyle={{
+                        fontSize: '10px',
                         paddingTop: '20px',
                         maxHeight: '100px',
                         overflowY: 'auto'
@@ -1041,8 +1038,8 @@ export default function AdminDashboard() {
                   className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer flex items-center justify-between gap-2 min-h-[34px]"
                 >
                   <span className="truncate">
-                    {filters.statuses.length === 3 
-                      ? uiLabels.filters.all 
+                    {filters.statuses.length === 3
+                      ? uiLabels.filters.all
                       : filters.statuses.map(s => statusOptions.find(opt => opt.id === s)?.label).join(', ')}
                   </span>
                   <ChevronDown size={14} className={`transition-transform ${isStatusFilterOpen ? 'rotate-180' : ''}`} />
@@ -1050,17 +1047,17 @@ export default function AdminDashboard() {
 
                 {isStatusFilterOpen && (
                   <>
-                    <div 
-                      className="fixed inset-0 z-10" 
+                    <div
+                      className="fixed inset-0 z-10"
                       onClick={() => setIsStatusFilterOpen(false)}
                     />
                     <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl z-20 py-2 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
                       {statusOptions.map(option => (
-                        <label 
+                        <label
                           key={option.id}
                           className="flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
                         >
-                          <input 
+                          <input
                             type="checkbox"
                             checked={filters.statuses.includes(option.id)}
                             onChange={(e) => {
@@ -1175,7 +1172,7 @@ export default function AdminDashboard() {
                 >
                   <Download size={18} />
                 </button>
-                
+
                 {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
@@ -1265,10 +1262,10 @@ export default function AdminDashboard() {
           />
         )}
 
-        <HelpModal 
-          isOpen={isHelpOpen} 
-          onClose={() => setIsHelpOpen(false)} 
-          language={isEn ? 'en' : 'he'} 
+        <HelpModal
+          isOpen={isHelpOpen}
+          onClose={() => setIsHelpOpen(false)}
+          language={isEn ? 'en' : 'he'}
           tenantId={tenantId || ''}
           tenantName={tenantConfig?.name || ''}
         />
