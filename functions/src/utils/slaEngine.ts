@@ -25,6 +25,7 @@ export function calculateWorkingDays(
 
   let count = 0;
   const current = new Date(startDate);
+  current.setDate(current.getDate() + 1);
 
   while (current <= endDate) {
     const dayOfWeek = current.getDay();

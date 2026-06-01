@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
-import { generateStatusUpdateLink } from '../../utils/whatsapp';
 import { logAction } from '../../utils/auditLogger';
 import { ConfirmModal, ConfirmType } from '../../components/admin/ConfirmModal';
 import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, arrayRemove, where, limit } from 'firebase/firestore';
@@ -133,19 +132,7 @@ export default function AdminDashboard() {
     return cat;
   };
 
-  const translateClosureReason = (reason: string) => {
-    const mapping: Record<string, { he: string, en: string }> = {
-      'fixed': { he: 'טופל', en: 'Fixed' },
-      'duplicate': { he: 'כפילות', en: 'Duplicate' },
-      'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
-      'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
-      'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
-      'rejected': { he: 'נדחה', en: 'Rejected' }
-    };
-    const entry = mapping[reason];
-    if (!entry) return reason;
-    return isEn ? entry.en : entry.he;
-  };
+
 
   const uiLabels = {
     new: isEn ? 'New Reports' : 'דיווחים חדשים',
@@ -363,11 +350,6 @@ export default function AdminDashboard() {
       });
 
       await fetchData();
-
-      // Automatically notify if reporter exists
-      if (ticket && ticket.reporterPhone && newStatus !== 'dismissed') {
-        handleNotifyResident({ ...ticket, status: newStatus });
-      }
     } catch (err) {
       console.error("Update failed:", err);
     } finally {
@@ -446,15 +428,7 @@ export default function AdminDashboard() {
         t.id === ticket.id ? { ...t, status: 'resolved', closureReason: reason, resolutionNote: notes } : t
       ));
 
-      // Automatically notify if reporter exists
-      if (ticket && ticket.reporterPhone) {
-        handleNotifyResident({
-          ...ticket,
-          status: 'resolved',
-          closureReason: reason,
-          resolutionNote: notes
-        });
-      }
+      // Automated resident notifications are now handled by the backend Firestore trigger.
     } catch (err) {
       console.error("Resolution failed:", err);
       showAlert(
@@ -542,34 +516,7 @@ export default function AdminDashboard() {
     );
   };
 
-  const handleNotifyResident = (t: Ticket) => {
-    if (!t.reporterPhone) {
-      showAlert(
-        isEn ? 'Missing Information' : 'מידע חסר',
-        isEn ? 'No reporter phone number available' : 'אין מספר טלפון של המדווח',
-        'warning'
-      );
-      return;
-    }
 
-    const statusMap: Record<string, 'open' | 'in-progress' | 'resolved'> = {
-      'open': 'open',
-      'in-progress': 'in-progress',
-      'resolved': 'resolved',
-      'dismissed': 'resolved'
-    };
-
-    const link = generateStatusUpdateLink({
-      phone: t.reporterPhone,
-      category: translateCategory(t.category),
-      status: statusMap[t.status] || 'open',
-      location: t.location,
-      closureReason: t.closureReason ? translateClosureReason(t.closureReason) : undefined,
-      ticketNumber: t.ticketNumber
-    });
-
-    window.open(link, '_blank');
-  };
 
   const handleExportCSV = () => {
     const headers = [
@@ -750,8 +697,8 @@ export default function AdminDashboard() {
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => handleUrgencyUpdate(t, e.target.value as Ticket['urgency'])}
                             className={`text-xs font-black px-2 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-600 text-white shadow-sm' :
-                                t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' :
-                                  'bg-green-100 text-green-700'
+                              t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' :
+                                'bg-green-100 text-green-700'
                               }`}
                           >
                             <option value="High">{uiLabels.urgency.High}</option>
@@ -775,9 +722,47 @@ export default function AdminDashboard() {
                         <div className="text-lg font-black text-slate-900 mb-1 leading-tight">
                           {translateCategory(t.category)}
                         </div>
-                        <p className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium">
+                        <p 
+                          className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium cursor-help"
+                          title={t.summary || (isEn ? 'No summary' : 'אין תיאור')}
+                        >
                           {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
                         </p>
+
+                        {/* Closure Reason & Resolution Notes */}
+                        {(t.status === 'resolved' || t.status === 'dismissed') && (t.closureReason || t.resolutionNote) && (
+                          <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1.5 text-right" dir={isHe ? 'rtl' : 'ltr'}>
+                            {t.closureReason && (
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className="text-slate-400 font-medium">
+                                  {isEn ? "Closure Reason:" : "סיבת סגירה:"}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-700">
+                                  {(() => {
+                                    const mapping: Record<string, { he: string, en: string }> = {
+                                      'fixed': { he: 'טופל', en: 'Fixed' },
+                                      'duplicate': { he: 'כפילות', en: 'Duplicate' },
+                                      'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
+                                      'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
+                                      'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+                                      'rejected': { he: 'נדחה', en: 'Rejected' }
+                                    };
+                                    const entry = mapping[t.closureReason];
+                                    return entry ? (isEn ? entry.en : entry.he) : t.closureReason;
+                                  })()}
+                                </span>
+                              </div>
+                            )}
+                            {t.resolutionNote && (
+                              <div className="text-slate-600 italic leading-normal">
+                                <span className="font-bold text-slate-400 not-italic">
+                                  {isEn ? "Notes: " : "הערת סגירה: "}
+                                </span>
+                                "{t.resolutionNote}"
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Interaction Row: Comment (Right), Image, Audio */}
@@ -919,20 +904,19 @@ export default function AdminDashboard() {
               <span className="md:hidden">⚙️</span>
             </Link>
             <button
-              onClick={() => setIsHelpOpen(true)}
-              className="text-xs font-bold bg-blue-600/20 hover:bg-blue-600/30 text-blue-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-blue-500/30 flex items-center gap-2"
-              title={isHe ? "עזרה ומדריך" : "Help & Guide"}
-            >
-              <HelpCircle size={16} />
-              <span className="hidden md:inline">{isHe ? 'עזרה' : 'Help'}</span>
-            </button>
-            <button
               onClick={handleLogout}
               className="text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-red-500/30 flex items-center gap-2"
               title={isEn ? "Logout" : "התנתק"}
             >
               <LogOut size={16} />
               <span className="hidden md:inline">{isEn ? 'Logout' : 'התנתק'}</span>
+            </button>
+            <button
+              onClick={() => setIsHelpOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all shrink-0"
+              title={isHe ? "עזרה ומדריך" : "Help & Guide"}
+            >
+              <HelpCircle size={24} />
             </button>
           </div>
         </div>

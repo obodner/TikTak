@@ -11,6 +11,7 @@ function calculateWorkingDays(start, end, workingDays, holidays) {
         return 0;
     let count = 0;
     const current = new Date(startDate);
+    current.setDate(current.getDate() + 1);
     while (current <= endDate) {
         const dayOfWeek = current.getDay();
         const y = current.getFullYear();

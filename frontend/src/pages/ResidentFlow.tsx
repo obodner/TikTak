@@ -6,7 +6,6 @@ import { ReportingForm } from '../components/ReportingForm';
 import { QuickTapPills } from '../components/QuickTapPills';
 import { QuickTapItem } from '../components/admin/QuickTapEditor';
 import { compressImage } from '../utils/compression';
-import { generateWhatsAppLink } from '../utils/whatsapp';
 import { AlertTriangle } from 'lucide-react';
 
 type FlowState = 'idle' | 'analyzing' | 'editing' | 'sending' | 'success' | 'error' | 'invalid' | 'rate-limited';
@@ -43,6 +42,23 @@ export default function ResidentFlow() {
     ticketType: 'visible'
   });
   const [vaadPhone, setVaadPhone] = useState('');
+  const [admins, setAdmins] = useState<{ name: string; phone: string }[]>([]);
+
+  interface SentTicketInfo {
+    summary: string;
+    category: string;
+    urgency: string;
+    location?: string;
+    subLocation?: string;
+    imageId?: string;
+    audioId?: string;
+    reporterName: string;
+    ticketNumber: number;
+    isQuickTap?: boolean;
+  }
+  const [sentTicket, setSentTicket] = useState<SentTicketInfo | null>(null);
+  if (vaadPhone && admins && sentTicket) { /* no-op */ }
+
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   
   // New: Configuration for dropdowns
@@ -103,6 +119,9 @@ export default function ResidentFlow() {
           }
           if (data.vaadPhone) {
             setVaadPhone(data.vaadPhone);
+          }
+          if (data.admins) {
+            setAdmins(data.admins);
           }
           
           setConfig({
@@ -263,28 +282,20 @@ export default function ResidentFlow() {
       const tNum = createData.ticketNumber;
       setTicketNumber(tNum);
 
-      // Generate WhatsApp Link
-      const waLink = generateWhatsAppLink({
-        phone: vaadPhone || '972522684838', // Fallback to Oren's test phone
+      const sentInfo: SentTicketInfo = {
         summary: finalSummary,
-        tenantId, // Mapping tenantId to buildingId for util compatibility or updating util
-        tenantName: tenantName || address,
-        location: ticketData.location,
-        subLocation: ticketData.subLocation,
         category: ticketData.category,
         urgency: ticketData.urgency,
+        location: ticketData.location,
+        subLocation: ticketData.subLocation,
         imageId: ticketData.ticketType === 'visible' ? ticketData.imageId : undefined,
         audioId: createData.audioId,
         reporterName: reporterName,
         ticketNumber: tNum,
-        labels: {
-          locationLabel,
-          subLocationLabel
-        }
-      });
+        isQuickTap: false
+      };
+      setSentTicket(sentInfo);
 
-      // Redirect to WhatsApp
-      window.location.href = waLink;
       setState('success');
     } catch (err: any) {
       setState('error');
@@ -343,27 +354,20 @@ export default function ResidentFlow() {
       const createData = await response.json();
       const reporterName = createData.reporterName || finalPhone;
       const tNum = createData.ticketNumber;
+      setTicketNumber(tNum);
 
-      const waLink = generateWhatsAppLink({
-        phone: vaadPhone || '972522684838',
+      const sentInfo: SentTicketInfo = {
         summary: quickTicketData.summary,
-        tenantId,
-        tenantName: tenantName || address,
-        location: quickTicketData.location || undefined,
-        subLocation: quickTicketData.subLocation || undefined,
         category: quickTicketData.category,
         urgency: quickTicketData.urgency,
+        location: quickTicketData.location || undefined,
+        subLocation: quickTicketData.subLocation || undefined,
         reporterName: reporterName,
         ticketNumber: tNum,
-        isQuickTap: true,
-        labels: {
-          locationLabel,
-          subLocationLabel
-        }
-      });
+        isQuickTap: true
+      };
+      setSentTicket(sentInfo);
 
-      setTicketNumber(tNum);
-      window.location.href = waLink;
       setState('success');
       setActiveQuickTap(null);
     } catch (err) {
@@ -446,6 +450,27 @@ export default function ResidentFlow() {
           >
             {t('try_again')}
           </button>
+        </div>
+      ) : state === 'success' ? (
+        <div className="w-full flex flex-col items-center justify-center gap-8 py-12 px-6 animate-in zoom-in duration-300 text-center" dir="rtl">
+          {/* Green Checkmark Circle */}
+          <div className="w-24 h-24 rounded-full border-[5px] border-[#22C55E] flex items-center justify-center bg-white">
+            <svg className="w-12 h-12 text-[#22C55E]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          
+          {/* Success Title */}
+          <h2 className="text-3xl font-extrabold text-[#1E3A8A] tracking-tight leading-tight">
+            הדיווח נשלח בהצלחה!
+          </h2>
+
+          {/* Ticket Number Pill */}
+          {ticketNumber && (
+            <div className="bg-[#EFF6FF] px-8 py-3 rounded-full border border-blue-100">
+              <p className="text-[#2563EB] font-black text-2xl tracking-wide">#{ticketNumber}</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="w-full flex flex-col gap-4">

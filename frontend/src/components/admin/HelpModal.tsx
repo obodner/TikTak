@@ -121,7 +121,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                 <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 mt-6">
                   <h4 className="font-black text-blue-900 mb-2">שלב ג' וד': דיוק ושליחה</h4>
                   <p className="text-sm text-blue-800 leading-relaxed">
-                    ודאו את המיקום והקטגוריה, ולחצו על הכפתור הירוק למטה. הודעת וואטסאפ מוכנה תיפתח - לחצו על "שלח" במכשירכם.
+                    ודאו את המיקום והקטגוריה, ולחצו על הכפתור הירוק למטה. המערכת תשלח את הדיווח אוטומטית דרך השרת, ללא צורך בפתיחת וואטסאפ או לחיצה ידנית על "שלח"!
                   </p>
                 </div>
               </section>
@@ -144,6 +144,41 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                       <li><strong>זיהוי QuickTap</strong>: תקלות אלו מסומנות בתג כחול בולט ⚡ QuickTap.</li>
                       <li><strong>ניתוח תקלה</strong>: הקליקו על כרטיס לצפייה במדיה. מומלץ להשתמש באוזניות להקלטות.</li>
                     </ul>
+                  </div>
+
+                  <div className="border-r-4 border-green-500 pr-6 space-y-4">
+                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                      <span className="text-green-500">⏱️</span>
+                      מדדי SLA והתראות וואטסאפ
+                    </h4>
+                    <div className="text-sm text-slate-600 space-y-4">
+                      <div>
+                        <strong className="block text-slate-900 mb-1">עמידה בזמני טיפול (SLA):</strong>
+                        <p className="leading-relaxed mb-2">המערכת מודדת אוטומטית את ימי העבודה שחלפו מרגע פתיחת התקלה או עדכון הסטטוס שלה:</p>
+                        <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <li className="flex items-center gap-2 bg-yellow-50 text-yellow-800 px-3 py-1.5 rounded-xl border border-yellow-200">
+                            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                            <span><strong>מעל 2 ימים:</strong> אזהרה (צהוב)</span>
+                          </li>
+                          <li className="flex items-center gap-2 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-xl border border-orange-200">
+                            <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                            <span><strong>מעל 5 ימים:</strong> דחוף (כתום)</span>
+                          </li>
+                          <li className="flex items-center gap-2 bg-red-50 text-red-800 px-3 py-1.5 rounded-xl border border-red-200">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+                            <span><strong>מעל 9 ימים:</strong> חריגה (אדום)</span>
+                          </li>
+                        </ul>
+                      </div>
+                      
+                      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                        <strong className="block text-blue-950 mb-1">💬 התראות וואטסאפ אוטומטיות (ללא מאמץ):</strong>
+                        <ul className="space-y-1.5 text-blue-900 leading-relaxed pr-2 list-disc list-inside">
+                          <li><strong>פתיחת דיווח:</strong> ברגע שתושב שולח דיווח, נשלחת לו מיידית הודעת אישור לוואטסאפ, ובמקביל נשלחת התראה מפורטת לוואטסאפ של חברי הוועד / המנהלים.</li>
+                          <li><strong>עדכון סטטוס:</strong> כאשר אתם גוררים תקלה ל-<em>"בטיפול"</em> או מסמנים אותה כ-<em>"טופל" / "נדחה"</em>, המערכת שולחת אוטומטית עדכון וואטסאפ מנוסח ומקצועי ישירות לתושב שדיווח.</li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="border-r-4 border-amber-500 pr-6 space-y-4">
@@ -236,7 +271,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                 <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 mt-6">
                   <h4 className="font-black text-blue-900 mb-2">Step 3 & 4: Refine & Send</h4>
                   <p className="text-sm text-blue-800 leading-relaxed">
-                    Verify location/category and click the green button. Send the pre-formatted WhatsApp message to complete the report.
+                    Verify the location/category and click the green button. The system sends the report automatically via our backend – no need to open WhatsApp or click "Send" manually!
                   </p>
                 </div>
               </section>
@@ -259,6 +294,41 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                       <li><strong>QuickTap ID</strong>: These tickets are marked with a blue ⚡ QuickTap tag.</li>
                       <li><strong>Ticket Analysis</strong>: Click cards to view media. Use headphones for audio.</li>
                     </ul>
+                  </div>
+
+                  <div className="border-l-4 border-green-500 pl-6 space-y-4">
+                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                      <span className="text-green-500">⏱️</span>
+                      SLA Thresholds & WhatsApp Alerts
+                    </h4>
+                    <div className="text-sm text-slate-600 space-y-4">
+                      <div>
+                        <strong className="block text-slate-900 mb-1">Service Level Agreement (SLA):</strong>
+                        <p className="leading-relaxed mb-2">The system automatically calculates working days spent on each ticket from creation or status update:</p>
+                        <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <li className="flex items-center gap-2 bg-yellow-50 text-yellow-800 px-3 py-1.5 rounded-xl border border-yellow-200">
+                            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                            <span><strong>Over 2 Days:</strong> Warning (Yellow)</span>
+                          </li>
+                          <li className="flex items-center gap-2 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-xl border border-orange-200">
+                            <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                            <span><strong>Over 5 Days:</strong> Urgent (Orange)</span>
+                          </li>
+                          <li className="flex items-center gap-2 bg-red-50 text-red-800 px-3 py-1.5 rounded-xl border border-red-200">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+                            <span><strong>Over 9 Days:</strong> Breach (Red)</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                        <strong className="block text-blue-950 mb-1">💬 Automated WhatsApp Notifications:</strong>
+                        <ul className="space-y-1.5 text-blue-900 leading-relaxed pl-2 list-disc list-inside">
+                          <li><strong>Ticket Creation:</strong> Instantly notifies the resident with a confirmation, and alerts building administrators with a high-density structured summary.</li>
+                          <li><strong>Status Updates:</strong> Moving a ticket to <em>"In Progress"</em> or marking it as <em>"Resolved" / "Rejected"</em> automatically triggers a professionally drafted WhatsApp update straight to the reporter's phone.</li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="border-l-4 border-amber-500 pl-6 space-y-4">

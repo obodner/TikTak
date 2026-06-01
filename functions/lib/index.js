@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onTicketUpdate = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.getTenantInfo = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
+exports.whatsappWebhook = exports.onTicketUpdate = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.getTenantInfo = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
@@ -200,7 +200,255 @@ exports.checkAuth = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
         res.status(500).send({ authorized: false, error: "Internal server error" });
     }
 });
-exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+async function sendWhatsAppNotification(params) {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = "1046588828547584";
+    if (!token) {
+        logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager");
+        return;
+    }
+    if (!params.admins || params.admins.length === 0) {
+        logger.warn("No administrators configured for this tenant, skipping WhatsApp notifications.");
+        return;
+    }
+    let locationLabel = "רחוב";
+    let subLocationLabel = "אזור";
+    if (params.tenantId) {
+        try {
+            const tenantDoc = await db.collection("tenants").doc(params.tenantId).get();
+            const uiConfig = tenantDoc.data()?.uiConfig || {};
+            if (uiConfig.locationLabel)
+                locationLabel = uiConfig.locationLabel;
+            if (uiConfig.subLocationLabel)
+                subLocationLabel = uiConfig.subLocationLabel;
+        }
+        catch (err) {
+            logger.warn(`Failed to fetch custom labels for tenant ${params.tenantId}, using defaults.`, err);
+        }
+    }
+    let formattedLocation = "";
+    const locationParts = [];
+    if (params.subLocation) {
+        locationParts.push(`*${subLocationLabel}*: ${params.subLocation}`);
+    }
+    if (params.location) {
+        locationParts.push(`*${locationLabel}*: ${params.location}`);
+    }
+    if (locationParts.length > 0) {
+        formattedLocation = locationParts.join("\n");
+    }
+    else {
+        formattedLocation = "לא צוין מיקום";
+    }
+    let severityHebrew = "בינונית ⚠️";
+    const lowerUrgency = (params.urgency || "").toLowerCase();
+    if (lowerUrgency === "high") {
+        severityHebrew = "גבוהה 🚨";
+    }
+    else if (lowerUrgency === "low") {
+        severityHebrew = "נמוכה";
+    }
+    else if (lowerUrgency === "moderate" || lowerUrgency === "medium") {
+        severityHebrew = "בינונית ⚠️";
+    }
+    const hasImage = !!params.imageId;
+    const hasAudio = !!params.audioId;
+    let templateName = "resident_submit_ticket_no_media";
+    const buttonComponents = [];
+    if (hasImage && hasAudio) {
+        templateName = "resident_submit_ticket_all_media";
+        buttonComponents.push({
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [{ type: "text", text: `${params.tenantId}/${params.imageId}.jpg` }]
+        });
+        buttonComponents.push({
+            type: "button",
+            sub_type: "url",
+            index: "1",
+            parameters: [{ type: "text", text: `${params.tenantId}/${params.audioId}.webm` }]
+        });
+    }
+    else if (hasImage) {
+        templateName = "resident_submit_ticket_image";
+        buttonComponents.push({
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [{ type: "text", text: `${params.tenantId}/${params.imageId}.jpg` }]
+        });
+    }
+    else if (hasAudio) {
+        templateName = "resident_submit_ticket_audio";
+        buttonComponents.push({
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [{ type: "text", text: `${params.tenantId}/${params.audioId}.webm` }]
+        });
+    }
+    for (const admin of params.admins) {
+        try {
+            let cleanPhone = admin.phone.replace(/\D/g, "");
+            if (cleanPhone.startsWith("0") && cleanPhone.length === 10) {
+                cleanPhone = "972" + cleanPhone.substring(1);
+            }
+            const components = [
+                {
+                    type: "body",
+                    parameters: [
+                        { type: "text", text: params.tenantName },
+                        { type: "text", text: String(params.ticketNumber) },
+                        { type: "text", text: params.category },
+                        { type: "text", text: severityHebrew },
+                        { type: "text", text: params.summary || "אין תיאור" },
+                        { type: "text", text: formattedLocation },
+                        { type: "text", text: params.reporterName || "תושב/ת" }
+                    ]
+                }
+            ];
+            if (buttonComponents.length > 0) {
+                components.push(...buttonComponents);
+            }
+            const payload = {
+                messaging_product: "whatsapp",
+                to: cleanPhone,
+                type: "template",
+                template: {
+                    name: templateName,
+                    language: {
+                        code: templateName.startsWith("resident_submit_ticket_") ? "en" : "he"
+                    },
+                    components
+                }
+            };
+            logger.info(`Sending WhatsApp alert to admin ${admin.name} (${cleanPhone}) using template ${templateName}...`);
+            const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+            const resData = await response.json();
+            if (!response.ok) {
+                logger.error(`Meta API returned error for admin ${admin.name}:`, resData);
+            }
+            else {
+                logger.info(`WhatsApp alert successfully sent to admin ${admin.name}`, { messageId: resData.messages?.[0]?.id });
+            }
+        }
+        catch (err) {
+            logger.error(`Exception while sending WhatsApp alert to admin ${admin.name}:`, err);
+        }
+    }
+}
+function translateClosureReason(reason) {
+    const mapping = {
+        'fixed': 'טופל',
+        'duplicate': 'כפילות',
+        'irrelevant': 'לא רלוונטי',
+        'vendor': 'בטיפול ספק',
+        'outside': 'מחוץ לאחריות',
+        'rejected': 'נדחה'
+    };
+    return mapping[reason] || reason || 'טופל';
+}
+async function sendResidentWhatsAppNotification(params) {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = "1046588828547584";
+    if (!token) {
+        logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager, skipping resident notification.");
+        return;
+    }
+    if (!params.phone) {
+        logger.warn("No phone number provided for resident notification, skipping.");
+        return;
+    }
+    let cleanPhone = params.phone.replace(/\D/g, "");
+    if (cleanPhone.startsWith("0") && cleanPhone.length === 10) {
+        cleanPhone = "972" + cleanPhone.substring(1);
+    }
+    let locationLabel = "רחוב";
+    let subLocationLabel = "אזור";
+    if (params.tenantId) {
+        try {
+            const tenantDoc = await db.collection("tenants").doc(params.tenantId).get();
+            const uiConfig = tenantDoc.data()?.uiConfig || {};
+            if (uiConfig.locationLabel)
+                locationLabel = uiConfig.locationLabel;
+            if (uiConfig.subLocationLabel)
+                subLocationLabel = uiConfig.subLocationLabel;
+        }
+        catch (err) {
+            logger.warn(`Failed to fetch custom labels for tenant ${params.tenantId}, using defaults.`, err);
+        }
+    }
+    let formattedLocation = "";
+    const locationParts = [];
+    if (params.subLocation) {
+        locationParts.push(`*${subLocationLabel}*: ${params.subLocation}`);
+    }
+    if (params.location) {
+        locationParts.push(`*${locationLabel}*: ${params.location}`);
+    }
+    if (locationParts.length > 0) {
+        formattedLocation = locationParts.join(" • ");
+    }
+    else {
+        formattedLocation = "לא צוין מיקום";
+    }
+    const parameters = [
+        { type: "text", text: String(params.ticketNumber) },
+        { type: "text", text: params.category },
+        { type: "text", text: formattedLocation }
+    ];
+    if (params.templateName === "ticket_resolved") {
+        const reasonHebrew = translateClosureReason(params.closureReason || "fixed");
+        parameters.push({ type: "text", text: reasonHebrew });
+    }
+    try {
+        const payload = {
+            messaging_product: "whatsapp",
+            to: cleanPhone,
+            type: "template",
+            template: {
+                name: params.templateName,
+                language: {
+                    code: "he"
+                },
+                components: [
+                    {
+                        type: "body",
+                        parameters
+                    }
+                ]
+            }
+        };
+        logger.info(`Sending WhatsApp resident alert to ${cleanPhone} using template ${params.templateName}...`);
+        const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+            logger.error(`Meta API returned error for resident ${cleanPhone}:`, resData);
+        }
+        else {
+            logger.info(`WhatsApp alert successfully sent to resident ${cleanPhone}`, { messageId: resData.messages?.[0]?.id });
+        }
+    }
+    catch (err) {
+        logger.error(`Exception while sending WhatsApp resident alert to ${cleanPhone}:`, err);
+    }
+}
+exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
     try {
         const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone, source } = req.body;
         if (!tenantId) {
@@ -239,7 +487,7 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) =
         }
         const tenantRef = db.collection("tenants").doc(tenantId);
         const ticketsCol = db.collection("tenants").doc(tenantId).collection("tickets");
-        const ticketRef = isRealImage ? ticketsCol.doc(imageId) : ticketsCol.doc();
+        const ticketRef = isRealImage ? ticketsCol.doc(imageId) : ticketsCol.doc((0, crypto_1.randomUUID)());
         const ticketId = ticketRef.id;
         let ticketNumber = 0;
         try {
@@ -307,6 +555,43 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true }, async (req, res) =
                     hasAudio: !!req.body.audioBase64
                 }
             });
+            const adminUsersSnap = await tenantRef.collection("adminUsers").get();
+            const admins = [];
+            adminUsersSnap.forEach((userDoc) => {
+                const data = userDoc.data();
+                if (data && data.mobile && data.mobile.trim()) {
+                    admins.push({
+                        name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+                        phone: data.mobile.trim(),
+                    });
+                }
+            });
+            const tenantName = tenantDoc.data()?.name || tenantId;
+            await sendWhatsAppNotification({
+                tenantId,
+                tenantName,
+                ticketNumber,
+                category,
+                summary,
+                location,
+                subLocation,
+                urgency,
+                reporterName: reporterDoc.data()?.name || null,
+                imageId: finalImageId,
+                audioId: req.body.audioBase64 ? ticketId : null,
+                admins
+            });
+            if (reporterPhone) {
+                await sendResidentWhatsAppNotification({
+                    phone: reporterPhone,
+                    templateName: "new_ticket_confirmation",
+                    ticketNumber,
+                    category,
+                    location,
+                    subLocation,
+                    tenantId
+                });
+            }
             res.status(200).send({
                 success: true,
                 ticketId: ticketId,
@@ -350,24 +635,55 @@ exports.getTenantInfo = (0, https_1.onRequest)({ cors: true }, async (req, res) 
         return;
     }
     try {
-        const doc = await db.collection("tenants").doc(tenantId).get();
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const doc = await tenantRef.get();
         if (!doc.exists) {
             res.status(404).send({ error: "Tenant not found" });
             return;
         }
         const tData = doc.data();
-        logger.info("Returning tenant info", { tenantId, hasQuickTap: !!tData?.quickTap, quickTapEnabled: tData?.quickTap?.enabled });
-        res.send(tData);
+        const adminUsersSnap = await tenantRef.collection("adminUsers").get();
+        const admins = [];
+        adminUsersSnap.forEach((userDoc) => {
+            const data = userDoc.data();
+            if (data && data.mobile && data.mobile.trim()) {
+                admins.push({
+                    name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+                    phone: data.mobile.trim(),
+                });
+            }
+        });
+        logger.info("Returning tenant info with admins", {
+            tenantId,
+            hasQuickTap: !!tData?.quickTap,
+            quickTapEnabled: tData?.quickTap?.enabled,
+            adminCount: admins.length
+        });
+        res.send({
+            ...tData,
+            admins
+        });
     }
     catch (error) {
+        logger.error("Database error in getTenantInfo", { error });
         res.status(500).send({ error: "Database error" });
     }
 });
 exports.getImage = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
-    const pathSegments = req.path.split('/').filter(p => p && p !== 'img');
-    const tenantId = pathSegments[0];
-    const imageId = pathSegments[1];
-    if (!tenantId || !imageId) {
+    let tenantId = "";
+    let imageId = "";
+    const queryPath = req.query.path;
+    if (queryPath) {
+        const parts = queryPath.split('/');
+        tenantId = parts[0];
+        imageId = parts[1] ? parts[1].replace(/\.[^/.]+$/, "") : "";
+    }
+    else {
+        const pathSegments = req.path.split('/').filter(p => p && p !== 'img');
+        tenantId = pathSegments[0];
+        imageId = pathSegments[1];
+    }
+    if (!tenantId || !imageId || imageId === 'view') {
         res.status(400).send("Invalid image path format");
         return;
     }
@@ -390,10 +706,20 @@ exports.getImage = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     }
 });
 exports.getAudio = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
-    const pathSegments = req.path.split('/').filter(p => p && p !== 'aud');
-    const tenantId = pathSegments[0];
-    const audioId = pathSegments[1];
-    if (!tenantId || !audioId) {
+    let tenantId = "";
+    let audioId = "";
+    const queryPath = req.query.path;
+    if (queryPath) {
+        const parts = queryPath.split('/');
+        tenantId = parts[0];
+        audioId = parts[1] ? parts[1].replace(/\.[^/.]+$/, "") : "";
+    }
+    else {
+        const pathSegments = req.path.split('/').filter(p => p && p !== 'aud');
+        tenantId = pathSegments[0];
+        audioId = pathSegments[1];
+    }
+    if (!tenantId || !audioId || audioId === 'view') {
         res.status(400).send("Invalid audio path format");
         return;
     }
@@ -538,7 +864,7 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
         res.status(500).send({ error: err.message });
     }
 });
-exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)("tenants/{tenantId}/tickets/{ticketId}", async (event) => {
+exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants/{tenantId}/tickets/{ticketId}", secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
     if (!before || !after)
@@ -561,7 +887,9 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)("tenants/{tenantId}/
         const holidays = (holidaysDoc.data()?.holidays || []).map((h) => h.date);
         const update = {
             lastStatusChangeAt: now.toISOString(),
-            updatedAt: now.toISOString()
+            updatedAt: now.toISOString(),
+            stagnationDays: 0,
+            slaStatus: 'none'
         };
         const startTime = before.lastStatusChangeAt || before.createdAt;
         if (startTime) {
@@ -586,9 +914,116 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)("tenants/{tenantId}/
         }
         await event.data?.after.ref.update(update);
         logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });
+        if (after.reporterPhone) {
+            if (newStatus === 'in-progress') {
+                await sendResidentWhatsAppNotification({
+                    phone: after.reporterPhone,
+                    templateName: "ticket_in_progress",
+                    ticketNumber: after.ticketNumber,
+                    category: after.category,
+                    location: after.location,
+                    subLocation: after.subLocation,
+                    tenantId
+                });
+            }
+            else if (newStatus === 'resolved' || newStatus === 'dismissed') {
+                const closureReason = after.closureReason || (newStatus === 'dismissed' ? 'rejected' : 'fixed');
+                await sendResidentWhatsAppNotification({
+                    phone: after.reporterPhone,
+                    templateName: "ticket_resolved",
+                    ticketNumber: after.ticketNumber,
+                    category: after.category,
+                    location: after.location,
+                    subLocation: after.subLocation,
+                    closureReason,
+                    tenantId
+                });
+            }
+        }
     }
     catch (err) {
         logger.error("Error in onTicketUpdate trigger", { error: err, tenantId, ticketId });
     }
+});
+exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+    if (req.method === "GET") {
+        const mode = req.query["hub.mode"];
+        const token = req.query["hub.verify_token"];
+        const challenge = req.query["hub.challenge"];
+        const VERIFY_TOKEN = "tiktak_webhook_verify_token_2026";
+        if (mode === "subscribe" && token === VERIFY_TOKEN) {
+            logger.info("WhatsApp Webhook verified successfully");
+            res.status(200).send(challenge);
+        }
+        else {
+            logger.warn("WhatsApp Webhook verification failed", { mode, token });
+            res.status(403).send("Forbidden");
+        }
+        return;
+    }
+    if (req.method === "POST") {
+        try {
+            const body = req.body;
+            logger.info("Received WhatsApp Webhook POST payload", { structuredData: true, body: JSON.stringify(body) });
+            if (body.object === "whatsapp_business_account") {
+                const entry = body.entry?.[0];
+                const change = entry?.changes?.[0];
+                const value = change?.value;
+                if (value && value.messages && value.messages.length > 0) {
+                    const message = value.messages[0];
+                    const from = message.from;
+                    if (from) {
+                        const token = process.env.WHATSAPP_ACCESS_TOKEN;
+                        const phoneNumberId = value.metadata?.phone_number_id || "1046588828547584";
+                        if (!token) {
+                            logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager for auto-reply");
+                            res.status(500).send("Access token missing");
+                            return;
+                        }
+                        const autoReplyText = `🛑 *הודעה אוטומטית מ-TikTak*
+
+ערוץ זה מיועד לשליחת עדכונים אוטומטיים בלבד ואינו מאויש על ידי בני אדם. הודעתך התקבלה אך לא תיקרא ולא תיענה.
+
+לפתיחת דיווח חדש, אנא השתמשו בקישור הייעודי.
+
+תודה, צוות *TikTak*! ⚡`;
+                        const payload = {
+                            messaging_product: "whatsapp",
+                            recipient_type: "individual",
+                            to: from,
+                            type: "text",
+                            text: {
+                                preview_url: false,
+                                body: autoReplyText
+                            }
+                        };
+                        logger.info(`Sending automated auto-reply to ${from}...`);
+                        const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+                            method: "POST",
+                            headers: {
+                                "Authorization": `Bearer ${token}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        const resData = await response.json();
+                        if (!response.ok) {
+                            logger.error(`Meta API returned error during auto-reply to ${from}:`, resData);
+                        }
+                        else {
+                            logger.info(`Auto-reply successfully sent to ${from}`, { messageId: resData.messages?.[0]?.id });
+                        }
+                    }
+                }
+            }
+            res.status(200).send("EVENT_RECEIVED");
+        }
+        catch (error) {
+            logger.error("Error processing WhatsApp Webhook", { error: error.message });
+            res.status(500).send("Internal Server Error");
+        }
+        return;
+    }
+    res.status(405).send("Method Not Allowed");
 });
 //# sourceMappingURL=index.js.map
