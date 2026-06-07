@@ -406,7 +406,10 @@ async function sendResidentWhatsAppNotification(params) {
         { type: "text", text: formattedLocation }
     ];
     if (params.templateName === "ticket_resolved") {
-        const reasonHebrew = translateClosureReason(params.closureReason || "fixed");
+        let reasonHebrew = translateClosureReason(params.closureReason || "fixed");
+        if (params.resolutionNote && params.resolutionNote.trim()) {
+            reasonHebrew += ` (${params.resolutionNote.trim()})`;
+        }
         parameters.push({ type: "text", text: reasonHebrew });
     }
     try {
@@ -936,6 +939,7 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants
                     location: after.location,
                     subLocation: after.subLocation,
                     closureReason,
+                    resolutionNote: after.resolutionNote,
                     tenantId
                 });
             }

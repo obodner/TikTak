@@ -45,5 +45,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if isSuperAdmin();
     }
+
+    // Leads Collection for SaaS Landing Page
+    match /leads/{leadId} {
+      // Public is allowed to create leads (register for pilot)
+      allow create: if true;
+      
+      // Only Super Admins can view, modify, or remove lead submissions
+      allow read, update, delete: if isSuperAdmin();
+    }
   }
 }

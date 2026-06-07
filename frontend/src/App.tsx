@@ -1,5 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import ResidentFlow from './pages/ResidentFlow';
+import LandingPage from './pages/LandingPage';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TenantSettings from './pages/admin/TenantSettings';
@@ -8,6 +9,21 @@ import SuperAdminDashboard from './pages/admin/SuperAdminDashboard';
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
 import { SuperAdminEnforcer } from './components/admin/SuperAdminEnforcer';
 import { useEffect } from 'react';
+
+// Wrapper to dynamically load LandingPage or ResidentFlow based on QR query params
+function HomeRoute() {
+  const [searchParams] = useSearchParams();
+  const hasTenant = 
+    searchParams.has('t') || 
+    searchParams.has('tenant') || 
+    searchParams.has('b') || 
+    searchParams.has('building');
+
+  if (hasTenant) {
+    return <ResidentFlow />;
+  }
+  return <LandingPage />;
+}
 
 export default function App() {
   useEffect(() => {
@@ -19,7 +35,7 @@ export default function App() {
   return (
     <Routes>
       {/* Resident facing UI -> strictly public */}
-      <Route path="/" element={<ResidentFlow />} />
+      <Route path="/" element={<HomeRoute />} />
       <Route path="/report/:tenantId" element={<ResidentFlow />} />
       
       {/* Auth Portal */}

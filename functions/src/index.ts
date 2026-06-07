@@ -397,6 +397,7 @@ async function sendResidentWhatsAppNotification(params: {
   location: string | null;
   subLocation: string | null;
   closureReason?: string | null;
+  resolutionNote?: string | null;
   tenantId?: string;
 }) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -454,7 +455,10 @@ async function sendResidentWhatsAppNotification(params: {
   ];
 
   if (params.templateName === "ticket_resolved") {
-    const reasonHebrew = translateClosureReason(params.closureReason || "fixed");
+    let reasonHebrew = translateClosureReason(params.closureReason || "fixed");
+    if (params.resolutionNote && params.resolutionNote.trim()) {
+      reasonHebrew += ` (${params.resolutionNote.trim()})`;
+    }
     parameters.push({ type: "text", text: reasonHebrew });
   }
 
@@ -1092,6 +1096,7 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
           location: after.location,
           subLocation: after.subLocation,
           closureReason,
+          resolutionNote: after.resolutionNote,
           tenantId
         });
       }
