@@ -86,6 +86,10 @@ export default function ResidentFlow() {
   const [selectedLocation, setSelectedLocation] = useState(location || '');
   const [selectedSubLocation, setSelectedSubLocation] = useState(subLocation || '');
   const [ticketNumber, setTicketNumber] = useState<number | null>(null);
+  const [ticketId, setTicketId] = useState<string | null>(null);
+  const [appRating, setAppRating] = useState<number | null>(null);
+  const [isRatingSubmitting, setIsRatingSubmitting] = useState(false);
+  const [isRatingSubmitted, setIsRatingSubmitted] = useState(false);
   const [reporterPhone, setReporterPhone] = useState<string>('');
   const [phoneInput, setPhoneInput] = useState<string>('');
 
@@ -96,6 +100,36 @@ export default function ResidentFlow() {
       setPhoneInput(saved);
     }
   }, []);
+
+  const handleRatingSelect = async (rating: number) => {
+    if (!ticketId || isRatingSubmitting) return;
+    setAppRating(rating);
+    setIsRatingSubmitting(true);
+
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+
+    try {
+      const response = await fetch('/api/submitAppFeedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          ticketId,
+          rating
+        })
+      });
+
+      if (response.ok) {
+        setIsRatingSubmitted(true);
+      }
+    } catch (err) {
+      console.error('Failed to submit rating', err);
+    } finally {
+      setIsRatingSubmitting(false);
+    }
+  };
   
   const isMunicipality = config.tenantType === 'municipality';
   const locationLabel = config.uiConfig?.locationLabel || config.locationLabel || (isMunicipality ? (t('area') || 'אזור') : (t('floor') || 'קומה'));
@@ -281,6 +315,7 @@ export default function ResidentFlow() {
       const reporterName = createData.reporterName || phone;
       const tNum = createData.ticketNumber;
       setTicketNumber(tNum);
+      setTicketId(createData.ticketId);
 
       const sentInfo: SentTicketInfo = {
         summary: finalSummary,
@@ -355,6 +390,7 @@ export default function ResidentFlow() {
       const reporterName = createData.reporterName || finalPhone;
       const tNum = createData.ticketNumber;
       setTicketNumber(tNum);
+      setTicketId(createData.ticketId);
 
       const sentInfo: SentTicketInfo = {
         summary: quickTicketData.summary,
@@ -465,12 +501,53 @@ export default function ResidentFlow() {
             הדיווח נשלח בהצלחה!
           </h2>
 
-          {/* Ticket Number Pill */}
+           {/* Ticket Number Pill */}
           {ticketNumber && (
-            <div className="bg-[#EFF6FF] px-8 py-3 rounded-full border border-blue-100">
+            <div className="bg-[#EFF6FF] px-8 py-3 rounded-full border border-blue-100 mb-2">
               <p className="text-[#2563EB] font-black text-2xl tracking-wide">#{ticketNumber}</p>
             </div>
           )}
+
+          {/* 5-Star App Experience Survey */}
+          <div className="mt-8 pt-8 border-t border-slate-100 w-full flex flex-col items-center">
+            {isRatingSubmitted ? (
+              <p className="text-emerald-600 font-extrabold text-lg animate-in fade-in duration-300">
+                תודה! המשוב שלך עוזר לנו להשתפר ⚡
+              </p>
+            ) : (
+              <>
+                <p className="text-slate-600 font-bold text-base mb-4">
+                  איך היתה חווית הדיווח?
+                </p>
+                <div className="flex flex-col items-center">
+                  <div className="flex gap-2.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        disabled={isRatingSubmitting}
+                        onClick={() => handleRatingSelect(star)}
+                        className="text-slate-200 hover:text-amber-400 focus:outline-none transition-all duration-150 active:scale-110"
+                      >
+                        <svg
+                          className={`w-10 h-10 transition-colors ${
+                            (appRating !== null && star <= appRating) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'
+                          }`}
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex justify-between w-full max-w-[210px] px-1 mt-2.5 text-xs text-slate-400 font-extrabold select-none" dir="rtl">
+                    <span>חלש (1)</span>
+                    <span>מעולה (5)</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       ) : (
         <div className="w-full flex flex-col gap-4">

@@ -603,6 +603,15 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
         return nextNumber;
       });
 
+      // Increment overall tickets counter in global stats (Option B)
+      try {
+        await db.collection("global_stats").doc("counters").set({
+          totalTicketsCount: admin.firestore.FieldValue.increment(1)
+        }, { merge: true });
+      } catch (err: any) {
+        logger.error("Failed to increment global tickets counter", { error: err.message });
+      }
+
       // If audio is provided, upload to GCS (Done outside transaction)
       if (req.body.audioBase64) {
         const bucket = admin.storage().bucket();
@@ -719,6 +728,98 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
     }
 
     res.status(500).send({ error: "Failed to save ticket" });
+  }
+});
+
+export const submitAppFeedback = onRequest({ cors: true }, async (req, res) => {
+  try {
+    const { tenantId, ticketId, rating } = req.body;
+
+    if (!tenantId || !ticketId || typeof rating !== 'number') {
+      res.status(400).send({ error: "Missing tenantId, ticketId, or valid rating" });
+      return;
+    }
+
+    if (rating < 1 || rating > 5) {
+      res.status(400).send({ error: "Rating must be between 1 and 5" });
+      return;
+    }
+
+    const ticketRef = db.collection("tenants").doc(tenantId).collection("tickets").doc(ticketId);
+    const docSnap = await ticketRef.get();
+    if (!docSnap.exists) {
+      res.status(404).send({ error: "Ticket not found" });
+      return;
+    }
+
+    await ticketRef.update({
+      appRating: rating,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Increment global rating counters (Option B)
+    try {
+      await db.collection("global_stats").doc("counters").set({
+        ratingSum: admin.firestore.FieldValue.increment(rating),
+        ratingCount: admin.firestore.FieldValue.increment(1)
+      }, { merge: true });
+    } catch (err: any) {
+      logger.error("Failed to update global stats rating", { error: err.message });
+    }
+
+    // Record Audit Log
+    const ticketData = docSnap.data();
+    await recordAuditLog({
+      tenantId,
+      action: 'APP_FEEDBACK_SUBMITTED',
+      level: 'INFO',
+      actor: {
+        uid: ticketData?.reporterPhone || 'anonymous',
+        name: ticketData?.reporterName || 'Resident',
+        type: 'resident'
+      },
+      details: {
+        ticketId,
+        ticketNumber: ticketData?.ticketNumber,
+        rating
+      }
+    });
+
+    res.status(200).send({ success: true });
+  } catch (error: any) {
+    logger.error("submitAppFeedback failed", { error: error.message });
+    res.status(500).send({ error: "Failed to submit feedback" });
+  }
+});
+
+export const landingMetrics = onRequest({ cors: true }, async (req, res) => {
+  try {
+    const statsDoc = await db.collection("global_stats").doc("counters").get();
+    if (!statsDoc.exists) {
+      res.status(200).send({
+        totalTickets: 125,
+        satisfactionRate: 98
+      });
+      return;
+    }
+
+    const data = statsDoc.data() || {};
+    const totalTicketsCount = data.totalTicketsCount || 0;
+    const ratingSum = data.ratingSum || 0;
+    const ratingCount = data.ratingCount || 0;
+
+    let satisfactionRate = 98; // Fallback default
+    if (ratingCount > 0) {
+      satisfactionRate = Math.round((ratingSum / (ratingCount * 5)) * 100);
+    }
+
+    res.status(200).send({
+      totalTickets: totalTicketsCount,
+      satisfactionRate
+    });
+  } catch (error: any) {
+    logger.error("landingMetrics failed", { error: error.message });
+    res.status(500).send({ error: "Failed to load landing metrics" });
   }
 });
 
@@ -1065,10 +1166,12 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
       update.total_days_in_progress = 0;
       update.slaStatus = 'none';
       update.stagnationDays = 0;
+      update.serviceFeedback = admin.firestore.FieldValue.delete();
     } else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
       update.total_days_in_progress = 0;
       update.slaStatus = 'none';
       update.stagnationDays = 0;
+      update.serviceFeedback = admin.firestore.FieldValue.delete();
     }
 
     await event.data?.after.ref.update(update);
@@ -1157,8 +1260,83 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
               return;
             }
 
-            // Exactly the Hebrew copy requested by the user
-            const autoReplyText = `🛑 *הודעה אוטומטית מ-TikTak*
+            let isFeedback = false;
+            let feedbackValue: 'good' | 'ok' | 'bad' | null = null;
+
+            if (message.type === 'button') {
+              const payload = message.button?.payload || '';
+              const text = message.button?.text || '';
+
+              if (payload === 'service_feedback_good' || text === 'מצוין 🤩') {
+                feedbackValue = 'good';
+              } else if (payload === 'service_feedback_ok' || text === 'בסדר גמור 👍') {
+                feedbackValue = 'ok';
+              } else if (payload === 'service_feedback_bad' || text === 'לא מרוצה 👎') {
+                feedbackValue = 'bad';
+              }
+            }
+
+            if (feedbackValue) {
+              let firestorePhone = from;
+              if (from.startsWith('972') && from.length === 12) {
+                firestorePhone = '0' + from.substring(3);
+              }
+
+              try {
+                const ticketsQuery = db.collectionGroup("tickets")
+                  .where("reporterPhone", "==", firestorePhone);
+                
+                const querySnapshot = await ticketsQuery.get();
+                const fortyEightHoursAgoMs = Date.now() - 48 * 60 * 60 * 1000;
+                
+                const candidates = querySnapshot.docs.filter(doc => {
+                  const data = doc.data();
+                  const createdAtMs = Date.parse(data.createdAt);
+                  return (
+                    ['resolved', 'dismissed'].includes(data.status) &&
+                    createdAtMs >= fortyEightHoursAgoMs &&
+                    !data.serviceFeedback
+                  );
+                });
+
+                candidates.sort((a, b) => Date.parse(b.data().createdAt) - Date.parse(a.data().createdAt));
+
+                if (candidates.length > 0) {
+                  const targetDoc = candidates[0];
+                  const pathParts = targetDoc.ref.path.split('/');
+                  const tenantId = pathParts[1];
+
+                  await targetDoc.ref.update({
+                    serviceFeedback: feedbackValue,
+                    updatedAt: new Date().toISOString()
+                  });
+
+                  await recordAuditLog({
+                    tenantId,
+                    action: 'SERVICE_FEEDBACK_SUBMITTED',
+                    level: 'INFO',
+                    actor: {
+                      uid: firestorePhone,
+                      name: targetDoc.data()?.reporterName || 'Resident',
+                      type: 'resident'
+                    },
+                    details: {
+                      ticketId: targetDoc.id,
+                      ticketNumber: targetDoc.data()?.ticketNumber,
+                      rating: feedbackValue
+                    }
+                  });
+
+                  isFeedback = true;
+                }
+              } catch (e: any) {
+                logger.error("Failed to update service feedback from WhatsApp webhook", { error: e.message });
+              }
+            }
+
+            const autoReplyText = isFeedback
+              ? `תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות בבניין. 🏡`
+              : `🛑 *הודעה אוטומטית מ-TikTak*
 
 ערוץ זה מיועד לשליחת עדכונים אוטומטיים בלבד ואינו מאויש על ידי בני אדם. הודעתך התקבלה אך לא תיקרא ולא תיענה.
 

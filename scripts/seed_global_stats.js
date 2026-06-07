@@ -14,17 +14,17 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 async function run() {
-  const snapshot = await db.collection('tenants').doc('demo').collection('tickets').orderBy('createdAt', 'desc').limit(1).get();
-  if (snapshot.empty) {
-    console.log('No tickets found.');
-    return;
-  }
+  const docRef = db.collection('global_stats').doc('counters');
   
-  snapshot.forEach(doc => {
-    console.log('--- LATEST TICKET DETAILS ---');
-    console.log('Ticket Document ID:', doc.id);
-    console.log(JSON.stringify(doc.data(), null, 2));
+  // Set baseline stats: starting with 0 extra tickets, 100 ratings averaging 4.9 stars (98%)
+  await docRef.set({
+    totalTicketsCount: 0,
+    ratingSum: 490,
+    ratingCount: 100,
+    updatedAt: new Date().toISOString()
   });
+
+  console.log('Successfully seeded global_stats/counters in Firestore.');
 }
 
 run().catch(console.error);

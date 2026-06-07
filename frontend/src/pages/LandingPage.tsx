@@ -35,6 +35,27 @@ export default function LandingPage() {
       setIsDashboardZoomed(false);
     }
   }, [isDashboardLightboxOpen]);
+
+  // Dynamic Landing Metrics State (Option B)
+  const [totalTickets, setTotalTickets] = useState<number | null>(null);
+  const [satisfactionRate, setSatisfactionRate] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function fetchMetrics() {
+      try {
+        const res = await fetch('/api/landingMetrics');
+        if (res.ok) {
+          const data = await res.json();
+          setTotalTickets(data.totalTickets);
+          setSatisfactionRate(data.satisfactionRate);
+        }
+      } catch (err) {
+        console.error('Failed to fetch landing page metrics', err);
+      }
+    }
+    fetchMetrics();
+  }, []);
+
   const [fullName, setFullName] = useState('');
   const [leadType, setLeadType] = useState<LeadType>('building');
   const [address, setAddress] = useState('');
@@ -614,9 +635,11 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
             {/* Widget 1 */}
             <div className="bg-white border border-slate-200/60 p-6 rounded-2xl shadow-md flex flex-col items-center justify-center space-y-1">
-              <span className="text-4xl md:text-5xl font-black text-blue-600">12,450+</span>
+              <span className="text-4xl md:text-5xl font-black text-blue-600">
+                {totalTickets !== null ? totalTickets.toLocaleString() : '125'}
+              </span>
               <span className="text-sm md:text-base text-slate-500 font-extrabold mt-1">
-                {t('landing_stats_reports') || 'דיווחים טופלו בהצלחה'}
+                {isRtl ? 'דיווחים נפתחו' : 'Reports opened'}
               </span>
             </div>
             {/* Widget 2 */}
@@ -633,7 +656,7 @@ export default function LandingPage() {
             <div className="bg-white border border-slate-200/60 p-6 rounded-2xl shadow-md flex flex-col items-center justify-center space-y-1">
               <span className="text-4xl md:text-5xl font-black text-blue-600 flex items-center gap-1">
                 <Smile size={28} className="text-blue-500" />
-                <span>98%</span>
+                <span>{satisfactionRate !== null ? `${satisfactionRate}%` : '98%'}</span>
               </span>
               <span className="text-sm md:text-base text-slate-500 font-extrabold mt-1">
                 {isRtl ? 'שביעות רצון משתמשים' : 'User satisfaction rate'}

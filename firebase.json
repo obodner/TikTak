@@ -37,6 +37,13 @@
         }
       },
       {
+        "source": "/api/landingMetrics",
+        "function": {
+          "functionId": "landingMetrics",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/api/analyzeImage",
         "function": {
           "functionId": "analyzeImage",
