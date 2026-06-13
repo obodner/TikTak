@@ -663,7 +663,8 @@ exports.submitAppFeedback = (0, https_1.onRequest)({ cors: true }, async (req, r
         try {
             await db.collection("global_stats").doc("counters").set({
                 ratingSum: admin.firestore.FieldValue.increment(rating),
-                ratingCount: admin.firestore.FieldValue.increment(1)
+                ratingCount: admin.firestore.FieldValue.increment(1),
+                [`ratingCount_${rating}`]: admin.firestore.FieldValue.increment(1)
             }, { merge: true });
         }
         catch (err) {
@@ -998,13 +999,13 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants
             update.total_days_in_progress = 0;
             update.slaStatus = 'none';
             update.stagnationDays = 0;
-            update.serviceFeedback = admin.firestore.FieldValue.delete();
+            update.vaadRating = admin.firestore.FieldValue.delete();
         }
         else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
             update.total_days_in_progress = 0;
             update.slaStatus = 'none';
             update.stagnationDays = 0;
-            update.serviceFeedback = admin.firestore.FieldValue.delete();
+            update.vaadRating = admin.firestore.FieldValue.delete();
         }
         await event.data?.after.ref.update(update);
         logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });
@@ -1078,15 +1079,15 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                         let isFeedback = false;
                         let feedbackValue = null;
                         if (message.type === 'button') {
-                            const payload = message.button?.payload || '';
+                            const payload = (message.button?.payload || '').toLowerCase();
                             const text = message.button?.text || '';
-                            if (payload === 'service_feedback_good' || text === 'מצוין 🤩') {
+                            if (payload === 'service_feedback_good' || payload.includes('good') || payload.includes('מצוין') || text.includes('מצוין')) {
                                 feedbackValue = 'good';
                             }
-                            else if (payload === 'service_feedback_ok' || text === 'בסדר גמור 👍') {
+                            else if (payload === 'service_feedback_ok' || payload.includes('ok') || payload.includes('בסדר') || text.includes('בסדר')) {
                                 feedbackValue = 'ok';
                             }
-                            else if (payload === 'service_feedback_bad' || text === 'לא מרוצה 👎') {
+                            else if (payload === 'service_feedback_bad' || payload.includes('bad') || payload.includes('לא מרוצה') || text.includes('לא מרוצה')) {
                                 feedbackValue = 'bad';
                             }
                         }
@@ -1105,7 +1106,7 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                     const createdAtMs = Date.parse(data.createdAt);
                                     return (['resolved', 'dismissed'].includes(data.status) &&
                                         createdAtMs >= fortyEightHoursAgoMs &&
-                                        !data.serviceFeedback);
+                                        !data.vaadRating);
                                 });
                                 candidates.sort((a, b) => Date.parse(b.data().createdAt) - Date.parse(a.data().createdAt));
                                 if (candidates.length > 0) {
@@ -1113,7 +1114,7 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                     const pathParts = targetDoc.ref.path.split('/');
                                     const tenantId = pathParts[1];
                                     await targetDoc.ref.update({
-                                        serviceFeedback: feedbackValue,
+                                        vaadRating: feedbackValue,
                                         updatedAt: new Date().toISOString()
                                     });
                                     await recordAuditLog({
@@ -1138,40 +1139,55 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                 logger.error("Failed to update service feedback from WhatsApp webhook", { error: e.message });
                             }
                         }
-                        const autoReplyText = isFeedback
-                            ? `תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות בבניין. 🏡`
-                            : `🛑 *הודעה אוטומטית מ-TikTak*
+                        let shouldSendReply = true;
+                        let autoReplyText = "";
+                        if (message.type === 'button') {
+                            if (feedbackValue) {
+                                autoReplyText = `תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡`;
+                            }
+                            else {
+                                shouldSendReply = false;
+                            }
+                        }
+                        else {
+                            autoReplyText = `🛑 *הודעה אוטומטית מ-TikTak*
 
 ערוץ זה מיועד לשליחת עדכונים אוטומטיים בלבד ואינו מאויש על ידי בני אדם. הודעתך התקבלה אך לא תיקרא ולא תיענה.
 
 לפתיחת דיווח חדש, אנא השתמשו בקישור הייעודי.
 
 תודה, צוות *TikTak*! ⚡`;
-                        const payload = {
-                            messaging_product: "whatsapp",
-                            recipient_type: "individual",
-                            to: from,
-                            type: "text",
-                            text: {
-                                preview_url: false,
-                                body: autoReplyText
+                        }
+                        if (shouldSendReply) {
+                            const payload = {
+                                messaging_product: "whatsapp",
+                                recipient_type: "individual",
+                                to: from,
+                                type: "text",
+                                text: {
+                                    preview_url: false,
+                                    body: autoReplyText
+                                }
+                            };
+                            logger.info(`Sending automated response to ${from}...`);
+                            const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+                                method: "POST",
+                                headers: {
+                                    "Authorization": `Bearer ${token}`,
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify(payload)
+                            });
+                            const resData = await response.json();
+                            if (!response.ok) {
+                                logger.error(`Meta API returned error during automated reply to ${from}:`, resData);
                             }
-                        };
-                        logger.info(`Sending automated auto-reply to ${from}...`);
-                        const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
-                            method: "POST",
-                            headers: {
-                                "Authorization": `Bearer ${token}`,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        const resData = await response.json();
-                        if (!response.ok) {
-                            logger.error(`Meta API returned error during auto-reply to ${from}:`, resData);
+                            else {
+                                logger.info(`Automated reply successfully sent to ${from}`, { messageId: resData.messages?.[0]?.id });
+                            }
                         }
                         else {
-                            logger.info(`Auto-reply successfully sent to ${from}`, { messageId: resData.messages?.[0]?.id });
+                            logger.info(`Button click but not feedback or no auto-reply required for ${from}, skipping response.`);
                         }
                     }
                 }

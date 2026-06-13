@@ -39,6 +39,8 @@ type Ticket = {
   slaStatus?: 'none' | 'stale-2' | 'stale-5' | 'stale-9';
   stagnationDays?: number;
   lastStatusChangeAt?: string;
+  appRating?: number;
+  vaadRating?: string;
 };
 
 export default function AdminDashboard() {
@@ -527,9 +529,13 @@ export default function AdminDashboard() {
       uiLabels.location,
       uiLabels.subLocation,
       isHe ? 'סטטוס' : 'Status',
+      isHe ? 'סיבת סגירה' : 'Closure Reason',
+      isHe ? 'הערת סגירה' : 'Resolution Note',
       isHe ? 'חומרה' : 'Urgency',
       isHe ? 'תמונה' : 'Image',
-      isHe ? 'אודיו' : 'Audio'
+      isHe ? 'אודיו' : 'Audio',
+      isHe ? 'דירוג אפליקציה' : 'App Rating',
+      isHe ? 'דירוג ועד (WhatsApp)' : 'Vaad Feedback'
     ];
 
     const translateStatus = (status: string) => {
@@ -552,9 +558,24 @@ export default function AdminDashboard() {
       t.location || '',
       t.subLocation || '',
       translateStatus(t.status),
+      t.closureReason ? (() => {
+        const mapping: Record<string, { he: string, en: string }> = {
+          'fixed': { he: 'טופל', en: 'Fixed' },
+          'duplicate': { he: 'כפילות', en: 'Duplicate' },
+          'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
+          'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
+          'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+          'rejected': { he: 'נדחה', en: 'Rejected' }
+        };
+        const entry = mapping[t.closureReason];
+        return entry ? (isEn ? entry.en : entry.he) : t.closureReason;
+      })() : '',
+      t.resolutionNote ? t.resolutionNote.replace(/"/g, '""') : '',
       uiLabels.urgency[t.urgency],
       t.imageId ? 'V' : '',
-      t.audioId ? 'V' : ''
+      t.audioId ? 'V' : '',
+      t.appRating || '',
+      t.vaadRating ? (t.vaadRating === 'good' ? (isHe ? 'מצוין' : 'Excellent') : t.vaadRating === 'ok' ? (isHe ? 'בסדר' : 'Satisfactory') : (isHe ? 'לא מרוצה' : 'Dissatisfied')) : ''
     ]);
 
     const csvContent = [
@@ -730,7 +751,7 @@ export default function AdminDashboard() {
                         </p>
 
                         {/* Closure Reason & Resolution Notes */}
-                        {(t.status === 'resolved' || t.status === 'dismissed') && (t.closureReason || t.resolutionNote) && (
+                        {(t.status === 'resolved' || t.status === 'dismissed') && (t.closureReason || t.resolutionNote || t.vaadRating) && (
                           <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1.5 text-right" dir={isHe ? 'rtl' : 'ltr'}>
                             {t.closureReason && (
                               <div className="flex items-center gap-1.5 font-bold">
@@ -759,6 +780,24 @@ export default function AdminDashboard() {
                                   {isEn ? "Notes: " : "הערת סגירה: "}
                                 </span>
                                 "{t.resolutionNote}"
+                              </div>
+                            )}
+                            {t.vaadRating && (
+                              <div className="flex items-center gap-1.5 font-bold mt-1">
+                                <span className="text-slate-400 font-medium">
+                                  {isEn ? "Vaad Feedback:" : "משוב דייר על הטיפול:"}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full font-bold ${
+                                  t.vaadRating === 'good' ? 'bg-green-100 text-green-700' :
+                                  t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {(() => {
+                                    if (t.vaadRating === 'good') return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
+                                    if (t.vaadRating === 'ok') return isEn ? 'Satisfactory 👍' : 'בסדר 👍';
+                                    return isEn ? 'Dissatisfied 👎' : 'לא מרוצה 👎';
+                                  })()}
+                                </span>
                               </div>
                             )}
                           </div>

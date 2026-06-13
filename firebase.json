@@ -79,6 +79,13 @@
         }
       },
       {
+        "source": "/api/submitAppFeedback",
+        "function": {
+          "functionId": "submitAppFeedback",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/img/**",
         "function": {
           "functionId": "getImage",

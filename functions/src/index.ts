@@ -761,7 +761,8 @@ export const submitAppFeedback = onRequest({ cors: true }, async (req, res) => {
     try {
       await db.collection("global_stats").doc("counters").set({
         ratingSum: admin.firestore.FieldValue.increment(rating),
-        ratingCount: admin.firestore.FieldValue.increment(1)
+        ratingCount: admin.firestore.FieldValue.increment(1),
+        [`ratingCount_${rating}`]: admin.firestore.FieldValue.increment(1)
       }, { merge: true });
     } catch (err: any) {
       logger.error("Failed to update global stats rating", { error: err.message });
@@ -853,11 +854,11 @@ export const getTenantInfo = onRequest({ cors: true }, async (req, res) => {
       }
     });
 
-    logger.info("Returning tenant info with admins", { 
-      tenantId, 
-      hasQuickTap: !!tData?.quickTap, 
+    logger.info("Returning tenant info with admins", {
+      tenantId,
+      hasQuickTap: !!tData?.quickTap,
       quickTapEnabled: tData?.quickTap?.enabled,
-      adminCount: admins.length 
+      adminCount: admins.length
     });
 
     res.send({
@@ -1136,7 +1137,7 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
 
     const country = tenantData.country || "IL";
     const slaConfig = tenantData.slaConfig || { enabled: true, workingDays: [0, 1, 2, 3, 4] };
-    
+
     // Fetch holidays
     const holidaysDoc = await db.collection("holidays").doc(country).get();
     const holidays = (holidaysDoc.data()?.holidays || []).map((h: any) => h.date);
@@ -1152,7 +1153,7 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
     const startTime = before.lastStatusChangeAt || before.createdAt;
     if (startTime) {
       const delta = calculateWorkingDays(startTime, now, slaConfig.workingDays, holidays);
-      
+
       if (oldStatus === 'open') {
         update.total_days_in_new = (before.total_days_in_new || 0) + delta;
       } else if (oldStatus === 'in-progress') {
@@ -1166,12 +1167,12 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
       update.total_days_in_progress = 0;
       update.slaStatus = 'none';
       update.stagnationDays = 0;
-      update.serviceFeedback = admin.firestore.FieldValue.delete();
+      update.vaadRating = admin.firestore.FieldValue.delete();
     } else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
       update.total_days_in_progress = 0;
       update.slaStatus = 'none';
       update.stagnationDays = 0;
-      update.serviceFeedback = admin.firestore.FieldValue.delete();
+      update.vaadRating = admin.firestore.FieldValue.delete();
     }
 
     await event.data?.after.ref.update(update);
@@ -1264,14 +1265,14 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
             let feedbackValue: 'good' | 'ok' | 'bad' | null = null;
 
             if (message.type === 'button') {
-              const payload = message.button?.payload || '';
+              const payload = (message.button?.payload || '').toLowerCase();
               const text = message.button?.text || '';
 
-              if (payload === 'service_feedback_good' || text === 'מצוין 🤩') {
+              if (payload === 'service_feedback_good' || payload.includes('good') || payload.includes('מצוין') || text.includes('מצוין')) {
                 feedbackValue = 'good';
-              } else if (payload === 'service_feedback_ok' || text === 'בסדר גמור 👍') {
+              } else if (payload === 'service_feedback_ok' || payload.includes('ok') || payload.includes('בסדר') || text.includes('בסדר')) {
                 feedbackValue = 'ok';
-              } else if (payload === 'service_feedback_bad' || text === 'לא מרוצה 👎') {
+              } else if (payload === 'service_feedback_bad' || payload.includes('bad') || payload.includes('לא מרוצה') || text.includes('לא מרוצה')) {
                 feedbackValue = 'bad';
               }
             }
@@ -1285,17 +1286,17 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
               try {
                 const ticketsQuery = db.collectionGroup("tickets")
                   .where("reporterPhone", "==", firestorePhone);
-                
+
                 const querySnapshot = await ticketsQuery.get();
                 const fortyEightHoursAgoMs = Date.now() - 48 * 60 * 60 * 1000;
-                
+
                 const candidates = querySnapshot.docs.filter(doc => {
                   const data = doc.data();
                   const createdAtMs = Date.parse(data.createdAt);
                   return (
                     ['resolved', 'dismissed'].includes(data.status) &&
                     createdAtMs >= fortyEightHoursAgoMs &&
-                    !data.serviceFeedback
+                    !data.vaadRating
                   );
                 });
 
@@ -1307,7 +1308,7 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                   const tenantId = pathParts[1];
 
                   await targetDoc.ref.update({
-                    serviceFeedback: feedbackValue,
+                    vaadRating: feedbackValue,
                     updatedAt: new Date().toISOString()
                   });
 
@@ -1334,43 +1335,58 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
               }
             }
 
-            const autoReplyText = isFeedback
-              ? `תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות בבניין. 🏡`
-              : `🛑 *הודעה אוטומטית מ-TikTak*
+            let shouldSendReply = true;
+            let autoReplyText = "";
+
+            if (message.type === 'button') {
+              // Only send a reply if it is a valid feedback button (we always thank them for rating)
+              if (feedbackValue) {
+                autoReplyText = `תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡`;
+              } else {
+                shouldSendReply = false;
+              }
+            } else {
+              // User wrote/sent something other than a button click
+              autoReplyText = `🛑 *הודעה אוטומטית מ-TikTak*
 
 ערוץ זה מיועד לשליחת עדכונים אוטומטיים בלבד ואינו מאויש על ידי בני אדם. הודעתך התקבלה אך לא תיקרא ולא תיענה.
 
 לפתיחת דיווח חדש, אנא השתמשו בקישור הייעודי.
 
 תודה, צוות *TikTak*! ⚡`;
+            }
 
-            const payload = {
-              messaging_product: "whatsapp",
-              recipient_type: "individual",
-              to: from,
-              type: "text",
-              text: {
-                preview_url: false,
-                body: autoReplyText
+            if (shouldSendReply) {
+              const payload = {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: from,
+                type: "text",
+                text: {
+                  preview_url: false,
+                  body: autoReplyText
+                }
+              };
+
+              logger.info(`Sending automated response to ${from}...`);
+
+              const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${token}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+              });
+
+              const resData: any = await response.json();
+              if (!response.ok) {
+                logger.error(`Meta API returned error during automated reply to ${from}:`, resData);
+              } else {
+                logger.info(`Automated reply successfully sent to ${from}`, { messageId: resData.messages?.[0]?.id });
               }
-            };
-
-            logger.info(`Sending automated auto-reply to ${from}...`);
-
-            const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify(payload)
-            });
-
-            const resData: any = await response.json();
-            if (!response.ok) {
-              logger.error(`Meta API returned error during auto-reply to ${from}:`, resData);
             } else {
-              logger.info(`Auto-reply successfully sent to ${from}`, { messageId: resData.messages?.[0]?.id });
+              logger.info(`Button click but not feedback or no auto-reply required for ${from}, skipping response.`);
             }
           }
         }
