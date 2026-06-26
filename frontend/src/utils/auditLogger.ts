@@ -13,7 +13,10 @@ export type AuditAction =
   | 'CONFIGURATION_UPDATE' 
   | 'QUICKTAP_CONFIG_UPDATE'
   | 'REPORTER_LIST_UPDATE'
-  | 'LOGIN';
+  | 'LOGIN'
+  | 'APP_FEEDBACK_SUBMITTED'
+  | 'APP_FEEDBACK_SUBMMITTED'
+  | 'SERVICE_FEEDBACK_SUBMITTED';
 
 export interface AuditActor {
   uid: string;

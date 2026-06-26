@@ -43,6 +43,34 @@ type Ticket = {
   vaadRating?: string;
 };
 
+const CustomTooltip = ({ active, payload, label, isEn }: any) => {
+  if (active && payload && payload.length) {
+    const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+    const isHe = !isEn;
+    return (
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-lg text-right" dir={isHe ? 'rtl' : 'ltr'}>
+        <p className="font-bold text-slate-800 mb-1 text-xs">{label}</p>
+        <div className="space-y-1 text-[11px]">
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex justify-between gap-4 items-center">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-slate-500 font-medium">{entry.name}</span>
+              </span>
+              <span className="font-bold text-slate-800">{entry.value}</span>
+            </div>
+          ))}
+          <div className="border-t border-slate-100 pt-1 mt-1 flex justify-between gap-4 font-bold text-blue-600">
+            <span>{isEn ? 'Total' : 'סה"כ פניות'}</span>
+            <span>{total}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function AdminDashboard() {
   const { tenantId } = useParams();
   const [isSuper, setIsSuper] = useState(false);
@@ -622,12 +650,27 @@ export default function AdminDashboard() {
     });
     const categoryData = Object.entries(cats).map(([name, value]) => ({ name, value }));
 
-    const months: Record<string, number> = {};
+    const months: Record<string, { ai: number; quicktap: number; manual: number }> = {};
     filteredTickets.forEach(t => {
       const mo = format(parseISO(t.createdAt), 'MMM yyyy', { locale: isEn ? undefined : he });
-      months[mo] = (months[mo] || 0) + 1;
+      if (!months[mo]) {
+        months[mo] = { ai: 0, quicktap: 0, manual: 0 };
+      }
+      const source = t.source || 'manual';
+      if (source === 'ai_camera') {
+        months[mo].ai += 1;
+      } else if (source === 'quicktap') {
+        months[mo].quicktap += 1;
+      } else {
+        months[mo].manual += 1;
+      }
     });
-    const monthlyData = Object.entries(months).map(([name, count]) => ({ name, count })).reverse();
+    const monthlyData = Object.entries(months).map(([name, data]) => ({
+      name,
+      ai: data.ai,
+      quicktap: data.quicktap,
+      manual: data.manual
+    })).reverse();
 
     return { open, resolved, categoryData, monthlyData };
   }, [filteredTickets, isEn]);
@@ -995,7 +1038,7 @@ export default function AdminDashboard() {
                       {stats.categoryData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                     </Pie>
                     <Tooltip
-                      formatter={(val: any) => [val, isEn ? 'Tickets' : 'פניות']}
+                      formatter={(value: any, name: any) => [`${value} ${isEn ? 'Tickets' : 'פניות'}`, name]}
                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Legend
@@ -1019,18 +1062,16 @@ export default function AdminDashboard() {
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-[320px] flex flex-col items-center justify-center">
             <h3 className="text-sm font-bold text-slate-700 mb-2 w-full text-center">{uiLabels.bar_title}</h3>
             {stats.monthlyData.length > 0 ? (
-              <div className="w-full flex-1 min-h-0">
+              <div className="w-full flex-1 min-h-0" dir="ltr">
                 <ResponsiveContainer width="99%" height={250}>
-                  <BarChart data={stats.monthlyData} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
+                  <BarChart data={stats.monthlyData} margin={{ left: 5, right: 10, top: 10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" fontSize={10} interval={0} tick={{ fontSize: 8 }} />
-                    <YAxis fontSize={10} width={40} tick={{ fontSize: 8 }} />
-                    <Tooltip
-                      cursor={{ fill: '#f8fafc' }}
-                      labelStyle={{ color: '#1e293b', fontWeight: 'bold' }}
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <YAxis fontSize={10} width={35} tick={{ fontSize: 8 }} tickMargin={5} />
+                    <Tooltip content={<CustomTooltip isEn={isEn} />} cursor={{ fill: '#f8fafc' }} />
+                    <Bar dataKey="ai" name={isEn ? "AI Camera" : "מצלמת AI"} stackId="a" fill="#3b82f6" />
+                    <Bar dataKey="quicktap" name={isEn ? "QuickTap ⚡" : "QuickTap ⚡"} stackId="a" fill="#8b5cf6" />
+                    <Bar dataKey="manual" name={isEn ? "Manual" : "דיווח ידני"} stackId="a" fill="#10b981" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

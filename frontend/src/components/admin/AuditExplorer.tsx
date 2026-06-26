@@ -79,7 +79,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
   const actions = [
     'TICKET_CREATED', 'TICKET_STATUS_UPDATE', 'TICKET_URGENCY_UPDATE',
     'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED',
-    'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN'
+    'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN',
+    'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED'
   ];
 
   useEffect(() => {
@@ -257,6 +258,19 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
           : `${actor} הסיר משתמש ניהול (${delUser}) עבור ${tenantName}`;
       case 'LOGIN':
         return isEn ? `${actor} logged in` : `${actor} התחבר למערכת`;
+      case 'APP_FEEDBACK_SUBMITTED':
+      case 'APP_FEEDBACK_SUBMMITTED': {
+        const appFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        return isEn
+          ? `${actor} submitted app feedback (rating: ${log.details.rating}/5) for ticket ${appFeedbackTicketRef}`
+          : `${actor} דירג/ה את חוויית הדיווח ב-${log.details.rating}/5 עבור פנייה ${appFeedbackTicketRef}`;
+      }
+      case 'SERVICE_FEEDBACK_SUBMITTED': {
+        const svcFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+        return isEn
+          ? `${actor} submitted service feedback (rating: ${log.details.rating}/5) for ticket ${svcFeedbackTicketRef}`
+          : `${actor} דירג/ה את השירות ב-${log.details.rating}/5 עבור פנייה ${svcFeedbackTicketRef}`;
+      }
       default:
         return `${actor}: ${log.action}`;
     }
