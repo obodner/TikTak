@@ -4,23 +4,22 @@ import { doc, getDoc, updateDoc, collection, query, where, limit, getDocs } from
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
 import { HelpModal } from '../../components/admin/HelpModal';
-import { Save, ArrowRight, Globe, Layout, ListTodo, HelpCircle } from 'lucide-react';
-import { ListEditor } from '../../components/admin/ListEditor';
-import { UserManagement } from '../../components/admin/UserManagement';
-import { CsvUploadPanel } from '../../components/admin/CsvUploadPanel';
-import { QuickTapEditor, QuickTapItem } from '../../components/admin/QuickTapEditor';
+import { ArrowRight, HelpCircle } from 'lucide-react';
 import { logAction } from '../../utils/auditLogger';
+import { InfrastructureTab } from '../../components/admin/InfrastructureTab';
+import { UsersTab } from '../../components/admin/UsersTab';
+import { GeneralSettingsTab } from '../../components/admin/GeneralSettingsTab';
+import { QuickTapItem } from '../../components/admin/QuickTapEditor';
 
 export default function TenantSettings() {
   const { tenantId } = useParams();
   const { user, loading: authLoading } = useAuthState();
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [tenantName, setTenantName] = useState('');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'infrastructure' | 'users' | 'general'>('infrastructure');
 
   // Configuration State
   const [type, setType] = useState<'building' | 'municipality'>('building');
@@ -144,33 +143,24 @@ export default function TenantSettings() {
     loadProfile();
   }, [user, tenantId]);
 
-  const handleSave = async (quickTapOverrideItems?: QuickTapItem[]) => {
+  // Tab 1 Isolated Save Action
+  const handleSaveInfrastructure = async (data: {
+    locations: string[];
+    subLocations: string[];
+    categories: string[];
+    quickTap: { items: QuickTapItem[] };
+  }) => {
     if (!user || !tenantId) return;
-    setSaving(true);
-    setMessage('');
-
-    const currentQuickTap = quickTapOverrideItems
-      ? { ...quickTap, items: quickTapOverrideItems }
-      : quickTap;
 
     try {
       const docRef = doc(db, "tenants", tenantId);
       await updateDoc(docRef, {
-        name: tenantName,
-        type,
-        language,
         config: {
-          locations,
-          subLocations,
-          categories
+          locations: data.locations,
+          subLocations: data.subLocations,
+          categories: data.categories
         },
-        quickTap: currentQuickTap,
-        uiConfig,
-        slaConfig: {
-          enabled: slaConfig.enabled,
-          workingDays: slaConfig.workingDays
-        },
-        country: slaConfig.country,
+        quickTap: data.quickTap,
         updatedAt: new Date().toISOString()
       });
 
@@ -187,15 +177,10 @@ export default function TenantSettings() {
           }
         };
 
-        compare('name', initialConfig.name, tenantName);
-        compare('type', initialConfig.type, type);
-        compare('language', initialConfig.language, language);
-        compare('locations', initialConfig.config.locations, locations);
-        compare('subLocations', initialConfig.config.subLocations, subLocations);
-        compare('categories', initialConfig.config.categories, categories);
-        compare('quickTap', initialConfig.quickTap, currentQuickTap);
-        compare('uiConfig', initialConfig.uiConfig, uiConfig);
-        compare('slaConfig', initialConfig.slaConfig, slaConfig);
+        compare('locations', initialConfig.config.locations, data.locations);
+        compare('subLocations', initialConfig.config.subLocations, data.subLocations);
+        compare('categories', initialConfig.config.categories, data.categories);
+        compare('quickTap', initialConfig.quickTap, data.quickTap);
 
         if (hasChanges) {
           const isQuickTapOnly = Object.keys(diff.next).length === 1 && diff.next.quickTap;
@@ -205,7 +190,7 @@ export default function TenantSettings() {
             actor: getAuditActor(),
             details: {
               changedFields: Object.keys(diff.next),
-              ...(isQuickTapOnly && { itemCount: currentQuickTap.items.length })
+              ...(isQuickTapOnly && { itemCount: data.quickTap.items.length })
             },
             changes: {
               previousValue: diff.previous,
@@ -215,25 +200,105 @@ export default function TenantSettings() {
         }
       }
 
-      // Update initial config for next potential save in same session
-      setInitialConfig({
-        name: tenantName,
-        type,
-        language,
-        config: { locations, subLocations, categories },
-        quickTap: currentQuickTap,
-        uiConfig,
-        slaConfig
-      });
+      // Sync state and initialConfig in parent
+      setLocations(data.locations);
+      setSubLocations(data.subLocations);
+      setCategories(data.categories);
+      setQuickTap(data.quickTap);
 
-      setMessage('ההגדרות נשמרו בהצלחה!');
-      setTimeout(() => setMessage(''), 3000);
+      setInitialConfig((prev: any) => ({
+        ...prev,
+        config: {
+          locations: data.locations,
+          subLocations: data.subLocations,
+          categories: data.categories
+        },
+        quickTap: data.quickTap
+      }));
     } catch (err) {
       console.error(err);
-      setMessage('שגיאה בשמירת ההגדרות.');
-      setTimeout(() => setMessage(''), 3000);
-    } finally {
-      setSaving(false);
+      throw err;
+    }
+  };
+
+  // Tab 3 Isolated Save Action
+  const handleSaveGeneral = async (data: {
+    tenantName: string;
+    type: 'building' | 'municipality';
+    language: 'he' | 'en';
+    slaConfig: { enabled: boolean; workingDays: number[]; country: string; };
+    uiConfig: { locationLabel: string; subLocationLabel: string; showLocation: boolean; };
+  }) => {
+    if (!user || !tenantId) return;
+
+    try {
+      const docRef = doc(db, "tenants", tenantId);
+      await updateDoc(docRef, {
+        name: data.tenantName,
+        type: data.type,
+        language: data.language,
+        uiConfig: data.uiConfig,
+        slaConfig: {
+          enabled: data.slaConfig.enabled,
+          workingDays: data.slaConfig.workingDays
+        },
+        country: data.slaConfig.country,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Audit Log - Data Reduction (only log changed fields)
+      if (initialConfig) {
+        const diff: any = { previous: {}, next: {} };
+        let hasChanges = false;
+
+        const compare = (key: string, oldVal: any, newVal: any) => {
+          if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+            diff.previous[key] = oldVal;
+            diff.next[key] = newVal;
+            hasChanges = true;
+          }
+        };
+
+        compare('name', initialConfig.name, data.tenantName);
+        compare('type', initialConfig.type, data.type);
+        compare('language', initialConfig.language, data.language);
+        compare('uiConfig', initialConfig.uiConfig, data.uiConfig);
+        compare('slaConfig', initialConfig.slaConfig, data.slaConfig);
+
+        if (hasChanges) {
+          await logAction({
+            tenantId,
+            action: 'CONFIGURATION_UPDATE',
+            actor: getAuditActor(),
+            details: {
+              changedFields: Object.keys(diff.next)
+            },
+            changes: {
+              previousValue: diff.previous,
+              newValue: diff.next
+            }
+          });
+        }
+      }
+
+      // Sync state and initialConfig in parent
+      setTenantName(data.tenantName);
+      setType(data.type);
+      setLanguage(data.language);
+      setUiConfig(data.uiConfig);
+      setSlaConfig(data.slaConfig);
+
+      setInitialConfig((prev: any) => ({
+        ...prev,
+        name: data.tenantName,
+        type: data.type,
+        language: data.language,
+        uiConfig: data.uiConfig,
+        slaConfig: data.slaConfig
+      }));
+    } catch (err) {
+      console.error(err);
+      throw err;
     }
   };
 
@@ -291,233 +356,93 @@ export default function TenantSettings() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-6 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 font-medium">
-              {error}
-            </div>
-          )}
-
-          {/* Section 1: Core Content */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-            <div className="flex items-center gap-2 mb-6 border-b pb-4">
-              <ListTodo className="text-blue-600" size={20} />
-              <h2 className="text-xl font-bold text-slate-800">תצורת נתונים</h2>
-            </div>
-
-            {loading ? (
-              <p className="text-slate-500">טוען נתונים...</p>
-            ) : (
-              <div className="flex flex-col gap-8">
-                <ListEditor
-                  label={uiConfig.locationLabel || (isBuilding ? "קומות" : "שכונות")}
-                  items={locations}
-                  onChange={setLocations}
-                  allowRanges={isBuilding}
-                  hideSortButton={false}
-                  showNumericSort={isBuilding}
-                  isLtr={isBuilding}
-                  placeholder={isBuilding ? "הוסף קומה או טווח (-2-5)" : "הוסף שם שכונה"}
-                  helperText={isBuilding ? "ניתן להוסיף קומות בודדות או טווחי מספרים." : "רשימת השכונות או האזורים הראשיים."}
-                />
-
-                <ListEditor
-                  label={uiConfig.subLocationLabel || (isBuilding ? "משאבים/מתקנים" : "רחובות/מיקומים")}
-                  items={subLocations}
-                  onChange={setSubLocations}
-                  placeholder={isBuilding ? "למשל: מעלית, בריכה, מועדון" : "למשל: רחוב הרצל, פארק מרכזי"}
-                  helperText="אלו המקומות המדויקים שהדיירים יכולים לדווח עליהם."
-                />
-
-                <ListEditor
-                  label="קטגוריות דיווח"
-                  items={categories}
-                  onChange={setCategories}
-                  placeholder="למשל: חשמל, ניקיון, בור בכביש"
-                  helperText="הקטגוריות שה-AI יסווג אליהן את הדיווחים."
-                />
-
-                <QuickTapEditor
-                  items={quickTap.items}
-                  categories={categories}
-                  locations={locations}
-                  subLocations={subLocations}
-                  onChange={(items) => setQuickTap({ items })}
-                  onSave={handleSave}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Section 2: CSV Upload Panel */}
-          <CsvUploadPanel
-            tenantId={tenantId as string}
-            callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')}
-          />
-        </div>
-
-        {/* Sidebar: UI & Meta Config */}
-        <div className="flex flex-col gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Globe className="text-blue-600" size={18} />
-              <h3 className="font-bold text-slate-800">הגדרות כלליות</h3>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-1">סוג ישות (לקריאה בלבד)</label>
-                <div className="w-full border border-slate-200 rounded-lg p-2 bg-slate-100 text-sm font-bold text-slate-500">
-                  {isBuilding ? 'בניין מגורים' : 'עירייה / רשות'}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-1">שפת דיווח</label>
-                <select
-                  className="w-full border border-slate-200 rounded-lg p-2 bg-slate-50 text-sm font-bold"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value as any)}
-                >
-                  <option value="he">עברית</option>
-                  <option value="en">English</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-1">מדינה (עבור לוח חגים)</label>
-                <select
-                  className="w-full border border-slate-200 rounded-lg p-2 bg-slate-50 text-sm font-bold"
-                  value={slaConfig.country}
-                  onChange={(e) => setSlaConfig(prev => ({ ...prev, country: e.target.value }))}
-                >
-                  <option value="IL">ישראל (IL)</option>
-                  <option value="US">USA (US)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* SLA Settings */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <ListTodo className="text-blue-600" size={18} />
-              <h3 className="font-bold text-slate-800">SLA ושקיפות קהילתית</h3>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="slaEnabled"
-                  checked={slaConfig.enabled}
-                  onChange={(e) => setSlaConfig(prev => ({ ...prev, enabled: e.target.checked }))}
-                  className="rounded border-slate-300 text-blue-600"
-                />
-                <label htmlFor="slaEnabled" className="text-sm font-bold text-slate-700">הפעל מודול SLA (צבעי דחיפות והודעות)</label>
-              </div>
-
-              {slaConfig.enabled && (
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">ימי עבודה פעילים</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map((day, index) => (
-                      <button
-                        key={index}
-                        onClick={() => {
-                          const newDays = slaConfig.workingDays.includes(index)
-                            ? slaConfig.workingDays.filter(d => d !== index)
-                            : [...slaConfig.workingDays, index].sort();
-                          setSlaConfig(prev => ({ ...prev, workingDays: newDays }));
-                        }}
-                        className={`py-2 rounded-lg text-xs font-bold transition-all border ${
-                          slaConfig.workingDays.includes(index)
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2">ימי העבודה משמשים לחישוב "ימי סטגנציה" של דיווחים.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Layout className="text-blue-600" size={18} />
-              <h3 className="font-bold text-slate-800">מיתוג ממשק (Labeling)</h3>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-1">שם הישות (תצוגה)</label>
-                <input
-                  type="text"
-                  placeholder="שם העירייה / הבניין"
-                  className="w-full border border-slate-200 rounded-lg p-2 text-sm font-bold"
-                  value={tenantName}
-                  onChange={(e) => setTenantName(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-1">תווית מיקום ראשי</label>
-                <input
-                  type="text"
-                  placeholder={isBuilding ? "קומה" : "שכונה"}
-                  className="w-full border border-slate-200 rounded-lg p-2 text-sm"
-                  value={uiConfig.locationLabel}
-                  onChange={(e) => setUiConfig(prev => ({ ...prev, locationLabel: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-1">תווית תת-מיקום</label>
-                <input
-                  type="text"
-                  placeholder={isBuilding ? "משאב" : "רחוב"}
-                  className="w-full border border-slate-200 rounded-lg p-2 text-sm"
-                  value={uiConfig.subLocationLabel}
-                  onChange={(e) => setUiConfig(prev => ({ ...prev, subLocationLabel: e.target.value }))}
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="showLocation"
-                  checked={uiConfig.showLocation}
-                  onChange={(e) => setUiConfig(prev => ({ ...prev, showLocation: e.target.checked }))}
-                  className="rounded border-slate-300 text-blue-600"
-                />
-                <label htmlFor="showLocation" className="text-sm font-bold text-slate-700">הצג שדה מיקום ראשי</label>
-              </div>
-            </div>
-          </div>
-
-          {!loading && (
-            <UserManagement
-              tenantId={tenantId as string}
-              callerUid={user?.uid || ''}
-              callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')}
-            />
-          )}
+      {/* Horizontal Sub-navigation Tab Bar */}
+      <div className="border-b border-slate-200 bg-white sticky top-[72px] md:top-[104px] z-40 shadow-sm">
+        <div className="max-w-4xl mx-auto flex justify-around sm:justify-start sm:gap-8 px-4" dir="rtl">
+          <button
+            onClick={() => setActiveTab('infrastructure')}
+            className={`py-4 px-2 text-sm md:text-base font-bold transition-all relative border-b-2 outline-none ${
+              activeTab === 'infrastructure'
+                ? 'text-blue-600 border-blue-600'
+                : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
+          >
+            {isBuilding ? 'משאבי הבניין והתשתית' : 'משאבי היישוב והתשתית'}
+          </button>
 
           <button
-            onClick={() => handleSave()}
-            disabled={saving}
-            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
+            onClick={() => setActiveTab('users')}
+            className={`py-4 px-2 text-sm md:text-base font-bold transition-all relative border-b-2 outline-none ${
+              activeTab === 'users'
+                ? 'text-blue-600 border-blue-600'
+                : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
           >
-            <Save size={20} />
-            {saving ? 'שומר...' : 'שמור הגדרות'}
+            ניהול משתמשים
           </button>
-          {message && <div className="text-center text-sm font-bold text-green-600 bg-green-50 py-2 rounded-lg border border-green-100">{message}</div>}
+
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`py-4 px-2 text-sm md:text-base font-bold transition-all relative border-b-2 outline-none ${
+              activeTab === 'general'
+                ? 'text-blue-600 border-blue-600'
+                : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
+          >
+            הגדרות כלליות
+          </button>
         </div>
+      </div>
+
+      <main className="max-w-4xl mx-auto p-4 md:p-6 mt-6 md:mt-8">
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 font-medium mb-6 text-sm">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center text-slate-500 font-bold">
+            טוען נתונים...
+          </div>
+        ) : (
+          <>
+            {/* Tab 1: Infrastructure & Resources */}
+            <div className={activeTab === 'infrastructure' ? '' : 'hidden'}>
+              <InfrastructureTab
+                initialLocations={locations}
+                initialSubLocations={subLocations}
+                initialCategories={categories}
+                initialQuickTap={quickTap}
+                uiConfig={uiConfig}
+                isBuilding={isBuilding}
+                onSave={handleSaveInfrastructure}
+              />
+            </div>
+
+            {/* Tab 2: User Management */}
+            <div className={activeTab === 'users' ? '' : 'hidden'}>
+              <UsersTab
+                tenantId={tenantId as string}
+                callerUid={user?.uid || ''}
+                callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')}
+              />
+            </div>
+
+            {/* Tab 3: General Settings */}
+            <div className={activeTab === 'general' ? '' : 'hidden'}>
+              <GeneralSettingsTab
+                initialTenantName={tenantName}
+                initialType={type}
+                initialLanguage={language}
+                initialSlaConfig={slaConfig}
+                initialUiConfig={uiConfig}
+                isBuilding={isBuilding}
+                onSave={handleSaveGeneral}
+              />
+            </div>
+          </>
+        )}
       </main>
 
       <HelpModal
