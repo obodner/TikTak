@@ -99,6 +99,17 @@
         "new_column_label": "New",
         "in_progress_column_label": "In Progress",
         "add_comment_placeholder": "Add a comment or update...",
-        "send_comment_btn": "Send Comment"
+        "send_comment_btn": "Send Comment",
+        "landing_nav_about": "About",
+        "landing_nav_faq": "FAQ",
+        "landing_faq_headline": "FAQs about TikTak",
+        "landing_faq_q1": "What is TikTak?",
+        "landing_faq_a1": "TikTak is an automated system that allows residents to report building maintenance issues or hazards in under 15 seconds, with no app downloads or registrations required. Reporting is done quickly by scanning a dedicated QR code and sending a photo to WhatsApp.",
+        "landing_faq_q2": "What features are available for admins and end-users?",
+        "landing_faq_a2": "For end-users (residents), the system offers a rapid 'Snap & Send' flow with automated AI detection of the issue category, floor, and location—no manual typing required. For admins (building committee or management company), it provides a advanced management dashboard, real-time ticket consolidation, smart prioritization, an SLA alert engine, and automated status updates sent directly back to the reporter's WhatsApp.",
+        "landing_faq_q3": "What are the benefits of using TikTak?",
+        "landing_faq_a3": "The main benefit is eliminating reporting friction – the reporting process takes only 15 seconds, which significantly increases resident participation. Additionally, the system prevents duplicate reports, saves chat clutter in community WhatsApp groups, and enables property managers to track and resolve issues efficiently while maintaining high satisfaction rates and faster response times.",
+        "landing_faq_q4": "Is there a trial for TikTak?",
+        "landing_faq_a4": "Yes, TikTak offers a free pilot tier designed for small communities and building committees to try out the system, including one active WhatsApp line and up to 50 active reports per month. For local councils and large management companies, we offer a tailored pilot customized to their needs."
     }
 }
