@@ -18,10 +18,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
   const reportUrl = `https://tiktak2026.web.app/report/${tenantId}`;
 
   const handleCopy = () => {
-    const message = isHe 
+    const message = isHe
       ? `*הודעה מ-TikTak* 🚀\n\nשלום, מצורף לינק לדיווח תקלות ב-${tenantName || 'בניין/רשות'}:\n${reportUrl}`
       : `*Message from TikTak* 🚀\n\nHello, here is the link to report issues at ${tenantName || 'your building/area'}:\n${reportUrl}`;
-    
+
     navigator.clipboard.writeText(message);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -29,11 +29,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div 
-        className="absolute inset-0" 
-        onClick={onClose} 
+      <div
+        className="absolute inset-0"
+        onClick={onClose}
       />
-      <div 
+      <div
         className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300"
         dir={isHe ? 'rtl' : 'ltr'}
       >
@@ -48,7 +48,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
               <p className="text-xs text-slate-500 font-bold">{isHe ? 'Snap. Send. Solved.' : 'Snap. Send. Solved.'}</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400"
           >
@@ -66,7 +66,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <User size={24} />
                   <h3 className="text-2xl font-black">1. מדריך לתושב</h3>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between">
                     <div>
@@ -77,16 +77,16 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     </div>
                     <div className="space-y-3">
                       <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 group">
-                        <a 
-                          href={reportUrl} 
-                          target="_blank" 
+                        <a
+                          href={reportUrl}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-[11px] font-bold text-blue-600 truncate hover:underline flex items-center gap-1"
                         >
                           <ExternalLink size={12} />
                           {reportUrl}
                         </a>
-                        <button 
+                        <button
                           onClick={handleCopy}
                           className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-blue-600 flex items-center gap-1"
                           title="העתק הודעה לוואטסאפ"
@@ -98,7 +98,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                       <p className="text-[10px] text-slate-400 font-bold px-1 italic">* לחיצה על העתק תייצר הודעת TikTak מוכנה לשליחה בוואטסאפ</p>
                     </div>
                   </div>
-                  
+
                   <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
                     <h4 className="font-black text-slate-900 mb-2">שלב ב': תיעוד המפגע</h4>
                     <ul className="text-sm text-slate-600 space-y-3">
@@ -123,6 +123,20 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <p className="text-sm text-blue-800 leading-relaxed">
                     ודאו את המיקום והקטגוריה, ולחצו על הכפתור הירוק למטה. המערכת תשלח את הדיווח אוטומטית דרך השרת, ללא צורך בפתיחת וואטסאפ או לחיצה ידנית על "שלח"!
                   </p>
+                </div>
+
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-6">
+                  <h4 className="font-black text-slate-900 mb-2">אזור הדייר (הדשבורד שלכם)</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                    בכניסה לקישור "צפייה בדיווחים קודמים", תתוודעו לאפשרויות המעקב והתקשורת לגבי תקלות בבניין:
+                  </p>
+                  <ul className="text-sm text-slate-600 space-y-3.5 pr-2 list-disc list-inside">
+                    <li><strong>טאב "הדיווחים שלי"</strong>: מציג את כל התקלות שפתחתם ב-12 החודשים האחרונים עם לוח סטטיסטיקה צבעוני (כמות דיווחים, כמה חדשים, כמה בטיפול וכמה נפתרו).</li>
+                    <li><strong>טאב "דיווחים פתוחים"</strong>: מציג תקלות פעילות בבניין של תושבים אחרים (בסיווג "חדש" או "בטיפול").</li>
+                    <li><strong>הצבעת "גם לי יש את זה" (Me Too)</strong>: במקום לפתוח דיווחים כפולים, תוכלו להצביע על תקלה קיימת בבניין כדי להעלות את החשיבות שלה (לא ניתן להצביע על תקלה שפתחתם בעצמכם).</li>
+                    <li><strong>הערות ועדכונים</strong>: בעת פתיחת כרטיס תקלה מורחב, תוכלו לראות תיאור מלא, תמונות מצורפות (הקליקו להגדלה), עדכוני התקדמות ולהוסיף הערות חדשות שיגיעו ישירות להנהלה.</li>
+                    <li><strong>ממשק קבוע ונוח (Sticky UI)</strong>: שורת הכותרת והטאבים נשארים נעולים בחלק העליון של המסך כדי לאפשר מעבר מהיר ונוח בתוך הדשבורד ללא צורך בגלילה חזרה.</li>
+                  </ul>
                 </div>
               </section>
 
@@ -170,7 +184,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                           </li>
                         </ul>
                       </div>
-                      
+
                       <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                         <strong className="block text-blue-950 mb-1">💬 התראות וואטסאפ אוטומטיות (ללא מאמץ):</strong>
                         <ul className="space-y-1.5 text-blue-900 leading-relaxed pr-2 list-disc list-inside">
@@ -216,7 +230,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <User size={24} />
                   <h3 className="text-2xl font-black">1. Resident Guide</h3>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between">
                     <div>
@@ -227,16 +241,16 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     </div>
                     <div className="space-y-3">
                       <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 group">
-                        <a 
-                          href={reportUrl} 
-                          target="_blank" 
+                        <a
+                          href={reportUrl}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-[11px] font-bold text-blue-600 truncate hover:underline flex items-center gap-1"
                         >
                           <ExternalLink size={12} />
                           {reportUrl}
                         </a>
-                        <button 
+                        <button
                           onClick={handleCopy}
                           className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-blue-600 flex items-center gap-1"
                           title="Copy WhatsApp Message"
@@ -248,7 +262,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                       <p className="text-[10px] text-slate-400 font-bold px-1 italic">* Clicking copy will generate a pre-formatted TikTak WhatsApp message</p>
                     </div>
                   </div>
-                  
+
                   <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
                     <h4 className="font-black text-slate-900 mb-2">Step 2: Document Issue</h4>
                     <ul className="text-sm text-slate-600 space-y-3">
@@ -273,6 +287,20 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <p className="text-sm text-blue-800 leading-relaxed">
                     Verify the location/category and click the green button. The system sends the report automatically via our backend – no need to open WhatsApp or click "Send" manually!
                   </p>
+                </div>
+
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-6">
+                  <h4 className="font-black text-slate-900 mb-2">Resident Area (Your Status Dashboard)</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                    By accessing the "View previous reports" link, authorized residents can track and interact with active issues in the building:
+                  </p>
+                  <ul className="text-sm text-slate-600 space-y-3.5 pl-2 list-disc list-inside">
+                    <li><strong>"My Reports" Tab</strong>: Shows all reports you submitted in the last 12 months along with a colored metrics row (showing total, new, in-progress, and resolved counts).</li>
+                    <li><strong>"Open Reports" Tab</strong>: Shows active reports in the building submitted by other residents (grouped as "New" or "In Progress").</li>
+                    <li><strong>"Me Too" Voting</strong>: Instead of opening duplicates, click "Me Too" on an existing open ticket to highlight its urgency to the committee (you cannot vote on your own reports).</li>
+                    <li><strong>Comments & Media</strong>: Tap any card to expand it, view attached photos (click to zoom), check progress updates, and write new comments that sync directly to the committee dashboard.</li>
+                    <li><strong>Frozen Header & Tabs (Sticky UI)</strong>: The top navigation rows and tabs remain locked at the top of the viewport for easy, friction-free browsing and switching on mobile.</li>
+                  </ul>
                 </div>
               </section>
 

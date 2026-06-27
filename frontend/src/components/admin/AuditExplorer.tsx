@@ -5,513 +5,557 @@ import { Search, EyeOff, X, Filter, Copy, Check } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay } from 'date-fns';
 
 interface AuditLog {
-  id: string;
-  tenantId: string;
-  action: string;
-  level: string;
-  actor: {
-    uid: string;
-    name: string;
-    email?: string;
-    type: string;
-  };
-  details: any;
-  changes?: { previousValue: any; newValue: any } | null;
-  createdAt: string;
-  metadata: any;
+    id: string;
+    tenantId: string;
+    action: string;
+    level: string;
+    actor: {
+        uid: string;
+        name: string;
+        email?: string;
+        type: string;
+    };
+    details: any;
+    changes?: { previousValue: any; newValue: any } | null;
+    createdAt: string;
+    metadata: any;
 }
 
 interface AuditExplorerProps {
-  isEn?: boolean;
+    isEn?: boolean;
 }
 
 export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [lastDoc, setLastDoc] = useState<any>(null);
-  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
-  const [showRaw, setShowRaw] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [logs, setLogs] = useState<AuditLog[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [lastDoc, setLastDoc] = useState<any>(null);
+    const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
+    const [showRaw, setShowRaw] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Filters
-  const [filters, setFilters] = useState({
-    tenantId: 'all',
-    action: 'all',
-    actorSearch: '',
-    category: 'all',
-    urgency: 'all',
-    timeRange: '1m',
-    customStartDate: '',
-    search: '',
-    hasImage: 'all',
-    hasAudio: 'all',
-  });
-
-  const handleCopy = (log: AuditLog) => {
-    navigator.clipboard.writeText(JSON.stringify(log, null, 2));
-    setCopiedId(log.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const categories = ['חשמל', 'ניקיון', 'מעלית', 'אינסטלציה', 'אחר'];
-
-  const uiLabels = {
-    title: isEn ? 'Global Audit Explorer' : 'סייר תיעוד פעולות (Audit)',
-    search_placeholder: isEn ? 'Search details...' : 'חפש בפרטי הפעולה...',
-    filters: isEn ? 'Filters' : 'מסננים',
-    tenant: isEn ? 'Tenant' : 'בניין',
-    action: isEn ? 'Action' : 'פעולה',
-    actor: isEn ? 'Actor' : 'מבצע (שם/אימייל)',
-    category: isEn ? 'Category' : 'קטגוריה',
-    urgency: isEn ? 'Urgency' : 'דחיפות',
-    time: isEn ? 'Time' : 'זמן',
-    all: isEn ? 'All' : 'הכל',
-    yes: isEn ? 'Yes' : 'כן',
-    no: isEn ? 'No' : 'לא',
-    hasImage: isEn ? 'Has Image' : 'כולל תמונה',
-    hasAudio: isEn ? 'Has Audio' : 'כולל שמע',
-    load_more: isEn ? 'Load More' : 'טען עוד',
-    showing: isEn ? 'Showing' : 'מציג',
-    records: isEn ? 'records' : 'רשומות',
-    custom_date: isEn ? 'Custom Date' : 'תאריך התחלה',
-  };
-
-  const actions = [
-    'TICKET_CREATED', 'TICKET_STATUS_UPDATE', 'TICKET_URGENCY_UPDATE',
-    'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED',
-    'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN',
-    'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED'
-  ];
-
-  useEffect(() => {
-    fetchTenants();
-  }, []);
-
-  useEffect(() => {
-    fetchLogs(true);
-  }, [filters]);
-
-  const fetchTenants = async () => {
-    try {
-      const snap = await getDocs(collection(db, 'tenants'));
-      setTenants(snap.docs.map(d => ({ id: d.id, name: d.data().name })));
-    } catch (err) {
-      console.error('Failed to fetch tenants:', err);
-    }
-  };
-
-  const fetchLogs = async (isNew = false) => {
-    setLoading(true);
-    try {
-      // Keep only Time and OrderBy on server-side to avoid complex composite indexes
-      const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(100)];
-      
-      let startDate: Date | null = null;
-      if (filters.timeRange === '1m') startDate = subMonths(new Date(), 1);
-      else if (filters.timeRange === '3m') startDate = subMonths(new Date(), 3);
-      else if (filters.timeRange === '6m') startDate = subMonths(new Date(), 6);
-      else if (filters.timeRange === '12m') startDate = subMonths(new Date(), 12);
-      else if (filters.timeRange === 'custom' && filters.customStartDate) {
-        startDate = startOfDay(new Date(filters.customStartDate));
-      }
-
-      if (startDate) {
-        constraints.push(where('createdAt', '>=', startDate.toISOString()));
-      }
-      
-      if (!isNew && lastDoc) {
-        constraints.push(startAfter(lastDoc));
-      }
-
-      const q = query(collection(db, 'audit_logs'), ...constraints);
-      const snap = await getDocs(q);
-      
-      const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
-      
-      // Client-side filtering for everything else
-      let filtered = rawLogs;
-
-      if (filters.tenantId !== 'all') {
-        filtered = filtered.filter(l => (l.tenantId === filters.tenantId || l.metadata?.tenantId === filters.tenantId));
-      }
-
-      if (filters.action !== 'all') {
-        filtered = filtered.filter(l => l.action === filters.action);
-      }
-
-      if (filters.category !== 'all') {
-        filtered = filtered.filter(l => l.details?.category === filters.category);
-      }
-
-      if (filters.urgency !== 'all') {
-        filtered = filtered.filter(l => l.details?.urgency === filters.urgency);
-      }
-
-      if (filters.actorSearch) {
-        const s = filters.actorSearch.toLowerCase();
-        filtered = filtered.filter(l => 
-          l.actor.email?.toLowerCase().includes(s) || 
-          l.actor.name?.toLowerCase().includes(s)
-        );
-      }
-
-      if (filters.search) {
-        const s = filters.search.toLowerCase();
-        filtered = filtered.filter(l => 
-          JSON.stringify(l.details).toLowerCase().includes(s) ||
-          l.action.toLowerCase().includes(s)
-        );
-      }
-
-      if (filters.hasImage !== 'all') {
-        const wantImage = filters.hasImage === 'yes';
-        filtered = filtered.filter(l => !!l.details?.hasImage === wantImage);
-      }
-
-      if (filters.hasAudio !== 'all') {
-        const wantAudio = filters.hasAudio === 'yes';
-        filtered = filtered.filter(l => !!l.details?.hasAudio === wantAudio);
-      }
-
-      setLogs(prev => isNew ? filtered : [...prev, ...filtered]);
-      setLastDoc(snap.docs[snap.docs.length - 1]);
-    } catch (err) {
-      console.error('Failed to fetch logs:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetFilters = () => {
-    setFilters({
-      tenantId: 'all',
-      action: 'all',
-      actorSearch: '',
-      category: 'all',
-      urgency: 'all',
-      timeRange: '1m',
-      customStartDate: '',
-      search: '',
-      hasImage: 'all',
-      hasAudio: 'all',
+    // Filters
+    const [filters, setFilters] = useState({
+        tenantId: 'all',
+        action: 'all',
+        actorSearch: '',
+        category: 'all',
+        urgency: 'all',
+        timeRange: '1m',
+        customStartDate: '',
+        search: '',
+        hasImage: 'all',
+        hasAudio: 'all',
     });
-  };
 
-  const getHumanReadable = (log: AuditLog) => {
-    let actor = log.actor.name || 'Unknown';
-    // If actor name is an email, show only the prefix for a cleaner look
-    if (actor.includes('@') && actor.includes('.')) {
-      actor = actor.split('@')[0];
-    }
-    const logTenantId = log.tenantId || log.metadata?.tenantId;
-    const tenantName = tenants.find(t => t.id === logTenantId)?.name || logTenantId || 'Unknown';
+    const handleCopy = (log: AuditLog) => {
+        navigator.clipboard.writeText(JSON.stringify(log, null, 2));
+        setCopiedId(log.id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
-    switch (log.action) {
-      case 'TICKET_CREATED':
-        const createRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        const summaryText = log.details.summary ? `: ${log.details.summary}` : '';
-        return isEn 
-          ? `${actor} reported a new ${log.details.category} issue ${createRef} in ${tenantName}${summaryText}`
-          : `${actor} דיווח על תקלה חדשה ${createRef} (${log.details.category}) בבניין ${tenantName}${summaryText}`;
-      case 'TICKET_STATUS_UPDATE':
-        const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        return isEn
-          ? `${actor} updated ticket ${ticketRef} status to ${log.details.newStatus} in ${tenantName}`
-          : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${log.details.newStatus} בבניין ${tenantName}`;
-      case 'COMMENT_CREATED':
-        const commTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        return isEn
-          ? `${actor} added a comment to ticket ${commTicketRef}`
-          : `${actor} הוסיף הערה לפנייה ${commTicketRef}`;
-      case 'COMMENT_DELETED':
-        const delCommTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        return isEn
-          ? `${actor} deleted a comment from ticket ${delCommTicketRef}`
-          : `${actor} מחק הערה מפנייה ${delCommTicketRef}`;
-      case 'TICKET_URGENCY_UPDATE':
-        const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        return isEn
-          ? `${actor} updated ticket ${urgTicketRef} urgency to ${log.details.newUrgency}`
-          : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;
-      case 'CONFIGURATION_UPDATE':
-        return isEn
-          ? `${actor} updated building settings for ${tenantName}`
-          : `${actor} עדכן את הגדרות הבניין עבור ${tenantName}`;
-      case 'QUICKTAP_CONFIG_UPDATE':
-        const itemsCount = log.details.quickTapItemsCount !== undefined ? ` (${log.details.quickTapItemsCount} כפתורים)` : '';
-        return isEn
-          ? `${actor} updated QuickTap configuration for ${tenantName}${itemsCount}`
-          : `${actor} עדכן את הגדרות הדיווח המהיר (QuickTap) עבור ${tenantName}${itemsCount}`;
-      case 'REPORTER_LIST_UPDATE':
-        return isEn
-          ? `${actor} imported/updated the reporter list for ${tenantName}`
-          : `${actor} ייבא/עדכן את רשימת המורשים עבור ${tenantName}`;
-      case 'USER_ADDED':
-        const targetUser = log.details.email || log.details.uid || '';
-        return isEn
-          ? `${actor} added a new admin user (${targetUser}) to ${tenantName}`
-          : `${actor} הוסיף משתמש ניהול חדש (${targetUser}) עבור ${tenantName}`;
-      case 'USER_DELETED':
-        const delUser = log.details.email || log.details.uid || '';
-        return isEn
-          ? `${actor} removed admin user (${delUser}) from ${tenantName}`
-          : `${actor} הסיר משתמש ניהול (${delUser}) עבור ${tenantName}`;
-      case 'LOGIN':
-        return isEn ? `${actor} logged in` : `${actor} התחבר למערכת`;
-      case 'APP_FEEDBACK_SUBMITTED':
-      case 'APP_FEEDBACK_SUBMMITTED': {
-        const appFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        return isEn
-          ? `${actor} submitted app feedback (rating: ${log.details.rating}/5) for ticket ${appFeedbackTicketRef}`
-          : `${actor} דירג/ה את חוויית הדיווח ב-${log.details.rating}/5 עבור פנייה ${appFeedbackTicketRef}`;
-      }
-      case 'SERVICE_FEEDBACK_SUBMITTED': {
-        const svcFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-        return isEn
-          ? `${actor} submitted service feedback (rating: ${log.details.rating}/5) for ticket ${svcFeedbackTicketRef}`
-          : `${actor} דירג/ה את השירות ב-${log.details.rating}/5 עבור פנייה ${svcFeedbackTicketRef}`;
-      }
-      default:
-        return `${actor}: ${log.action}`;
-    }
-  };
+    const categories = ['חשמל', 'ניקיון', 'מעלית', 'אינסטלציה', 'אחר'];
 
-  return (
-    <div className="space-y-6" dir={isEn ? 'ltr' : 'rtl'}>
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Filter size={18} className="text-blue-600" />
-          <h2 className="font-bold text-slate-800">{uiLabels.filters}</h2>
-        </div>
+    const uiLabels = {
+        title: isEn ? 'Global Audit Explorer' : 'סייר תיעוד פעולות (Audit)',
+        search_placeholder: isEn ? 'Search details...' : 'חפש בפרטי הפעולה...',
+        filters: isEn ? 'Filters' : 'מסננים',
+        tenant: isEn ? 'Tenant' : 'בניין',
+        action: isEn ? 'Action' : 'פעולה',
+        actor: isEn ? 'Actor' : 'מבצע (שם/אימייל)',
+        category: isEn ? 'Category' : 'קטגוריה',
+        urgency: isEn ? 'Urgency' : 'דחיפות',
+        time: isEn ? 'Time' : 'זמן',
+        all: isEn ? 'All' : 'הכל',
+        yes: isEn ? 'Yes' : 'כן',
+        no: isEn ? 'No' : 'לא',
+        hasImage: isEn ? 'Has Image' : 'כולל תמונה',
+        hasAudio: isEn ? 'Has Audio' : 'כולל שמע',
+        load_more: isEn ? 'Load More' : 'טען עוד',
+        showing: isEn ? 'Showing' : 'מציג',
+        records: isEn ? 'records' : 'רשומות',
+        custom_date: isEn ? 'Custom Date' : 'תאריך התחלה',
+    };
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 items-end">
-          {/* Time Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.time}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.timeRange}
-              onChange={e => setFilters(prev => ({ ...prev, timeRange: e.target.value }))}
-            >
-              <option value="1m">חודש אחרון</option>
-              <option value="3m">3 חודשים</option>
-              <option value="6m">6 חודשים</option>
-              <option value="12m">שנה אחרונה</option>
-              <option value="custom">טווח מותאם</option>
-            </select>
-          </div>
+    const actions = [
+        'TICKET_CREATED', 'TICKET_STATUS_UPDATE', 'TICKET_URGENCY_UPDATE',
+        'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED',
+        'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN',
+        'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED',
+        'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED'
+    ];
 
-          {/* Custom Date (if selected) */}
-          {filters.timeRange === 'custom' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.custom_date}</label>
-              <input
-                type="date"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-                value={filters.customStartDate}
-                onChange={e => setFilters(prev => ({ ...prev, customStartDate: e.target.value }))}
-              />
-            </div>
-          )}
+    useEffect(() => {
+        fetchTenants();
+    }, []);
 
-          {/* Building Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.tenant}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.tenantId}
-              onChange={e => setFilters(prev => ({ ...prev, tenantId: e.target.value }))}
-            >
-              <option value="all">{uiLabels.all}</option>
-              {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
+    useEffect(() => {
+        fetchLogs(true);
+    }, [filters]);
 
-          {/* Action Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.action}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.action}
-              onChange={e => setFilters(prev => ({ ...prev, action: e.target.value }))}
-            >
-              <option value="all">{uiLabels.all}</option>
-              {actions.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
+    const fetchTenants = async () => {
+        try {
+            const snap = await getDocs(collection(db, 'tenants'));
+            setTenants(snap.docs.map(d => ({ id: d.id, name: d.data().name })));
+        } catch (err) {
+            console.error('Failed to fetch tenants:', err);
+        }
+    };
 
-          {/* Category Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.category}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.category}
-              onChange={e => setFilters(prev => ({ ...prev, category: e.target.value }))}
-            >
-              <option value="all">{uiLabels.all}</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+    const fetchLogs = async (isNew = false) => {
+        setLoading(true);
+        try {
+            // Keep only Time and OrderBy on server-side to avoid complex composite indexes
+            const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(100)];
 
-          {/* Actor Search */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.actor}</label>
-            <div className="relative">
-              <Search className="absolute right-3 top-2.5 text-slate-400" size={16} />
-              <input
-                type="text"
-                placeholder={isEn ? 'Name or email...' : 'חפש שם או אימייל...'}
-                className="w-full pr-10 pl-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-                value={filters.actorSearch}
-                onChange={e => setFilters(prev => ({ ...prev, actorSearch: e.target.value }))}
-              />
-            </div>
-          </div>
+            let startDate: Date | null = null;
+            if (filters.timeRange === '1m') startDate = subMonths(new Date(), 1);
+            else if (filters.timeRange === '3m') startDate = subMonths(new Date(), 3);
+            else if (filters.timeRange === '6m') startDate = subMonths(new Date(), 6);
+            else if (filters.timeRange === '12m') startDate = subMonths(new Date(), 12);
+            else if (filters.timeRange === 'custom' && filters.customStartDate) {
+                startDate = startOfDay(new Date(filters.customStartDate));
+            }
 
-          {/* Urgency Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.urgency}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.urgency}
-              onChange={e => setFilters(prev => ({ ...prev, urgency: e.target.value }))}
-            >
-              <option value="all">{uiLabels.all}</option>
-              <option value="High">High</option>
-              <option value="Moderate">Moderate</option>
-              <option value="Low">Low</option>
-            </select>
-          </div>
+            if (startDate) {
+                constraints.push(where('createdAt', '>=', startDate.toISOString()));
+            }
 
-          {/* General Search */}
-          <div className="space-y-1.5 lg:col-span-2">
-            <label className="text-xs font-bold text-slate-500 block px-1">חיפוש חופשי</label>
-            <input
-              type="text"
-              placeholder={uiLabels.search_placeholder}
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.search}
-              onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))}
-            />
-          </div>
+            if (!isNew && lastDoc) {
+                constraints.push(startAfter(lastDoc));
+            }
 
-          {/* Image Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.hasImage}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.hasImage}
-              onChange={e => setFilters(prev => ({ ...prev, hasImage: e.target.value }))}
-            >
-              <option value="all">{uiLabels.all}</option>
-              <option value="yes">{uiLabels.yes}</option>
-              <option value="no">{uiLabels.no}</option>
-            </select>
-          </div>
+            const q = query(collection(db, 'audit_logs'), ...constraints);
+            const snap = await getDocs(q);
 
-          {/* Audio Filter */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.hasAudio}</label>
-            <select
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-              value={filters.hasAudio}
-              onChange={e => setFilters(prev => ({ ...prev, hasAudio: e.target.value }))}
-            >
-              <option value="all">{uiLabels.all}</option>
-              <option value="yes">{uiLabels.yes}</option>
-              <option value="no">{uiLabels.no}</option>
-            </select>
-          </div>
+            const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
 
-          {/* Reset Button */}
-          <div className="flex justify-end">
-            <button
-              onClick={resetFilters}
-              className="p-2.5 bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all"
-              title="נקה מסננים"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-      </div>
+            // Client-side filtering for everything else
+            let filtered = rawLogs;
 
-      <div className="flex justify-between items-center px-2">
-        <p className="text-sm font-bold text-slate-500">
-          {uiLabels.showing} <span className="text-blue-600">{logs.length}</span> {uiLabels.records}
-        </p>
-      </div>
+            if (filters.tenantId !== 'all') {
+                filtered = filtered.filter(l => (l.tenantId === filters.tenantId || l.metadata?.tenantId === filters.tenantId));
+            }
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="divide-y divide-slate-100">
-          {logs.map(log => (
-            <div 
-              key={log.id} 
-              className="p-4 hover:bg-slate-50 transition-colors cursor-pointer group/row"
-              onClick={() => setShowRaw(showRaw === log.id ? null : log.id)}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                      {format(parseISO(log.createdAt), 'dd/MM HH:mm')}
-                    </span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                      log.level === 'WARN' ? 'bg-amber-100 text-amber-700' : 
-                      log.level === 'ERROR' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {log.level}
-                    </span>
-                    <span className="text-xs text-slate-500 font-medium">{log.actor.email || log.actor.name}</span>
-                  </div>
-                  <p className="text-sm text-slate-800 font-medium">{getHumanReadable(log)}</p>
-                  
-                  {showRaw === log.id && (
-                    <div className="relative group/json mt-3" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCopy(log);
-                        }}
-                        id={`copy-${log.id}`}
-                        className={`absolute top-3 left-3 p-2 rounded-lg transition-all border shadow-xl opacity-0 group-hover/json:opacity-100 z-10 ${
-                          copiedId === log.id 
-                            ? 'bg-green-600 text-white border-green-500' 
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                        }`}
-                        title="Copy JSON"
-                      >
-                        {copiedId === log.id ? <Check size={14} /> : <Copy size={14} />}
-                      </button>
-                      <pre className="p-3 bg-slate-900 text-green-400 text-[10px] rounded-lg overflow-x-auto font-mono text-left relative" dir="ltr">
-                        {JSON.stringify(log, null, 2)}
-                      </pre>
-                    </div>
-                  )}
+            if (filters.action !== 'all') {
+                filtered = filtered.filter(l => l.action === filters.action);
+            }
+
+            if (filters.category !== 'all') {
+                filtered = filtered.filter(l => l.details?.category === filters.category);
+            }
+
+            if (filters.urgency !== 'all') {
+                filtered = filtered.filter(l => l.details?.urgency === filters.urgency);
+            }
+
+            if (filters.actorSearch) {
+                const s = filters.actorSearch.toLowerCase();
+                filtered = filtered.filter(l =>
+                    l.actor.email?.toLowerCase().includes(s) ||
+                    l.actor.name?.toLowerCase().includes(s)
+                );
+            }
+
+            if (filters.search) {
+                const s = filters.search.toLowerCase();
+                filtered = filtered.filter(l =>
+                    JSON.stringify(l.details).toLowerCase().includes(s) ||
+                    l.action.toLowerCase().includes(s)
+                );
+            }
+
+            if (filters.hasImage !== 'all') {
+                const wantImage = filters.hasImage === 'yes';
+                filtered = filtered.filter(l => !!l.details?.hasImage === wantImage);
+            }
+
+            if (filters.hasAudio !== 'all') {
+                const wantAudio = filters.hasAudio === 'yes';
+                filtered = filtered.filter(l => !!l.details?.hasAudio === wantAudio);
+            }
+
+            setLogs(prev => isNew ? filtered : [...prev, ...filtered]);
+            setLastDoc(snap.docs[snap.docs.length - 1]);
+        } catch (err) {
+            console.error('Failed to fetch logs:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const resetFilters = () => {
+        setFilters({
+            tenantId: 'all',
+            action: 'all',
+            actorSearch: '',
+            category: 'all',
+            urgency: 'all',
+            timeRange: '1m',
+            customStartDate: '',
+            search: '',
+            hasImage: 'all',
+            hasAudio: 'all',
+        });
+    };
+
+    const getHumanReadable = (log: AuditLog) => {
+        let actor = log.actor.name || 'Unknown';
+        // If actor name is an email, show only the prefix for a cleaner look
+        if (actor.includes('@') && actor.includes('.')) {
+            actor = actor.split('@')[0];
+        }
+        const logTenantId = log.tenantId || log.metadata?.tenantId;
+        const tenantName = tenants.find(t => t.id === logTenantId)?.name || logTenantId || 'Unknown';
+
+        switch (log.action) {
+            case 'TICKET_CREATED':
+                const createRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const summaryText = log.details.summary ? `: ${log.details.summary}` : '';
+                return isEn
+                    ? `${actor} reported a new ${log.details.category} issue ${createRef} in ${tenantName}${summaryText}`
+                    : `${actor} דיווח על תקלה חדשה ${createRef} (${log.details.category}) בבניין ${tenantName}${summaryText}`;
+            case 'TICKET_STATUS_UPDATE':
+                const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} updated ticket ${ticketRef} status to ${log.details.newStatus} in ${tenantName}`
+                    : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${log.details.newStatus} בבניין ${tenantName}`;
+            case 'COMMENT_CREATED':
+                const commTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} added a comment to ticket ${commTicketRef}`
+                    : `${actor} הוסיף הערה לפנייה ${commTicketRef}`;
+            case 'COMMENT_DELETED':
+                const delCommTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} deleted a comment from ticket ${delCommTicketRef}`
+                    : `${actor} מחק הערה מפנייה ${delCommTicketRef}`;
+            case 'TICKET_URGENCY_UPDATE':
+                const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} updated ticket ${urgTicketRef} urgency to ${log.details.newUrgency}`
+                    : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;
+            case 'CONFIGURATION_UPDATE':
+                return isEn
+                    ? `${actor} updated building settings for ${tenantName}`
+                    : `${actor} עדכן את הגדרות הבניין עבור ${tenantName}`;
+            case 'QUICKTAP_CONFIG_UPDATE':
+                const itemsCount = log.details.quickTapItemsCount !== undefined ? ` (${log.details.quickTapItemsCount} כפתורים)` : '';
+                return isEn
+                    ? `${actor} updated QuickTap configuration for ${tenantName}${itemsCount}`
+                    : `${actor} עדכן את הגדרות הדיווח המהיר (QuickTap) עבור ${tenantName}${itemsCount}`;
+            case 'REPORTER_LIST_UPDATE':
+                return isEn
+                    ? `${actor} imported/updated the reporter list for ${tenantName}`
+                    : `${actor} ייבא/עדכן את רשימת המורשים עבור ${tenantName}`;
+            case 'USER_ADDED':
+                const targetUser = log.details.email || log.details.uid || '';
+                return isEn
+                    ? `${actor} added a new admin user (${targetUser}) to ${tenantName}`
+                    : `${actor} הוסיף משתמש ניהול חדש (${targetUser}) עבור ${tenantName}`;
+            case 'USER_DELETED':
+                const delUser = log.details.email || log.details.uid || '';
+                return isEn
+                    ? `${actor} removed admin user (${delUser}) from ${tenantName}`
+                    : `${actor} הסיר משתמש ניהול (${delUser}) עבור ${tenantName}`;
+            case 'USER_UPDATE': {
+                const target = log.details.targetEmail || log.details.targetUid || '';
+                const isReset = log.details.actionName === 'resetPassword';
+                if (isReset) {
+                    return isEn
+                        ? `${actor} requested password reset for ${target} in ${tenantName}`
+                        : `${actor} ביקש איפוס סיסמה עבור ${target} בבניין ${tenantName}`;
+                }
+                
+                let changeStr = '';
+                const changes = log.changes;
+                if (changes?.previousValue && changes?.newValue) {
+                    const fields = Object.keys(changes.newValue);
+                    if (fields.length > 0) {
+                        const fieldLabels: Record<string, string> = {
+                            firstName: isEn ? 'first name' : 'שם פרטי',
+                            lastName: isEn ? 'last name' : 'שם משפחה',
+                            mobile: isEn ? 'mobile' : 'טלפון'
+                        };
+                        const list = fields.map(f => {
+                            const label = fieldLabels[f] || f;
+                            const oldVal = changes.previousValue[f] || (isEn ? 'empty' : 'ריק');
+                            const newVal = changes.newValue[f] || (isEn ? 'empty' : 'ריק');
+                            return `${label} (${oldVal} ➔ ${newVal})`;
+                        }).join(', ');
+                        changeStr = isEn ? ` (changes: ${list})` : ` (שינויים: ${list})`;
+                    }
+                }
+                
+                return isEn
+                    ? `${actor} updated user ${target} in ${tenantName}${changeStr}`
+                    : `${actor} עדכן את משתמש הניהול ${target} בבניין ${tenantName}${changeStr}`;
+            }
+            case 'LOGIN':
+                return isEn ? `${actor} logged in` : `${actor} התחבר למערכת`;
+            case 'APP_FEEDBACK_SUBMITTED':
+            case 'APP_FEEDBACK_SUBMMITTED': {
+                const appFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} submitted app feedback (rating: ${log.details.rating}/5) for ticket ${appFeedbackTicketRef}`
+                    : `${actor} דירג/ה את חוויית הדיווח ב-${log.details.rating}/5 עבור פנייה ${appFeedbackTicketRef}`;
+            }
+            case 'SERVICE_FEEDBACK_SUBMITTED': {
+                const svcFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} submitted service feedback (rating: ${log.details.rating}/5) for ticket ${svcFeedbackTicketRef}`
+                    : `${actor} דירג/ה את השירות ב-${log.details.rating}/5 עבור פנייה ${svcFeedbackTicketRef}`;
+            }
+            case 'RESIDENT_COMMENT_ADDED': {
+                const commTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `Resident ${actor} added comment to ticket ${commTicketRef}: "${log.details.comment}"`
+                    : `תושב (${actor}) הוסיף הערה לפנייה ${commTicketRef}: "${log.details.comment}"`;
+            }
+            case 'RESIDENT_METOO_INCREMENTED': {
+                const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `Resident clicked Me Too on ticket ${ticketRef} in ${tenantName}`
+                    : `תושב סימן 'גם לי יש את התקלה' לפנייה ${ticketRef} בבניין ${tenantName}`;
+            }
+            default:
+                return `${actor}: ${log.action}`;
+        }
+    };
+
+    return (
+        <div className="space-y-6" dir={isEn ? 'ltr' : 'rtl'}>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+                <div className="flex items-center gap-2 mb-2">
+                    <Filter size={18} className="text-blue-600" />
+                    <h2 className="font-bold text-slate-800">{uiLabels.filters}</h2>
                 </div>
 
-                <button
-                  onClick={() => setShowRaw(showRaw === log.id ? null : log.id)}
-                  className={`p-2 rounded-lg transition-colors ${showRaw === log.id ? 'bg-blue-100 text-blue-600' : 'text-slate-400 hover:bg-slate-100'}`}
-                >
-                  {showRaw === log.id ? <EyeOff size={18} /> : <Search size={18} />}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 items-end">
+                    {/* Time Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.time}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.timeRange}
+                            onChange={e => setFilters(prev => ({ ...prev, timeRange: e.target.value }))}
+                        >
+                            <option value="1m">חודש אחרון</option>
+                            <option value="3m">3 חודשים</option>
+                            <option value="6m">6 חודשים</option>
+                            <option value="12m">שנה אחרונה</option>
+                            <option value="custom">טווח מותאם</option>
+                        </select>
+                    </div>
 
-        {loading && <div className="p-8 text-center text-slate-400">{isEn ? 'Loading logs...' : 'טוען נתונים...'}</div>}
-        
-        {!loading && lastDoc && (
-          <button
-            onClick={() => fetchLogs(false)}
-            className="w-full p-4 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors border-t border-slate-100"
-          >
-            {uiLabels.load_more}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+                    {/* Custom Date (if selected) */}
+                    {filters.timeRange === 'custom' && (
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.custom_date}</label>
+                            <input
+                                type="date"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                value={filters.customStartDate}
+                                onChange={e => setFilters(prev => ({ ...prev, customStartDate: e.target.value }))}
+                            />
+                        </div>
+                    )}
+
+                    {/* Building Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.tenant}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.tenantId}
+                            onChange={e => setFilters(prev => ({ ...prev, tenantId: e.target.value }))}
+                        >
+                            <option value="all">{uiLabels.all}</option>
+                            {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Action Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.action}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.action}
+                            onChange={e => setFilters(prev => ({ ...prev, action: e.target.value }))}
+                        >
+                            <option value="all">{uiLabels.all}</option>
+                            {actions.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Category Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.category}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.category}
+                            onChange={e => setFilters(prev => ({ ...prev, category: e.target.value }))}
+                        >
+                            <option value="all">{uiLabels.all}</option>
+                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Actor Search */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.actor}</label>
+                        <div className="relative">
+                            <Search className="absolute right-3 top-2.5 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder={isEn ? 'Name or email...' : 'חפש שם או אימייל...'}
+                                className="w-full pr-10 pl-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                value={filters.actorSearch}
+                                onChange={e => setFilters(prev => ({ ...prev, actorSearch: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Urgency Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.urgency}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.urgency}
+                            onChange={e => setFilters(prev => ({ ...prev, urgency: e.target.value }))}
+                        >
+                            <option value="all">{uiLabels.all}</option>
+                            <option value="High">High</option>
+                            <option value="Moderate">Moderate</option>
+                            <option value="Low">Low</option>
+                        </select>
+                    </div>
+
+                    {/* General Search */}
+                    <div className="space-y-1.5 lg:col-span-2">
+                        <label className="text-xs font-bold text-slate-500 block px-1">חיפוש חופשי</label>
+                        <input
+                            type="text"
+                            placeholder={uiLabels.search_placeholder}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.search}
+                            onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                        />
+                    </div>
+
+                    {/* Image Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.hasImage}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.hasImage}
+                            onChange={e => setFilters(prev => ({ ...prev, hasImage: e.target.value }))}
+                        >
+                            <option value="all">{uiLabels.all}</option>
+                            <option value="yes">{uiLabels.yes}</option>
+                            <option value="no">{uiLabels.no}</option>
+                        </select>
+                    </div>
+
+                    {/* Audio Filter */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 block px-1">{uiLabels.hasAudio}</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            value={filters.hasAudio}
+                            onChange={e => setFilters(prev => ({ ...prev, hasAudio: e.target.value }))}
+                        >
+                            <option value="all">{uiLabels.all}</option>
+                            <option value="yes">{uiLabels.yes}</option>
+                            <option value="no">{uiLabels.no}</option>
+                        </select>
+                    </div>
+
+                    {/* Reset Button */}
+                    <div className="flex justify-end">
+                        <button
+                            onClick={resetFilters}
+                            className="p-2.5 bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all"
+                            title="נקה מסננים"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-between items-center px-2">
+                <p className="text-sm font-bold text-slate-500">
+                    {uiLabels.showing} <span className="text-blue-600">{logs.length}</span> {uiLabels.records}
+                </p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="divide-y divide-slate-100">
+                    {logs.map(log => (
+                        <div
+                            key={log.id}
+                            className="p-4 hover:bg-slate-50 transition-colors cursor-pointer group/row"
+                            onClick={() => setShowRaw(showRaw === log.id ? null : log.id)}
+                        >
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                            {format(parseISO(log.createdAt), 'dd/MM HH:mm')}
+                                        </span>
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${log.level === 'WARN' ? 'bg-amber-100 text-amber-700' :
+                                                log.level === 'ERROR' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                                            }`}>
+                                            {log.level}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-medium">{log.actor.email || log.actor.name}</span>
+                                    </div>
+                                    <p className="text-sm text-slate-800 font-medium">{getHumanReadable(log)}</p>
+
+                                    {showRaw === log.id && (
+                                        <div className="relative group/json mt-3" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCopy(log);
+                                                }}
+                                                id={`copy-${log.id}`}
+                                                className={`absolute top-3 left-3 p-2 rounded-lg transition-all border shadow-xl opacity-0 group-hover/json:opacity-100 z-10 ${copiedId === log.id
+                                                        ? 'bg-green-600 text-white border-green-500'
+                                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                                    }`}
+                                                title="Copy JSON"
+                                            >
+                                                {copiedId === log.id ? <Check size={14} /> : <Copy size={14} />}
+                                            </button>
+                                            <pre className="p-3 bg-slate-900 text-green-400 text-[10px] rounded-lg overflow-x-auto font-mono text-left relative" dir="ltr">
+                                                {JSON.stringify(log, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={() => setShowRaw(showRaw === log.id ? null : log.id)}
+                                    className={`p-2 rounded-lg transition-colors ${showRaw === log.id ? 'bg-blue-100 text-blue-600' : 'text-slate-400 hover:bg-slate-100'}`}
+                                >
+                                    {showRaw === log.id ? <EyeOff size={18} /> : <Search size={18} />}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {loading && <div className="p-8 text-center text-slate-400">{isEn ? 'Loading logs...' : 'טוען נתונים...'}</div>}
+
+                {!loading && lastDoc && (
+                    <button
+                        onClick={() => fetchLogs(false)}
+                        className="w-full p-4 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors border-t border-slate-100"
+                    >
+                        {uiLabels.load_more}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
 };

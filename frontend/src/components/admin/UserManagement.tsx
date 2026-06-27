@@ -97,6 +97,30 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
       };
 
       if (auditActionMap[action]) {
+        let changes = null;
+        if (action === 'update') {
+          const oldUser = users.find(u => u.id === data.uid);
+          if (oldUser) {
+            const previousValue: Record<string, any> = {};
+            const newValue: Record<string, any> = {};
+            if (oldUser.firstName !== data.firstName) {
+              previousValue.firstName = oldUser.firstName;
+              newValue.firstName = data.firstName;
+            }
+            if (oldUser.lastName !== data.lastName) {
+              previousValue.lastName = oldUser.lastName;
+              newValue.lastName = data.lastName;
+            }
+            if ((oldUser.mobile || '') !== (data.mobile || '')) {
+              previousValue.mobile = oldUser.mobile || '';
+              newValue.mobile = data.mobile || '';
+            }
+            if (Object.keys(previousValue).length > 0) {
+              changes = { previousValue, newValue };
+            }
+          }
+        }
+
         await logAction({
           tenantId,
           action: auditActionMap[action],
@@ -105,7 +129,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
             targetEmail: data.email, 
             targetUid: result.uid || data.uid,
             actionName: action
-          }
+          },
+          changes
         });
       }
 

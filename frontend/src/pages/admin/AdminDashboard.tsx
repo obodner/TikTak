@@ -41,6 +41,7 @@ type Ticket = {
   lastStatusChangeAt?: string;
   appRating?: number;
   vaadRating?: string;
+  meToo?: number;
 };
 
 const CustomTooltip = ({ active, payload, label, isEn }: any) => {
@@ -786,7 +787,7 @@ export default function AdminDashboard() {
                         <div className="text-lg font-black text-slate-900 mb-1 leading-tight">
                           {translateCategory(t.category)}
                         </div>
-                        <p 
+                        <p
                           className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium cursor-help"
                           title={t.summary || (isEn ? 'No summary' : 'אין תיאור')}
                         >
@@ -830,11 +831,10 @@ export default function AdminDashboard() {
                                 <span className="text-slate-400 font-medium">
                                   {isEn ? "Vaad Feedback:" : "משוב דייר על הטיפול:"}
                                 </span>
-                                <span className={`px-2 py-0.5 rounded-full font-bold ${
-                                  t.vaadRating === 'good' ? 'bg-green-100 text-green-700' :
-                                  t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full font-bold ${t.vaadRating === 'good' ? 'bg-green-100 text-green-700' :
+                                    t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
+                                      'bg-red-100 text-red-700'
+                                  }`}>
                                   {(() => {
                                     if (t.vaadRating === 'good') return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
                                     if (t.vaadRating === 'ok') return isEn ? 'Satisfactory 👍' : 'בסדר 👍';
@@ -861,6 +861,13 @@ export default function AdminDashboard() {
                             <span className="text-xs font-bold text-slate-500">{t.adminComments.length}</span>
                           )}
                         </button>
+
+                        {t.meToo && t.meToo > 0 ? (
+                          <div className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default" title={isEn ? "Me Too reports" : "דיווחו שגם להם יש את התקלה"}>
+                            <span>🙋</span>
+                            <span>{t.meToo}</span>
+                          </div>
+                        ) : null}
 
                         {t.imageId && typeof t.imageId === 'string' && t.imageId.length > 5 && (
                           <a

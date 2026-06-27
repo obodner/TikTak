@@ -871,6 +871,227 @@ export const getTenantInfo = onRequest({ cors: true }, async (req, res) => {
   }
 });
 
+export const getResidentTickets = onRequest({ cors: true }, async (req, res) => {
+  try {
+    const { tenantId, reporterPhone } = req.body;
+    if (!tenantId) {
+      res.status(400).send({ error: "Missing tenantId" });
+      return;
+    }
+
+    // Authenticate reporter phone if provided
+    if (reporterPhone) {
+      const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+      if (!reporterDoc.exists) {
+        // Fetch tenant to determine type for custom error messages
+        const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+        const tenantType = tenantDoc.data()?.type || 'building';
+        const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
+        res.status(403).send({
+          error: "Unauthorized",
+          message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור השתתפות במערכת הדיווחים.`
+        });
+        return;
+      }
+    }
+
+    // Fetch all tickets of the building once
+    const allTicketsSnap = await db.collection("tenants")
+      .doc(tenantId)
+      .collection("tickets")
+      .get();
+
+    const allTickets = allTicketsSnap.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ticketNumber: data.ticketNumber,
+        createdAt: data.createdAt,
+        summary: data.summary,
+        category: data.category,
+        urgency: data.urgency,
+        location: data.location,
+        subLocation: data.subLocation,
+        status: data.status,
+        imageId: data.imageId,
+        audioId: data.audioId,
+        meToo: data.meToo || 0,
+        timeline: data.timeline || [],
+        reporterPhone: data.reporterPhone
+      };
+    });
+
+    // 1. Filter My Tickets (past 12 months)
+    let myTickets: any[] = [];
+    if (reporterPhone) {
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      const twelveMonthsAgoStr = twelveMonthsAgo.toISOString();
+
+      myTickets = allTickets
+        .filter(t => t.reporterPhone === reporterPhone && t.createdAt >= twelveMonthsAgoStr)
+        .map(t => {
+          const { reporterPhone: _, ...rest } = t;
+          return rest;
+        });
+      myTickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+
+    // 2. Filter Open Tickets (status open or in-progress) and anonymize
+    const openTickets = allTickets
+      .filter(t => ['open', 'in-progress'].includes(t.status))
+      .map(t => {
+        const isMyTicket = !!(reporterPhone && t.reporterPhone === reporterPhone);
+        const { reporterPhone: _, ...rest } = t;
+        return {
+          ...rest,
+          isMyTicket
+        };
+      });
+    openTickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    res.status(200).send({ myTickets, openTickets });
+  } catch (error: any) {
+    logger.error("getResidentTickets failed", { error: error.message });
+    res.status(500).send({ error: "Failed to load resident tickets" });
+  }
+});
+
+export const addResidentComment = onRequest({ cors: true }, async (req, res) => {
+  try {
+    const { tenantId, ticketId, commentText, reporterPhone } = req.body;
+    if (!tenantId || !ticketId || !commentText) {
+      res.status(400).send({ error: "Missing required fields" });
+      return;
+    }
+
+    // Authenticate reporter
+    if (!reporterPhone) {
+      res.status(400).send({ error: "Missing reporterPhone" });
+      return;
+    }
+    const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+    if (!reporterDoc.exists) {
+      res.status(403).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const ticketRef = db.collection("tenants").doc(tenantId).collection("tickets").doc(ticketId);
+    const ticketSnap = await ticketRef.get();
+    if (!ticketSnap.exists) {
+      res.status(404).send({ error: "Ticket not found" });
+      return;
+    }
+    const ticketData = ticketSnap.data() || {};
+    const ticketNumber = ticketData.ticketNumber || 0;
+
+    const reporterName = reporterDoc.data()?.name || "תושב";
+
+    const commentObj = {
+      text: commentText,
+      createdAt: new Date().toISOString(),
+      author: "תושב"
+    };
+
+    const adminCommentObj = {
+      id: randomUUID(),
+      text: commentText,
+      createdAt: new Date().toISOString(),
+      authorName: reporterName
+    };
+
+    await ticketRef.update({
+      timeline: admin.firestore.FieldValue.arrayUnion(commentObj),
+      adminComments: admin.firestore.FieldValue.arrayUnion(adminCommentObj),
+      updatedAt: new Date().toISOString()
+    });
+
+    // Record Audit Log
+    const auditMsg = `Resident added comment to ticket #${ticketNumber} in building ${tenantId}`;
+    await recordAuditLog({
+      tenantId,
+      action: 'RESIDENT_COMMENT_ADDED',
+      level: 'INFO',
+      actor: {
+        uid: reporterPhone,
+        name: reporterDoc.data()?.name || reporterPhone,
+        type: 'resident'
+      },
+      details: {
+        ticketId,
+        ticketNumber,
+        comment: commentText,
+        message: auditMsg
+      }
+    });
+
+    res.status(200).send({ success: true, comment: commentObj });
+  } catch (error: any) {
+    logger.error("addResidentComment failed", { error: error.message });
+    res.status(500).send({ error: "Failed to add comment" });
+  }
+});
+
+export const incrementMeToo = onRequest({ cors: true }, async (req, res) => {
+  try {
+    const { tenantId, ticketId, reporterPhone } = req.body;
+    if (!tenantId || !ticketId || !reporterPhone) {
+      res.status(400).send({ error: "Missing required fields" });
+      return;
+    }
+
+    // Authenticate reporter
+    const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+    if (!reporterDoc.exists) {
+      res.status(403).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const ticketRef = db.collection("tenants").doc(tenantId).collection("tickets").doc(ticketId);
+    const ticketSnap = await ticketRef.get();
+    if (!ticketSnap.exists) {
+      res.status(404).send({ error: "Ticket not found" });
+      return;
+    }
+    const ticketData = ticketSnap.data() || {};
+    const ticketNumber = ticketData.ticketNumber || 0;
+
+    // Hardening: Resident cannot vote for their own ticket
+    if (ticketData.reporterPhone === reporterPhone) {
+      res.status(400).send({ error: "Cannot vote for your own ticket" });
+      return;
+    }
+
+    await ticketRef.update({
+      meToo: admin.firestore.FieldValue.increment(1),
+      updatedAt: new Date().toISOString()
+    });
+
+    // Record Audit Log
+    const auditMsg = `Resident clicked Me Too on ticket #${ticketNumber} in building ${tenantId}`;
+    await recordAuditLog({
+      tenantId,
+      action: 'RESIDENT_METOO_INCREMENTED',
+      level: 'INFO',
+      actor: {
+        uid: reporterPhone,
+        name: reporterDoc.data()?.name || reporterPhone,
+        type: 'resident'
+      },
+      details: {
+        ticketId,
+        ticketNumber,
+        message: auditMsg
+      }
+    });
+
+    res.status(200).send({ success: true });
+  } catch (error: any) {
+    logger.error("incrementMeToo failed", { error: error.message });
+    res.status(500).send({ error: "Failed to increment Me Too counter" });
+  }
+});
+
 export const getImage = onRequest({ cors: true }, async (req, res) => {
   let tenantId = "";
   let imageId = "";

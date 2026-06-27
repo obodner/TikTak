@@ -100,7 +100,9 @@ export const CommentModal: React.FC<CommentModalProps> = ({
                 <div className="flex justify-between items-start mb-1">
                   <div className="flex flex-col">
                     {c.authorName && (
-                      <span className="text-[10px] font-black text-blue-700 mb-0.5">{c.authorName}</span>
+                      <span className="text-xs font-extrabold text-blue-700 mb-0.5">
+                        {c.authorName.replace(/\s*\(תושב\)/g, '').replace(/\s*\(Resident\)/g, '')}
+                      </span>
                     )}
                     <div className="flex items-center gap-1.5 text-slate-400">
                       <Clock size={10} />
