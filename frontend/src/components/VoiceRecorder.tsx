@@ -78,6 +78,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
 
         stream.getTracks().forEach(track => track.stop());
         isStartingRef.current = false;
+        setIsExpanded(false);
       };
 
       mediaRecorder.start();
@@ -146,24 +147,20 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
     };
   }, []);
 
-  // CLOSED STATE: Just the trigger button
-  if (!isExpanded && !audioURL) {
-    return (
-      <button
-        onClick={() => setIsExpanded(true)}
-        className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center hover:bg-blue-100 transition-all active:scale-90 shadow-sm border border-blue-100"
-        title="הקלט הודעה קולית"
-      >
-        <Mic size={20} />
-      </button>
-    );
-  }
+  return (
+    <>
+      {!isExpanded && !audioURL && (
+        <button
+          onClick={() => setIsExpanded(true)}
+          className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center hover:bg-blue-100 transition-all active:scale-90 shadow-sm border border-blue-100"
+          title="הקלט הודעה קולית"
+        >
+          <Mic size={20} />
+        </button>
+      )}
 
-  // CLOSED STATE: Just the trigger button OR the compact pill if audio exists
-  if (!isExpanded) {
-    return (
-      <div className="flex items-center gap-2">
-        {audioURL ? (
+      {!isExpanded && audioURL && (
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 bg-blue-600 text-white pl-1 pr-3 py-1 rounded-full shadow-md animate-in slide-in-from-right-2 duration-300">
             <button
               onClick={togglePlayback}
@@ -183,81 +180,81 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
               <Trash2 size={16} />
             </button>
           </div>
-        ) : null}
-        
-        <button
-          onClick={() => setIsExpanded(true)}
-          className={`
-            w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm border
-            ${audioURL 
-              ? 'bg-blue-50 text-blue-600 border-blue-100' 
-              : 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
-            }
-          `}
-          title={audioURL ? "הקלט שוב" : "הקלט הודעה קולית"}
-        >
-          <Mic size={20} />
-        </button>
-      </div>
-    );
-  }
-
-  // OPEN STATE: Pop-up overlay for the recording process
-  return (
-    <div className="fixed inset-x-0 bottom-0 z-[100] animate-in slide-in-from-bottom-2 duration-300 px-4 pb-8 pointer-events-none">
-      <div className="bg-white/95 backdrop-blur-md p-6 rounded-3xl shadow-[0_-8px_40px_rgba(0,0,0,0.15)] border border-slate-100 max-w-sm mx-auto pointer-events-auto">
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-widest">
-            {isRecording ? 'מקליט כרגע...' : 'הקלטת קול'}
-          </span>
-          {!isRecording && (
-            <button onClick={() => setIsExpanded(false)} className="text-slate-400 p-1 hover:text-slate-600 transition-colors">
-              <Square size={20} className="rotate-45" />
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-col items-center gap-6 py-2">
-          <div className="relative">
-            {isRecording && (
-              <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-25" />
-            )}
-            <button
-              onClick={() => isRecording ? stopRecording() : startRecording()}
-              className={`
-                relative w-24 h-24 rounded-full flex flex-col items-center justify-center gap-1
-                transition-all duration-200 shadow-2xl z-10
-                ${isRecording 
-                  ? 'bg-red-500 text-white scale-110' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-                }
-              `}
-            >
-              {isRecording ? <Square size={32} fill="currentColor" /> : <Mic size={32} />}
-              {isRecording && <span className="text-xs font-black">{duration}s</span>}
-            </button>
-          </div>
           
-          <div className="text-center">
-            <p className="text-base font-bold text-slate-800 mb-1">
-              {isRecording ? 'לחץ לסיום ההקלטה' : 'לחץ על המיקרופון להקלטה'}
-            </p>
-            <p className="text-[11px] font-medium text-slate-400">
-              {isRecording ? 'ההודעה תישמר אוטומטית' : 'ניתן להקליט עד 10 שניות'}
-            </p>
-          </div>
-
-          {isRecording && (
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-red-500 transition-all duration-1000 ease-linear"
-                style={{ width: `${(duration / MAX_DURATION) * 100}%` }}
-              />
-            </div>
-          )}
+          <button
+            onClick={() => setIsExpanded(true)}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm border bg-blue-50 text-blue-600 border-blue-100"
+            title="הקלט שוב"
+          >
+            <Mic size={20} />
+          </button>
         </div>
-        <audio ref={audioPlayerRef} src={audioURL || ''} onEnded={() => setIsPlaying(false)} className="hidden" />
-      </div>
-    </div>
+      )}
+
+      {isExpanded && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center px-4 pb-8">
+          {/* Overlay backdrop */}
+          <div 
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => {
+              if (!isRecording) {
+                setIsExpanded(false);
+              }
+            }}
+          />
+          
+          {/* Modal Content */}
+          <div className="relative bg-white/95 backdrop-blur-md p-6 rounded-3xl shadow-[0_-8px_40px_rgba(0,0,0,0.15)] border border-slate-100 w-full max-w-sm mx-auto animate-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-between mb-6">
+              <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-widest">
+                {isRecording ? 'מקליט כרגע...' : 'הקלטת קול'}
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center gap-6 py-2">
+              <div className="relative">
+                {isRecording && (
+                  <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-25" />
+                )}
+                <button
+                  onClick={() => isRecording ? stopRecording() : startRecording()}
+                  className={`
+                    relative w-24 h-24 rounded-full flex flex-col items-center justify-center gap-1
+                    transition-all duration-200 shadow-2xl z-10
+                    ${isRecording 
+                      ? 'bg-red-500 text-white scale-110' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }
+                  `}
+                >
+                  {isRecording ? <Square size={32} fill="currentColor" /> : <Mic size={32} />}
+                  {isRecording && <span className="text-xs font-black">{duration}s</span>}
+                </button>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-base font-bold text-slate-800 mb-1">
+                  {isRecording ? 'לחץ לסיום ההקלטה' : 'לחץ על המיקרופון להקלטה'}
+                </p>
+                <p className="text-[11px] font-medium text-slate-400">
+                  {isRecording ? 'ההודעה תישמר אוטומטית' : 'ניתן להקליט עד 10 שניות'}
+                </p>
+              </div>
+
+              {isRecording && (
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-red-500 transition-all duration-1000 ease-linear"
+                    style={{ width: `${(duration / MAX_DURATION) * 100}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <audio ref={audioPlayerRef} src={audioURL || ''} onEnded={() => setIsPlaying(false)} className="hidden" />
+    </>
   );
 };

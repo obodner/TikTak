@@ -451,6 +451,24 @@ async function sendResidentWhatsAppNotification(params) {
         logger.error(`Exception while sending WhatsApp resident alert to ${cleanPhone}:`, err);
     }
 }
+function detectAudioMimeType(buffer) {
+    if (buffer.length > 4 && buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
+        return 'audio/webm';
+    }
+    if (buffer.length > 8 && buffer.toString('ascii', 4, 8) === 'ftyp') {
+        return 'audio/mp4';
+    }
+    if (buffer.length > 2 && buffer[0] === 0xff && (buffer[1] & 0xf0) === 0xf0) {
+        return 'audio/aac';
+    }
+    if (buffer.length > 4 && buffer.toString('ascii', 0, 4) === 'OggS') {
+        return 'audio/ogg';
+    }
+    if (buffer.length > 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WAVE') {
+        return 'audio/wav';
+    }
+    return 'audio/webm';
+}
 exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
     try {
         const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone, source } = req.body;
@@ -536,11 +554,12 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
             }
             if (req.body.audioBase64) {
                 const bucket = admin.storage().bucket();
-                const audioFile = bucket.file(`tenants/${tenantId}/${ticketId}.webm`);
                 const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
-                logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes`);
-                await audioFile.save(audioBuffer, {
-                    metadata: { contentType: "audio/webm" }
+                const mimeType = detectAudioMimeType(audioBuffer);
+                logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes, detected MIME: ${mimeType}`);
+                const audioFileWebm = bucket.file(`tenants/${tenantId}/${ticketId}.webm`);
+                await audioFileWebm.save(audioBuffer, {
+                    metadata: { contentType: mimeType }
                 });
                 logger.info("Audio note uploaded successfully", { tenantId, ticketId });
             }
@@ -925,8 +944,21 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
             res.status(400).send({ error: "Cannot vote for your own ticket" });
             return;
         }
+        const meTooReporters = ticketData.meTooReporters || [];
+        const alreadyVoted = meTooReporters.some((r) => r.phone === reporterPhone);
+        if (alreadyVoted) {
+            res.status(400).send({ error: "You have already voted for this ticket" });
+            return;
+        }
+        const reporterName = reporterDoc.data()?.name || "תושב";
+        const newVoter = {
+            name: reporterName,
+            phone: reporterPhone,
+            votedAt: new Date().toISOString()
+        };
         await ticketRef.update({
             meToo: admin.firestore.FieldValue.increment(1),
+            meTooReporters: admin.firestore.FieldValue.arrayUnion(newVoter),
             updatedAt: new Date().toISOString()
         });
         const auditMsg = `Resident clicked Me Too on ticket #${ticketNumber} in building ${tenantId}`;
@@ -1000,7 +1032,7 @@ exports.getAudio = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     else {
         const pathSegments = req.path.split('/').filter(p => p && p !== 'aud');
         tenantId = pathSegments[0];
-        audioId = pathSegments[1];
+        audioId = pathSegments[1] ? pathSegments[1].replace(/\.[^/.]+$/, "") : "";
     }
     if (!tenantId || !audioId || audioId === 'view') {
         res.status(400).send("Invalid audio path format");
@@ -1008,8 +1040,12 @@ exports.getAudio = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     }
     try {
         const bucket = admin.storage().bucket();
-        const file = bucket.file(`tenants/${tenantId}/${audioId}.webm`);
-        const [exists] = await file.exists();
+        let file = bucket.file(`tenants/${tenantId}/${audioId}.webm`);
+        let [exists] = await file.exists();
+        if (!exists) {
+            file = bucket.file(`tenants/${tenantId}/${audioId}`);
+            [exists] = await file.exists();
+        }
         if (!exists) {
             res.status(404).send("Audio not found");
             return;

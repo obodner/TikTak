@@ -439,12 +439,7 @@ export default function ResidentFlow() {
 
                 {state === 'idle' || state === 'analyzing' ? (
                     <div className="flex-1 flex flex-col items-center justify-between w-full">
-                        {authError && (
-                            <div className="bg-red-50 text-red-700 p-4 rounded-2xl border border-red-200 flex items-start gap-3 shadow-sm animate-in slide-in-from-top-2 mb-4 w-full">
-                                <AlertTriangle className="shrink-0 mt-0.5 text-red-600" size={20} />
-                                <p className="text-sm font-bold leading-tight">{authError}</p>
-                            </div>
-                        )}
+
                         {/* 2. HERO SECTION */}
                         <section className="text-center mb-4 animate-in fade-in slide-in-from-top-4 duration-1000">
                             <h1 className="text-blue-900 font-black text-2xl mb-2 leading-tight tracking-tight">
@@ -550,12 +545,7 @@ export default function ResidentFlow() {
                     </div>
                 ) : (
                     <div className="w-full flex flex-col gap-4">
-                        {authError && (
-                            <div className="bg-red-50 text-red-700 p-4 rounded-2xl border border-red-200 flex items-start gap-3 shadow-sm animate-in slide-in-from-top-2">
-                                <AlertTriangle className="shrink-0 mt-0.5 text-red-600" size={20} />
-                                <p className="text-sm font-bold leading-tight">{authError}</p>
-                            </div>
-                        )}
+
                         <ReportingForm
                             initialData={{
                                 ...ticketData,
@@ -672,6 +662,30 @@ export default function ResidentFlow() {
                     >
                         {t('view_previous_reports')}
                     </Link>
+                </div>
+            )}
+
+            {/* Centered Warning Modal for Auth Errors */}
+            {authError && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+                    <div className="absolute inset-0" onClick={() => setAuthError('')} />
+                    <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 flex flex-col items-center text-center animate-in zoom-in-95 duration-200 border border-slate-100">
+                        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-4">
+                            <AlertTriangle size={24} />
+                        </div>
+                        <h3 className="font-extrabold text-slate-800 text-lg mb-2">
+                            {i18n.language === 'he' ? 'שגיאת אימות' : 'Authentication Error'}
+                        </h3>
+                        <p className="text-slate-600 text-sm font-bold leading-relaxed mb-6">
+                            {authError}
+                        </p>
+                        <button
+                            onClick={() => setAuthError('')}
+                            className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black transition-all active:scale-95 shadow-lg shadow-red-600/10"
+                        >
+                            {i18n.language === 'he' ? 'הבנתי' : 'Got it'}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

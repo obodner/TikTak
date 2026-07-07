@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
 import { logAction } from '../../utils/auditLogger';
 import { ConfirmModal, ConfirmType } from '../../components/admin/ConfirmModal';
@@ -10,11 +10,66 @@ import { ClosureModal } from '../../components/admin/ClosureModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon, Pause } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
 import { he } from 'date-fns/locale';
+
+const InlineAudioPlayer = ({ src, isEn }: { src: string; isEn?: boolean }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      const audios = document.querySelectorAll('audio');
+      audios.forEach(aud => {
+        if (aud !== audioRef.current) {
+          aud.pause();
+        }
+      });
+      audioRef.current.play().catch(err => {
+        console.error("Playback failed:", err);
+      });
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <button
+        onClick={togglePlay}
+        className={`p-1.5 rounded-lg transition-all flex items-center justify-center
+          ${isPlaying 
+            ? 'bg-blue-100 text-blue-600' 
+            : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'
+          }`}
+        title={isPlaying ? (isEn ? "Pause Audio" : "השהה הקלטה") : (isEn ? "Play Audio" : "נגן הקלטה")}
+      >
+        {isPlaying ? (
+          <span className="relative flex h-[18px] w-[18px] items-center justify-center">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <Pause size={14} className="relative z-10" fill="currentColor" />
+          </span>
+        ) : (
+          <Mic size={18} />
+        )}
+      </button>
+      <audio
+        ref={audioRef}
+        src={src}
+        onEnded={() => setIsPlaying(false)}
+        onPause={() => setIsPlaying(false)}
+        onPlay={() => setIsPlaying(true)}
+        className="hidden"
+      />
+    </div>
+  );
+};
 
 type Ticket = {
   id: string;
@@ -42,6 +97,7 @@ type Ticket = {
   appRating?: number;
   vaadRating?: string;
   meToo?: number;
+  meTooReporters?: { name: string; phone: string; votedAt: string }[];
 };
 
 const CustomTooltip = ({ active, payload, label, isEn }: any) => {
@@ -863,7 +919,17 @@ export default function AdminDashboard() {
                         </button>
 
                         {t.meToo && t.meToo > 0 ? (
-                          <div className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default" title={isEn ? "Me Too reports" : "דיווחו שגם להם יש את התקלה"}>
+                          <div 
+                            className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default" 
+                            title={(() => {
+                              const prefix = isEn ? "Joined the report:" : "הצטרפו לדיווח:";
+                              if (!t.meTooReporters || t.meTooReporters.length === 0) {
+                                return prefix;
+                              }
+                              const names = t.meTooReporters.map((r: any) => `- ${r.name || (isEn ? 'Resident' : 'תושב')}`).join('\n');
+                              return `${prefix}\n${names}`;
+                            })()}
+                          >
                             <span>🙋</span>
                             <span>{t.meToo}</span>
                           </div>
@@ -883,16 +949,7 @@ export default function AdminDashboard() {
                         )}
 
                         {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
-                          <a
-                            href={`/aud/${tenantId}/${t.audioId}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                            title={isEn ? "Play Audio" : "נגן הקלטה"}
-                          >
-                            <Mic size={18} />
-                          </a>
+                          <InlineAudioPlayer src={`/aud/${tenantId}/${t.audioId}`} isEn={isEn} />
                         )}
                       </div>
 

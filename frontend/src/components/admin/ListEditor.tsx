@@ -26,6 +26,7 @@ export const ListEditor: React.FC<ListEditorProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const expandRange = (str: string): string[] | null => {
     // Match: optional leading minus, digits, a dash separator, optional minus, digits
@@ -45,30 +46,27 @@ export const ListEditor: React.FC<ListEditorProps> = ({
     return result;
   };
 
+  const handleDoubleClick = (item: string, idx: number) => {
+    setInputValue(item);
+    setEditingIndex(idx);
+  };
+
   const handleAdd = () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
 
-    let valuesToAdd: string[] = [trimmed];
-
-    if (allowRanges) {
-      const expanded = expandRange(trimmed);
-      if (expanded) {
-        valuesToAdd = expanded;
+    if (editingIndex !== null) {
+      const newItems = [...items];
+      // Check if it already exists elsewhere in the list to avoid duplicate entries
+      const dupIndex = newItems.indexOf(trimmed);
+      if (dupIndex !== -1 && dupIndex !== editingIndex) {
+        setInputValue('');
+        setEditingIndex(null);
+        return;
       }
-    }
 
-    const newItems = [...items];
-    let addedCount = 0;
+      newItems[editingIndex] = trimmed;
 
-    valuesToAdd.forEach(val => {
-      if (!newItems.includes(val)) {
-        newItems.push(val);
-        addedCount++;
-      }
-    });
-
-    if (addedCount > 0) {
       if (allowRanges) {
         newItems.sort((a, b) => {
           const numA = parseInt(a);
@@ -77,9 +75,46 @@ export const ListEditor: React.FC<ListEditorProps> = ({
           return numA - numB;
         });
       }
+
       onChange(newItems);
       setInputValue('');
-      setSelectedIndex(null);
+      setEditingIndex(null);
+      
+      const newIndex = allowRanges ? newItems.indexOf(trimmed) : editingIndex;
+      setSelectedIndex(newIndex !== -1 ? newIndex : null);
+    } else {
+      let valuesToAdd: string[] = [trimmed];
+
+      if (allowRanges) {
+        const expanded = expandRange(trimmed);
+        if (expanded) {
+          valuesToAdd = expanded;
+        }
+      }
+
+      const newItems = [...items];
+      let addedCount = 0;
+
+      valuesToAdd.forEach(val => {
+        if (!newItems.includes(val)) {
+          newItems.push(val);
+          addedCount++;
+        }
+      });
+
+      if (addedCount > 0) {
+        if (allowRanges) {
+          newItems.sort((a, b) => {
+            const numA = parseInt(a);
+            const numB = parseInt(b);
+            if (isNaN(numA) || isNaN(numB)) return a.localeCompare(b, 'he');
+            return numA - numB;
+          });
+        }
+        onChange(newItems);
+        setInputValue('');
+        setSelectedIndex(null);
+      }
     }
   };
 
@@ -87,6 +122,9 @@ export const ListEditor: React.FC<ListEditorProps> = ({
     if (e.key === 'Enter') {
       e.preventDefault();
       handleAdd();
+    } else if (e.key === 'Escape') {
+      setInputValue('');
+      setEditingIndex(null);
     }
   };
 
@@ -95,6 +133,8 @@ export const ListEditor: React.FC<ListEditorProps> = ({
     const newItems = items.filter((_, i) => i !== selectedIndex);
     onChange(newItems);
     setSelectedIndex(null);
+    setInputValue('');
+    setEditingIndex(null);
   };
 
   const handleMove = (direction: 'up' | 'down') => {
@@ -110,12 +150,16 @@ export const ListEditor: React.FC<ListEditorProps> = ({
 
     onChange(newItems);
     setSelectedIndex(newIndex);
+    setEditingIndex(null);
+    setInputValue('');
   };
 
   const handleAlphabeticalSort = () => {
     const sorted = [...items].sort((a, b) => a.localeCompare(b, 'he'));
     onChange(sorted);
     setSelectedIndex(null);
+    setEditingIndex(null);
+    setInputValue('');
   };
 
   const handleNumericSort = () => {
@@ -127,6 +171,8 @@ export const ListEditor: React.FC<ListEditorProps> = ({
     });
     onChange(sorted);
     setSelectedIndex(null);
+    setEditingIndex(null);
+    setInputValue('');
   };
 
   return (
@@ -166,11 +212,25 @@ export const ListEditor: React.FC<ListEditorProps> = ({
           className="w-full lg:w-48 border border-slate-300 rounded-lg p-2 bg-white outline-none focus:ring-2 focus:ring-blue-100 font-bold text-slate-900 overflow-y-auto min-h-[150px] text-right"
           dir="rtl"
           value={selectedIndex !== null ? selectedIndex : ''}
-          onChange={(e) => setSelectedIndex(parseInt(e.target.value))}
+          onChange={(e) => {
+            setSelectedIndex(parseInt(e.target.value));
+            setEditingIndex(null);
+            setInputValue('');
+          }}
           onFocus={() => { if (selectedIndex === null && items.length > 0) setSelectedIndex(0); }}
+          onDoubleClick={() => {
+            if (selectedIndex !== null && items[selectedIndex] !== undefined) {
+              handleDoubleClick(items[selectedIndex], selectedIndex);
+            }
+          }}
         >
           {items.map((item, idx) => (
-            <option key={`${item}-${idx}`} value={idx} className="p-1 px-2 rounded cursor-pointer hover:bg-blue-50 text-slate-900 font-bold">
+            <option 
+              key={`${item}-${idx}`} 
+              value={idx} 
+              className="p-1 px-2 rounded cursor-pointer hover:bg-blue-50 text-slate-900 font-bold"
+              onDoubleClick={() => handleDoubleClick(item, idx)}
+            >
               {isLtr && item.startsWith('-') ? `\u200E${item}` : item}
             </option>
           ))}
@@ -182,7 +242,7 @@ export const ListEditor: React.FC<ListEditorProps> = ({
           <div className="flex gap-2 w-full">
             <input
               type="text"
-              className={`flex-1 min-w-0 border border-slate-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-bold text-slate-900 bg-white text-sm ${isLtr ? 'text-left' : 'text-right'}`}
+              className={`flex-1 min-w-0 border ${editingIndex !== null ? 'border-amber-400 focus:ring-amber-100 bg-amber-50/10 font-bold' : 'border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'} rounded-lg px-3 py-2 outline-none transition-all text-slate-900 bg-white text-sm ${isLtr ? 'text-left' : 'text-right'}`}
               dir={isLtr ? 'ltr' : 'rtl'}
               placeholder={placeholder}
               value={inputValue}
@@ -194,7 +254,7 @@ export const ListEditor: React.FC<ListEditorProps> = ({
               onClick={handleAdd}
               disabled={!inputValue.trim()}
               className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors shadow-sm disabled:opacity-50"
-              title="Add to list"
+              title={editingIndex !== null ? "שמור עריכה (Enter / Escape לביטול)" : "הוסף לרשימה"}
             >
               <Plus size={20} />
             </button>

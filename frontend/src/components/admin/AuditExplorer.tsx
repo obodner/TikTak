@@ -159,8 +159,11 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             if (filters.search) {
                 const s = filters.search.toLowerCase();
                 filtered = filtered.filter(l =>
+                    getHumanReadable(l).toLowerCase().includes(s) ||
                     JSON.stringify(l.details).toLowerCase().includes(s) ||
-                    l.action.toLowerCase().includes(s)
+                    l.action.toLowerCase().includes(s) ||
+                    l.actor.name.toLowerCase().includes(s) ||
+                    (l.actor.email && l.actor.email.toLowerCase().includes(s))
                 );
             }
 
@@ -198,7 +201,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         });
     };
 
-    const getHumanReadable = (log: AuditLog) => {
+    function getHumanReadable(log: AuditLog) {
         let actor = log.actor.name || 'Unknown';
         // If actor name is an email, show only the prefix for a cleaner look
         if (actor.includes('@') && actor.includes('.')) {
@@ -320,7 +323,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             default:
                 return `${actor}: ${log.action}`;
         }
-    };
+    }
 
     return (
         <div className="space-y-6" dir={isEn ? 'ltr' : 'rtl'}>
