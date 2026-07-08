@@ -10,7 +10,7 @@ import { ClosureModal } from '../../components/admin/ClosureModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon, Pause } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon, Pause, GripVertical } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -248,6 +248,7 @@ export default function AdminDashboard() {
     tab_new: isEn ? 'New' : 'חדש',
     tab_progress: isEn ? 'In Progress' : 'בטיפול',
     tab_resolved: isEn ? 'Resolved' : 'טופל',
+    quicktap: isEn ? 'QuickTap' : 'דיווח מהיר',
     filters: {
       search: isHe ? 'חפש בתיאור התקלה...' : 'Search in description...',
       time: isHe ? 'טווח זמן' : 'Time Range',
@@ -793,7 +794,6 @@ export default function AdminDashboard() {
                     <div
                       ref={provided.innerRef}
                       {...provided.draggableProps}
-                      {...provided.dragHandleProps}
                       className={`${getSlaColorClasses(
                         tenantConfig?.slaConfig?.enabled !== false && (t.status === 'open' || t.status === 'in-progress')
                           ? (t.slaStatus || getSlaStatus(calculateWorkingDays(
@@ -803,7 +803,7 @@ export default function AdminDashboard() {
                             holidays
                           )))
                           : 'none'
-                      )} p-4 rounded-2xl shadow-sm border transition-all cursor-grab active:cursor-grabbing relative group ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
+                      )} p-4 rounded-2xl shadow-sm border transition-all relative group ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
                         }`}
                       onClick={() => {
                         if (snapshot.isDragging) return;
@@ -812,6 +812,13 @@ export default function AdminDashboard() {
                       {/* Top Row: #/Urgency (Right) and Date/Time (Left) */}
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-2">
+                          <div
+                            {...provided.dragHandleProps}
+                            className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 shrink-0"
+                            title={isEn ? "Drag to move status" : "גרור כדי לשנות סטטוס"}
+                          >
+                            <GripVertical size={16} />
+                          </div>
                           <select
                             value={t.urgency}
                             disabled={updatingId === t.id}
@@ -826,17 +833,40 @@ export default function AdminDashboard() {
                             <option value="Moderate">{uiLabels.urgency.Moderate}</option>
                             <option value="Low">{uiLabels.urgency.Low}</option>
                           </select>
+                          <select
+                            value={(t.status as string) === 'progress' ? 'in-progress' : (t.status as string) === 'closed' ? 'resolved' : t.status}
+                            disabled={updatingId === t.id}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const newStatus = e.target.value as Ticket['status'];
+                              if (newStatus === 'resolved') {
+                                setClosureTicketId(t.id);
+                              } else {
+                                handleStatusUpdate(t.id, newStatus, t);
+                              }
+                            }}
+                            className="text-xs font-black px-2 py-0.5 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none"
+                          >
+                            <option value="open">{isEn ? 'New' : 'חדש'}</option>
+                            <option value="in-progress">{isEn ? 'In Progress' : 'בטיפול'}</option>
+                            <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
+                            <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
+                          </select>
                           <span className="text-sm font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
-                          {t.source === 'quicktap' && (
-                            <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm" title="QuickTap">
-                              ⚡ QuickTap
-                            </span>
-                          )}
                         </div>
                         <div className="text-xs text-slate-400 font-bold text-left">
                           {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
                         </div>
                       </div>
+
+                      {/* QuickTap tag block (below top row) */}
+                      {t.source === 'quicktap' && (
+                        <div className="mb-2 flex justify-start">
+                          <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "QuickTap" : "דיווח מהיר"}>
+                            ⚡ {uiLabels.quicktap}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Category & Summary */}
                       <div className="mb-4">

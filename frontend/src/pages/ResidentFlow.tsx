@@ -178,6 +178,13 @@ export default function ResidentFlow() {
         loadConfig();
     }, [tenantId]);
 
+    // Scroll to top when entering editing state (opening manual form or after image analysis)
+    useEffect(() => {
+        if (state === 'editing') {
+            window.scrollTo(0, 0);
+        }
+    }, [state]);
+
     const handleCapture = async (file: File) => {
         setState('analyzing');
 

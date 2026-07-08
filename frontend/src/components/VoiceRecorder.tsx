@@ -20,7 +20,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
   const isStoppingRef = useRef(false);
   const isStartingRef = useRef(false);
 
-  const MAX_DURATION = 10;
+  const MAX_DURATION = 15;
 
   const startRecording = async () => {
     if (isStartingRef.current) return;
