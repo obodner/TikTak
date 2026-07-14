@@ -48,6 +48,7 @@ export default function ResidentDashboard() {
   // Tenant meta
   const [tenantName, setTenantName] = useState('');
   const [address, setAddress] = useState('');
+  const [tenantType, setTenantType] = useState<'building' | 'municipality'>('building');
 
   // Ticket data
   const [myTickets, setMyTickets] = useState<Ticket[]>([]);
@@ -92,6 +93,7 @@ export default function ResidentDashboard() {
           const data = await response.json();
           if (data.name) setTenantName(data.name);
           if (data.address) setAddress(data.address);
+          if (data.type) setTenantType(data.type);
           if (data.language) {
             i18n.changeLanguage(data.language);
           }
@@ -141,8 +143,12 @@ export default function ResidentDashboard() {
 
   // Trigger fetch when phone state updates
   useEffect(() => {
-    if (!isPhoneLoading) {
+    if (!isPhoneLoading && reporterPhone) {
       fetchTickets(reporterPhone);
+    } else if (!isPhoneLoading && !reporterPhone) {
+      setMyTickets([]);
+      setOpenTickets([]);
+      setIsLoadingTickets(false);
     }
   }, [reporterPhone, isPhoneLoading, tenantId]);
 
@@ -350,10 +356,12 @@ export default function ResidentDashboard() {
           </Link>
           <div className="flex-1">
             <h1 className="text-lg font-black text-slate-900 leading-tight">
-              {address || tenantName || t('view_previous_reports')}
+              {address || tenantName || (tenantType === 'municipality' ? t('view_previous_reports_municipality') : t('view_previous_reports_building'))}
             </h1>
             <p className="text-xs text-slate-400 font-bold">
-              {isHe ? 'מעקב וסטטוס פניות הבניין' : 'Building Incidents Status Tracking'}
+              {isHe 
+                ? (tenantType === 'municipality' ? 'מעקב וסטטוס פניות היישוב' : 'מעקב וסטטוס פניות הבניין') 
+                : (tenantType === 'municipality' ? 'Community Incidents Status Tracking' : 'Building Incidents Status Tracking')}
             </p>
           </div>
           <div className="h-8 w-auto shrink-0 select-none">
@@ -392,55 +400,53 @@ export default function ResidentDashboard() {
       <main className="flex-1 w-full max-w-sm mx-auto px-4 py-4 flex flex-col gap-6">
 
         {/* Tab Contents */}
-        {activeTab === 'my-reports' ? (
-          /* TAB 1: My Reports */
-          !reporterPhone ? (
-            /* Missing Phone Notice Component */
-            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-md text-center flex flex-col items-center gap-4 animate-in slide-in-from-bottom-3 duration-300">
-              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center">
-                <AlertTriangle className="w-8 h-8" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-extrabold text-slate-800 text-lg">
-                  {t('phone_not_registered_notice')}
-                </h3>
-                <p className="text-xs text-slate-400 font-bold px-4">
-                  {t('enter_phone_label')}
-                </p>
-              </div>
-
-              {phoneError && (
-                <div className="bg-red-50 text-red-600 text-xs font-bold py-2.5 px-4 rounded-xl border border-red-100 w-full">
-                  {phoneError}
-                </div>
-              )}
-
-              <form onSubmit={handlePhoneSubmit} className="w-full space-y-3">
-                <input
-                  type="tel"
-                  placeholder="05X-XXXXXXX"
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl py-3 px-4 text-center font-bold text-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all bg-slate-50"
-                  disabled={isSubmittingPhone}
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmittingPhone || !phoneInput.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-base shadow-lg shadow-blue-100 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {isSubmittingPhone ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-                  ) : (
-                    t('submit_phone_btn')
-                  )}
-                </button>
-              </form>
+        {!reporterPhone ? (
+          /* Missing Phone Notice Component */
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-md text-center flex flex-col items-center gap-4 animate-in slide-in-from-bottom-3 duration-300">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8" />
             </div>
-          ) : (
-            /* Vertical List of Personal Reports */
-            <div className="space-y-4">
-              {isLoadingTickets && (
+            <div className="space-y-1">
+              <h3 className="font-extrabold text-slate-800 text-lg">
+                {t('phone_not_registered_notice')}
+              </h3>
+              <p className="text-xs text-slate-400 font-bold px-4">
+                {t('enter_phone_label')}
+              </p>
+            </div>
+
+            {phoneError && (
+              <div className="bg-red-50 text-red-600 text-xs font-bold py-2.5 px-4 rounded-xl border border-red-100 w-full">
+                {phoneError}
+              </div>
+            )}
+
+            <form onSubmit={handlePhoneSubmit} className="w-full space-y-3">
+              <input
+                type="tel"
+                placeholder="05X-XXXXXXX"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                className="w-full border border-slate-200 rounded-2xl py-3 px-4 text-center font-bold text-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all bg-slate-50"
+                disabled={isSubmittingPhone}
+              />
+              <button
+                type="submit"
+                disabled={isSubmittingPhone || !phoneInput.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-base shadow-lg shadow-blue-100 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {isSubmittingPhone ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                ) : (
+                  t('submit_phone_btn')
+                )}
+              </button>
+            </form>
+          </div>
+        ) : activeTab === 'my-reports' ? (
+          /* TAB 1: My Reports */
+          <div className="space-y-4">
+            {isLoadingTickets && (
                 <div className="text-center py-10">
                   <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                   <p className="text-xs text-slate-400 font-bold">{isHe ? 'טוען פניות...' : 'Loading...'}</p>
@@ -523,7 +529,6 @@ export default function ResidentDashboard() {
                 />
               ))}
             </div>
-          )
         ) : (
           /* TAB 2: Open Reports */
           <div className="flex flex-col gap-6">

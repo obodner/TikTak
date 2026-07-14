@@ -200,6 +200,14 @@ exports.checkAuth = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
         res.status(500).send({ authorized: false, error: "Internal server error" });
     }
 });
+function sanitizeParam(str) {
+    if (!str)
+        return "";
+    return str
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/ {2,}/g, " ")
+        .trim();
+}
 async function sendWhatsAppNotification(params) {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const phoneNumberId = "1046588828547584";
@@ -235,7 +243,7 @@ async function sendWhatsAppNotification(params) {
         locationParts.push(`*${locationLabel}*: ${params.location}`);
     }
     if (locationParts.length > 0) {
-        formattedLocation = locationParts.join("\n");
+        formattedLocation = locationParts.join(" • ");
     }
     else {
         formattedLocation = "לא צוין מיקום";
@@ -298,13 +306,13 @@ async function sendWhatsAppNotification(params) {
                 {
                     type: "body",
                     parameters: [
-                        { type: "text", text: params.tenantName },
-                        { type: "text", text: String(params.ticketNumber) },
-                        { type: "text", text: params.category },
-                        { type: "text", text: severityHebrew },
-                        { type: "text", text: params.summary || "אין תיאור" },
-                        { type: "text", text: formattedLocation },
-                        { type: "text", text: params.reporterName || "תושב/ת" }
+                        { type: "text", text: sanitizeParam(params.tenantName) },
+                        { type: "text", text: sanitizeParam(String(params.ticketNumber)) },
+                        { type: "text", text: sanitizeParam(params.category) },
+                        { type: "text", text: sanitizeParam(severityHebrew) },
+                        { type: "text", text: sanitizeParam(params.summary || "אין תיאור") },
+                        { type: "text", text: sanitizeParam(formattedLocation) },
+                        { type: "text", text: sanitizeParam(params.reporterName || "תושב/ת") }
                     ]
                 }
             ];
@@ -373,10 +381,14 @@ async function sendResidentWhatsAppNotification(params) {
     }
     let locationLabel = "רחוב";
     let subLocationLabel = "אזור";
+    let tenantName = "ועד הבית";
     if (params.tenantId) {
         try {
             const tenantDoc = await db.collection("tenants").doc(params.tenantId).get();
-            const uiConfig = tenantDoc.data()?.uiConfig || {};
+            const tenantData = tenantDoc.data() || {};
+            if (tenantData.name)
+                tenantName = tenantData.name;
+            const uiConfig = tenantData.uiConfig || {};
             if (uiConfig.locationLabel)
                 locationLabel = uiConfig.locationLabel;
             if (uiConfig.subLocationLabel)
@@ -401,16 +413,16 @@ async function sendResidentWhatsAppNotification(params) {
         formattedLocation = "לא צוין מיקום";
     }
     const parameters = [
-        { type: "text", text: String(params.ticketNumber) },
-        { type: "text", text: params.category },
-        { type: "text", text: formattedLocation }
+        { type: "text", text: sanitizeParam(String(params.ticketNumber)) },
+        { type: "text", text: sanitizeParam(params.category) },
+        { type: "text", text: sanitizeParam(formattedLocation) }
     ];
     if (params.templateName === "ticket_resolved") {
         let reasonHebrew = translateClosureReason(params.closureReason || "fixed");
         if (params.resolutionNote && params.resolutionNote.trim()) {
             reasonHebrew += ` (${params.resolutionNote.trim()})`;
         }
-        parameters.push({ type: "text", text: reasonHebrew });
+        parameters.push({ type: "text", text: sanitizeParam(reasonHebrew) });
     }
     try {
         const payload = {
@@ -423,6 +435,15 @@ async function sendResidentWhatsAppNotification(params) {
                     code: "he"
                 },
                 components: [
+                    {
+                        type: "header",
+                        parameters: [
+                            {
+                                type: "text",
+                                text: tenantName
+                            }
+                        ]
+                    },
                     {
                         type: "body",
                         parameters
@@ -788,18 +809,20 @@ exports.getResidentTickets = (0, https_1.onRequest)({ cors: true }, async (req, 
             res.status(400).send({ error: "Missing tenantId" });
             return;
         }
-        if (reporterPhone) {
-            const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
-            if (!reporterDoc.exists) {
-                const tenantDoc = await db.collection("tenants").doc(tenantId).get();
-                const tenantType = tenantDoc.data()?.type || 'building';
-                const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
-                res.status(403).send({
-                    error: "Unauthorized",
-                    message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור השתתפות במערכת הדיווחים.`
-                });
-                return;
-            }
+        if (!reporterPhone) {
+            res.status(401).send({ error: "Missing reporterPhone" });
+            return;
+        }
+        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
+        if (!reporterDoc.exists) {
+            const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+            const tenantType = tenantDoc.data()?.type || 'building';
+            const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
+            res.status(403).send({
+                error: "Unauthorized",
+                message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור השתתפות במערכת הדיווחים.`
+            });
+            return;
         }
         const allTicketsSnap = await db.collection("tenants")
             .doc(tenantId)

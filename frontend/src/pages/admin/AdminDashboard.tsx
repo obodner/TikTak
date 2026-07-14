@@ -1164,7 +1164,7 @@ export default function AdminDashboard() {
                     <YAxis fontSize={10} width={35} tick={{ fontSize: 8 }} tickMargin={5} />
                     <Tooltip content={<CustomTooltip isEn={isEn} />} cursor={{ fill: '#f8fafc' }} />
                     <Bar dataKey="ai" name={isEn ? "AI Camera" : "מצלמת AI"} stackId="a" fill="#3b82f6" />
-                    <Bar dataKey="quicktap" name={isEn ? "QuickTap ⚡" : "QuickTap ⚡"} stackId="a" fill="#8b5cf6" />
+                    <Bar dataKey="quicktap" name={isEn ? "QuickTap ⚡" : "דיווח מהיר ⚡"} stackId="a" fill="#8b5cf6" />
                     <Bar dataKey="manual" name={isEn ? "Manual" : "דיווח ידני"} stackId="a" fill="#10b981" />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1296,7 +1296,7 @@ export default function AdminDashboard() {
                   <option value="all">{uiLabels.filters.all}</option>
                   <option value="ai_camera">{isEn ? 'AI Camera' : 'מצלמת AI'}</option>
                   <option value="manual">{isEn ? 'Manual' : 'ידני'}</option>
-                  <option value="quicktap">{isEn ? 'QuickTap' : 'QuickTap ⚡'}</option>
+                  <option value="quicktap">{isEn ? 'QuickTap' : 'דיווח מהיר ⚡'}</option>
                 </select>
               </div>
 

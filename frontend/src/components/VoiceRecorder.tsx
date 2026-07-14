@@ -237,7 +237,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
                   {isRecording ? 'לחץ לסיום ההקלטה' : 'לחץ על המיקרופון להקלטה'}
                 </p>
                 <p className="text-[11px] font-medium text-slate-400">
-                  {isRecording ? 'ההודעה תישמר אוטומטית' : 'ניתן להקליט עד 10 שניות'}
+                  {isRecording ? 'ההודעה תישמר אוטומטית' : `ניתן להקליט עד ${MAX_DURATION} שניות`}
                 </p>
               </div>
 

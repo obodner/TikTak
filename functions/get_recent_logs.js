@@ -1,4 +1,9 @@
 const admin = require("firebase-admin");
+const fs = require("fs");
+
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+}
 
 if (!admin.apps.length) {
   admin.initializeApp();

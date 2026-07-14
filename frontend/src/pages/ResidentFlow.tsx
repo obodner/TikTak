@@ -667,7 +667,7 @@ export default function ResidentFlow() {
                         to={`/report/${tenantId}/dashboard`}
                         className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors py-2 px-4"
                     >
-                        {t('view_previous_reports')}
+                        {isMunicipality ? t('view_previous_reports_municipality') : t('view_previous_reports_building')}
                     </Link>
                 </div>
             )}
