@@ -356,7 +356,7 @@ async function sendWhatsAppNotification(params: {
         template: {
           name: templateName,
           language: {
-            code: templateName.startsWith("resident_submit_ticket_") ? "en" : "he"
+            code: templateName === "resident_submit_ticket_no_media" ? "en" : "he"
           },
           components
         }
