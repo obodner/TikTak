@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, Save, Users, Download, Database } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, Save, Users, Download, Database, Plus, Search, Edit2, X, Check } from 'lucide-react';
 import { collection, doc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { logAction } from '../../utils/auditLogger';
@@ -25,6 +25,18 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
   const [isLoadingDb, setIsLoadingDb] = useState(true);
   const [lastUpload, setLastUpload] = useState<{ fileName: string, uploadedAt: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // New Whitelist Management States
+  const [newResidentName, setNewResidentName] = useState('');
+  const [newResidentPhone, setNewResidentPhone] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingPhone, setEditingPhone] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [isDeletingPhone, setIsDeletingPhone] = useState<string | null>(null);
+
+  const nameRegex = /^[\u0590-\u05FFa-zA-Z0-9\s-]+$/;
+  const phoneRegex = /^0\d{8,9}$/;
 
   const fetchReporters = async () => {
     setIsLoadingDb(true);
@@ -131,8 +143,6 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
         if (lines.length < 2) throw new Error('הקובץ חייב להכיל שורת כותרת ולפחות שורת נתונים אחת');
 
         const parsedRecords: ParsedRecord[] = [];
-        const nameRegex = /^[\u0590-\u05FFa-zA-Z0-9\s-]+$/;
-        const phoneRegex = /^0\d{8,9}$/;
         const duplicates = new Set<string>();
         const seenPhones = new Set<string>();
         
@@ -292,11 +302,223 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
     }
   };
 
+  // Add a single resident manually
+  const handleAddResident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+
+    const trimmedName = newResidentName.trim();
+    let trimmedPhone = newResidentPhone.trim().replace(/[^0-9]/g, '');
+
+    if (trimmedPhone.length === 9 && !trimmedPhone.startsWith('0')) {
+      trimmedPhone = '0' + trimmedPhone;
+    }
+
+    if (!trimmedName) {
+      setError('אנא הזן שם מלא.');
+      return;
+    }
+
+    if (!nameRegex.test(trimmedName)) {
+      setError('השם מכיל תווים לא חוקיים. מותרים רק אותיות, מספרים, רווחים ומקפים.');
+      return;
+    }
+
+    if (!phoneRegex.test(trimmedPhone)) {
+      setError('מספר הטלפון לא תקין. מספר תקין מתחיל ב-0 ומכיל 9-10 ספרות.');
+      return;
+    }
+
+    const exists = dbRecords.some(r => r.phone === trimmedPhone);
+    if (exists) {
+      setError('מספר הטלפון כבר קיים ברשימה המורשית.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'tenants', tenantId, 'reporters', trimmedPhone);
+      await writeBatch(db)
+        .set(docRef, {
+          name: trimmedName,
+          phone: trimmedPhone,
+          addedAt: new Date().toISOString()
+        })
+        .commit();
+
+      await logAction({
+        tenantId,
+        action: 'REPORTER_LIST_UPDATE',
+        actor: { 
+          uid: auth.currentUser?.uid || 'unknown', 
+          name: callerName, 
+          type: 'admin' 
+        },
+        details: { 
+          actionName: 'REPORTER_CREATED',
+          name: trimmedName,
+          phone: trimmedPhone
+        }
+      });
+
+      setNewResidentName('');
+      setNewResidentPhone('');
+      setSuccessMessage(`התושב ${trimmedName} נוסף בהצלחה לרשימה המורשית.`);
+      await fetchReporters();
+    } catch (err: any) {
+      setError(`שגיאה בהוספת תושב: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Delete a single resident
+  const handleDeleteResident = async (phone: string) => {
+    setError('');
+    setSuccessMessage('');
+    
+    const targetRecord = dbRecords.find(r => r.phone === phone);
+    if (!targetRecord) return;
+
+    if (!window.confirm(`האם אתה בטוח שברצונך למחוק את ${targetRecord.name} מהרשימה המורשית?`)) {
+      return;
+    }
+
+    setIsDeletingPhone(phone);
+    try {
+      const docRef = doc(db, 'tenants', tenantId, 'reporters', phone);
+      const batch = writeBatch(db);
+      batch.delete(docRef);
+      await batch.commit();
+
+      await logAction({
+        tenantId,
+        action: 'REPORTER_LIST_UPDATE',
+        actor: { 
+          uid: auth.currentUser?.uid || 'unknown', 
+          name: callerName, 
+          type: 'admin' 
+        },
+        details: { 
+          actionName: 'REPORTER_DELETED',
+          name: targetRecord.name,
+          phone
+        }
+      });
+
+      setSuccessMessage(`התושב ${targetRecord.name} נמחק בהצלחה מהרשימה.`);
+      await fetchReporters();
+    } catch (err: any) {
+      setError(`שגיאה במחיקת תושב: ${err.message}`);
+    } finally {
+      setIsDeletingPhone(null);
+    }
+  };
+
+  // Start inline editing
+  const startEdit = (record: ParsedRecord) => {
+    setEditingPhone(record.phone);
+    setEditName(record.name);
+    setEditPhone(record.phone);
+  };
+
+  // Save inline edit
+  const handleSaveEdit = async (oldPhone: string) => {
+    setError('');
+    setSuccessMessage('');
+
+    const trimmedName = editName.trim();
+    let trimmedPhone = editPhone.trim().replace(/[^0-9]/g, '');
+
+    if (trimmedPhone.length === 9 && !trimmedPhone.startsWith('0')) {
+      trimmedPhone = '0' + trimmedPhone;
+    }
+
+    if (!trimmedName) {
+      setError('שם מלא אינו יכול להיות ריק.');
+      return;
+    }
+
+    if (!nameRegex.test(trimmedName)) {
+      setError('השם מכיל תווים לא חוקיים. מותרים רק אותיות, מספרים, רווחים ומקפים.');
+      return;
+    }
+
+    if (!phoneRegex.test(trimmedPhone)) {
+      setError('מספר הטלפון לא תקין. מספר תקין מתחיל ב-0 ומכיל 9-10 ספרות.');
+      return;
+    }
+
+    if (trimmedPhone !== oldPhone) {
+      const exists = dbRecords.some(r => r.phone === trimmedPhone);
+      if (exists) {
+        setError('מספר הטלפון החדש כבר קיים ברשימה עבור תושב אחר.');
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    try {
+      const reportersRef = collection(db, 'tenants', tenantId, 'reporters');
+      const oldDocRef = doc(reportersRef, oldPhone);
+      
+      const batch = writeBatch(db);
+      
+      if (trimmedPhone !== oldPhone) {
+        const newDocRef = doc(reportersRef, trimmedPhone);
+        batch.delete(oldDocRef);
+        batch.set(newDocRef, {
+          name: trimmedName,
+          phone: trimmedPhone,
+          addedAt: new Date().toISOString()
+        });
+      } else {
+        batch.update(oldDocRef, {
+          name: trimmedName,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      await batch.commit();
+
+      await logAction({
+        tenantId,
+        action: 'REPORTER_LIST_UPDATE',
+        actor: { 
+          uid: auth.currentUser?.uid || 'unknown', 
+          name: callerName, 
+          type: 'admin' 
+        },
+        details: { 
+          actionName: 'REPORTER_UPDATED',
+          oldName: dbRecords.find(r => r.phone === oldPhone)?.name || '',
+          newName: trimmedName,
+          oldPhone,
+          newPhone: trimmedPhone
+        }
+      });
+
+      setEditingPhone(null);
+      setSuccessMessage('הרשומה עודכנה בהצלחה.');
+      await fetchReporters();
+    } catch (err: any) {
+      setError(`שגיאה בעדכון רשומה: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingPhone(null);
+    setEditName('');
+    setEditPhone('');
+  };
+
   const handleDownload = (isDb = false) => {
     const listToDownload = isDb ? dbRecords : records;
     if (listToDownload.length === 0) return;
     
-    // Add BOM for Hebrew support in Excel
     const BOM = "\uFEFF";
     const header = "שם,טלפון\n";
     const csvContent = listToDownload.map(r => `${r.name},${r.phone}`).join('\n');
@@ -312,6 +534,12 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
     document.body.removeChild(link);
   };
 
+  // Filter records based on name and phone query
+  const filteredDbRecords = dbRecords.filter(r => 
+    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.phone.includes(searchQuery)
+  );
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
@@ -321,7 +549,6 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
         </div>
         
         <div className="flex items-center gap-3">
-          {/* Always enabled Download (if we have DB records or staged records) */}
           <button 
             onClick={() => handleDownload(records.length === 0)}
             disabled={dbRecords.length === 0 && records.length === 0}
@@ -332,7 +559,6 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
             <span className="hidden sm:inline">הורדה</span>
           </button>
 
-          {/* Always enabled Upload */}
           <button 
             onClick={() => fileInputRef.current?.click()}
             disabled={isProcessing || isSaving}
@@ -395,6 +621,65 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
         </div>
       )}
 
+      {/* Manual Input and Search Bar - displays when database is ready */}
+      {!isLoadingDb && records.length === 0 && (
+        <div className="space-y-3 mb-5">
+          {/* Add resident inline form */}
+          <form onSubmit={handleAddResident} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-2">
+            <div className="font-bold text-xs text-slate-500 shrink-0 w-24 sm:w-auto">הוספה ידנית:</div>
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="שם מלא"
+                value={newResidentName}
+                onChange={(e) => setNewResidentName(e.target.value)}
+                disabled={isSaving}
+                className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              />
+            </div>
+            <div className="flex-1">
+              <input
+                type="tel"
+                placeholder="מספר טלפון (05xxxxxxxx)"
+                value={newResidentPhone}
+                onChange={(e) => setNewResidentPhone(e.target.value)}
+                disabled={isSaving}
+                className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-right"
+                dir="ltr"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSaving || !newResidentName || !newResidentPhone}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-extrabold transition-all disabled:opacity-30 shrink-0 cursor-pointer"
+            >
+              <Plus size={14} />
+              <span>הוסף</span>
+            </button>
+          </form>
+
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="absolute right-3 top-2.5 text-slate-400" size={15} />
+            <input
+              type="text"
+              placeholder="חיפוש לפי שם או מספר טלפון..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full text-xs px-9 py-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+            />
+            {searchQuery && (
+              <button 
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute left-3 top-2 text-slate-400 hover:text-slate-600 font-bold p-0.5 cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {isLoadingDb && records.length === 0 && (
         <div className="flex justify-center p-4 mt-4">
@@ -403,26 +688,107 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
       )}
 
       {!isLoadingDb && dbRecords.length > 0 && records.length === 0 && (
-        <div className="mt-6 flex flex-col flex-1 min-h-0">
+        <div className="flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between mb-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
             <div className="flex items-center gap-2 text-slate-700">
               <Database size={18} className="shrink-0" />
-              <span className="font-bold text-sm">רשומות קיימות במסד הנתונים ({dbRecords.length})</span>
+              <span className="font-bold text-sm">
+                רשומות קיימות ({filteredDbRecords.length === dbRecords.length ? dbRecords.length : `${filteredDbRecords.length} מתוך ${dbRecords.length}`})
+              </span>
             </div>
           </div>
           
-          <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[360px]">
-            <div className="grid grid-cols-2 bg-slate-50 border-b border-slate-200 p-3 font-black text-xs text-slate-500 uppercase shrink-0">
+          <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[360px] relative">
+            <div className="grid grid-cols-[1fr_120px_75px] bg-slate-50 border-b border-slate-200 p-3 font-black text-xs text-slate-500 uppercase shrink-0">
               <div>שם</div>
               <div>טלפון</div>
+              <div className="text-center">פעולות</div>
             </div>
+            
             <div className="overflow-y-auto p-1 bg-white">
-              {dbRecords.map((r, i) => (
-                <div key={i} className="grid grid-cols-2 p-2 text-sm border-b border-slate-50 last:border-0 hover:bg-slate-50 rounded-lg transition-colors">
-                  <div className="font-medium text-slate-800 truncate px-1">{r.name}</div>
-                  <div className="text-slate-600 font-mono text-right truncate px-1" dir="ltr">{r.phone}</div>
-                </div>
-              ))}
+              {filteredDbRecords.length === 0 ? (
+                <div className="text-center text-slate-400 p-6 text-sm">לא נמצאו רשומות מתאימות.</div>
+              ) : (
+                filteredDbRecords.map((r) => {
+                  const isEditing = editingPhone === r.phone;
+                  const isDeleting = isDeletingPhone === r.phone;
+
+                  return (
+                    <div 
+                      key={r.phone} 
+                      className={`grid grid-cols-[1fr_120px_75px] p-2 text-sm border-b border-slate-50 last:border-0 items-center transition-colors rounded-lg ${isEditing ? 'bg-blue-50/30' : 'hover:bg-slate-50'}`}
+                    >
+                      {isEditing ? (
+                        <>
+                          <div className="px-1">
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              disabled={isSaving}
+                              className="w-full text-xs font-semibold px-2 py-1 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            />
+                          </div>
+                          <div className="px-1" dir="ltr">
+                            <input
+                              type="tel"
+                              value={editPhone}
+                              onChange={(e) => setEditPhone(e.target.value)}
+                              disabled={isSaving}
+                              className="w-full text-xs font-mono px-2 py-1 border border-slate-200 rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            />
+                          </div>
+                          <div className="flex items-center justify-center gap-2">
+                            <button 
+                              onClick={() => handleSaveEdit(r.phone)}
+                              disabled={isSaving}
+                              className="text-green-600 hover:text-green-800 transition-colors p-1 cursor-pointer"
+                              title="שמור"
+                            >
+                              <Check size={16} />
+                            </button>
+                            <button 
+                              onClick={cancelEdit}
+                              disabled={isSaving}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer"
+                              title="ביטול"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-semibold text-slate-800 truncate px-1">{r.name}</div>
+                          <div className="text-slate-600 font-mono text-right truncate px-1" dir="ltr">{r.phone}</div>
+                          <div className="flex items-center justify-center gap-2">
+                            <button 
+                              onClick={() => startEdit(r)}
+                              disabled={isSaving || !!editingPhone || isDeleting}
+                              className="text-slate-400 hover:text-blue-600 transition-colors p-1 disabled:opacity-30 cursor-pointer"
+                              title="ערוך"
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteResident(r.phone)}
+                              disabled={isSaving || !!editingPhone || isDeleting}
+                              className="text-slate-400 hover:text-red-600 transition-colors p-1 disabled:opacity-30 cursor-pointer"
+                              title="מחק"
+                            >
+                              {isDeleting ? (
+                                <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block"></span>
+                              ) : (
+                                <Trash2 size={15} />
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -434,8 +800,6 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
         </div>
       )}
 
-
-
       {records.length > 0 && (
         <div className="mt-6 flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between mb-3 bg-blue-50 p-3 rounded-lg border border-blue-100">
@@ -445,7 +809,7 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
               <span className="font-bold text-sm shrink-0">({records.length} רשומות)</span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button onClick={handleClear} className="text-slate-400 hover:text-red-500 transition-colors p-1" title="נקה">
+              <button onClick={handleClear} className="text-slate-400 hover:text-red-500 transition-colors p-1 cursor-pointer" title="נקה">
                 <Trash2 size={18} />
               </button>
             </div>
@@ -453,17 +817,19 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
 
           <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[360px]">
             {/* Table Header */}
-            <div className="grid grid-cols-2 bg-slate-50 border-b border-slate-200 p-3 font-black text-xs text-slate-500 uppercase shrink-0">
+            <div className="grid grid-cols-[1fr_120px_75px] bg-slate-50 border-b border-slate-200 p-3 font-black text-xs text-slate-500 uppercase shrink-0">
               <div>שם</div>
               <div>טלפון</div>
+              <div className="text-center">מצב</div>
             </div>
             
             {/* Scrollable Table Body */}
             <div className="overflow-y-auto p-1 bg-white">
               {records.map((r, i) => (
-                <div key={i} className="grid grid-cols-2 p-2 text-sm border-b border-slate-50 last:border-0 hover:bg-slate-50 rounded-lg transition-colors">
-                  <div className="font-medium text-slate-800 truncate px-1">{r.name}</div>
+                <div key={i} className="grid grid-cols-[1fr_120px_75px] p-2 text-sm border-b border-slate-55 last:border-0 hover:bg-slate-50 items-center rounded-lg transition-colors">
+                  <div className="font-semibold text-slate-800 truncate px-1">{r.name}</div>
                   <div className="text-slate-600 font-mono text-right truncate px-1" dir="ltr">{r.phone}</div>
+                  <div className="text-center text-blue-500 font-bold text-xs shrink-0 select-none">חדש 🆕</div>
                 </div>
               ))}
             </div>
@@ -473,7 +839,7 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
             <button
               onClick={handleSaveToDb}
               disabled={isSaving}
-              className="mt-6 w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
+              className="mt-6 w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <Save size={18} />
               {isSaving ? 'שומר במסד נתונים...' : 'שמור רשימה מורשית'}

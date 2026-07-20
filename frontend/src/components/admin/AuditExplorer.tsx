@@ -246,10 +246,32 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} updated QuickTap configuration for ${tenantName}${itemsCount}`
                     : `${actor} עדכן את הגדרות הדיווח המהיר (QuickTap) עבור ${tenantName}${itemsCount}`;
-            case 'REPORTER_LIST_UPDATE':
+            case 'REPORTER_LIST_UPDATE': {
+                const subAction = log.details.actionName;
+                const residentName = log.details.name || '';
+                const oldName = log.details.oldName || '';
+                const newName = log.details.newName || '';
+                
+                if (subAction === 'REPORTER_CREATED') {
+                    return isEn
+                        ? `${actor} added resident ${residentName}`
+                        : `${actor} הוסיף את התושב ${residentName}`;
+                }
+                if (subAction === 'REPORTER_DELETED') {
+                    return isEn
+                        ? `${actor} removed resident ${residentName}`
+                        : `${actor} הסיר את התושב ${residentName}`;
+                }
+                if (subAction === 'REPORTER_UPDATED') {
+                    return isEn
+                        ? `${actor} updated resident ${oldName} to ${newName}`
+                        : `${actor} עדכן את התושב ${oldName} ל-${newName}`;
+                }
+                
                 return isEn
                     ? `${actor} imported/updated the reporter list for ${tenantName}`
                     : `${actor} ייבא/עדכן את רשימת המורשים עבור ${tenantName}`;
+            }
             case 'USER_ADDED':
                 const targetUser = log.details.email || log.details.uid || '';
                 return isEn

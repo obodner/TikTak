@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { calculateWorkingDays } from "./utils/slaEngine";
+import { t } from "./utils/i18n";
 export { slaCron } from "./slaCron";
 import * as logger from "firebase-functions/logger";
 import { initializeApp } from "firebase-admin/app";
@@ -626,7 +627,10 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
           location: location || null,
           subLocation: subLocation || null,
           ticketType: ticketType || 'visible',
-          source: source || (isRealImage ? 'ai_camera' : 'manual'),
+          source: source === 'whatsapp' ? 'whatsapp' : 'web',
+          reportingMethod: source === 'whatsapp'
+            ? (req.body.reportingMethod || 'manual')
+            : (source || (isRealImage ? 'ai_camera' : 'manual')),
           imageId: finalImageId,
           audioId: req.body.audioBase64 ? ticketId : null,
           reporterPhone: reporterPhone || null,
@@ -690,7 +694,7 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
           urgency,
           location: location || null,
           subLocation: subLocation || null,
-          source: source || (isRealImage ? 'ai_camera' : 'manual'),
+          source: source === 'whatsapp' ? 'whatsapp' : 'web',
           hasImage: isRealImage,
           hasAudio: !!req.body.audioBase64
         }
@@ -769,7 +773,8 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
           error: error.message,
           category: req.body.category,
           location: req.body.location,
-          subLocation: req.body.subLocation
+          subLocation: req.body.subLocation,
+          source: req.body.source === 'whatsapp' ? 'whatsapp' : 'web'
         }
       });
     }
@@ -1221,7 +1226,7 @@ export const getAudio = onRequest({ cors: true }, async (req, res) => {
 
   try {
     const bucket = admin.storage().bucket();
-    
+
     // First, try the standard .webm extension (optimized for new & legacy files)
     let file = bucket.file(`tenants/${tenantId}/${audioId}.webm`);
     let [exists] = await file.exists();
@@ -1507,17 +1512,309 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
 });
 
 /**
- * WhatsApp Webhook: Handles Meta developer platform challenge verification
- * and sends an automated Hebrew reply to any user messaging the business number.
+ * Conversational WhatsApp Bot Helpers and State Machine
  */
-export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+
+function normalizePhoneNumber(rawPhone: string): string {
+  let clean = rawPhone.replace(/[^0-9]/g, '');
+  if (clean.startsWith('972') && clean.length === 12) {
+    clean = '0' + clean.substring(3);
+  }
+  if (!/^0[0-9]{8,9}$/.test(clean)) {
+    throw new Error("Invalid phone number format");
+  }
+  return clean;
+}
+
+function sanitizeInput(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/<[^>]*>/g, "") // Strip HTML tags
+    .replace(/[\\'"`;#]/g, "") // Strip character sequences common in injections
+    .trim();
+}
+
+async function downloadWhatsAppMedia(mediaId: string, token: string, maxSize: number): Promise<{ buffer: Buffer; mimeType: string }> {
+  const urlRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  if (!urlRes.ok) {
+    const errText = await urlRes.text();
+    throw new Error(`Failed to fetch media metadata: ${errText}`);
+  }
+  const meta: any = await urlRes.json();
+  if (meta.file_size > maxSize) {
+    throw new Error("FILE_TOO_LARGE");
+  }
+
+  const binaryRes = await fetch(meta.url, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  if (!binaryRes.ok) {
+    throw new Error(`Failed to download media binary from ${meta.url}`);
+  }
+  const arrayBuffer = await binaryRes.arrayBuffer();
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    mimeType: meta.mime_type
+  };
+}
+
+async function transcribeAudioGemini(audioBuffer: Buffer, mimeType: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured for audio transcription");
+  }
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const result = await model.generateContent([
+    "Please transcribe the following Hebrew audio text exactly as spoken. Return only the transcription text, with no formatting, notes, or commentary. If you hear nothing, return empty.",
+    {
+      inlineData: {
+        data: audioBuffer.toString("base64"),
+        mimeType: mimeType || "audio/ogg"
+      }
+    }
+  ]);
+
+  return result.response.text().trim();
+}
+
+async function transcribeAudioWhisper(audioBuffer: Buffer, mimeType: string): Promise<string> {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (!openAiKey) {
+    logger.warn("OPENAI_API_KEY is not set. Falling back to native Gemini audio transcription.");
+    return transcribeAudioGemini(audioBuffer, mimeType);
+  }
+
+  try {
+    const formData = new FormData();
+    const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+    formData.append("file", blob, "audio.ogg");
+    formData.append("model", "whisper-1");
+    formData.append("language", "he");
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openAiKey}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      logger.error("Whisper response error:", errText);
+      throw new Error(`Whisper returned error: ${errText}`);
+    }
+
+    const resData: any = await response.json();
+    return resData.text || "";
+  } catch (error: any) {
+    logger.error("Whisper transcription failed, falling back to Gemini", { error: error.message });
+    return transcribeAudioGemini(audioBuffer, mimeType);
+  }
+}
+
+async function analyzeIncidentAI(params: {
+  tenantId: string;
+  imageBuffer?: Buffer;
+  imageMime?: string;
+  textInput?: string;
+}): Promise<{ is_valid_issue: boolean; summary: string; category: string; urgency: string }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY secret is not configured");
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const tenantDoc = await db.collection("tenants").doc(params.tenantId).get();
+  const tData = tenantDoc.data() || {};
+  const categories = (tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"]).join(", ");
+  const lang = tData.language || 'he';
+  const type = tData.type || 'building';
+
+  const langNote = lang === 'he'
+    ? "Respond in Hebrew ONLY. Summarize as a short Hebrew sentence."
+    : "Respond in English ONLY. Summarize as a short English sentence.";
+
+  const entityContext = type === 'municipality'
+    ? "a public space or city maintenance hazard (e.g. pothole, broken street light, waste)"
+    : "a building maintenance issue (e.g. leak, broken bulb, elevator failure)";
+
+  const prompt = `
+    You are TikTak AI, an efficient and accurate maintenance assistant.
+    Analyze the attached report inputs describing ${entityContext}.
+    ${langNote}
+
+    Return a JSON object only. Choose the most appropriate Hebrew category from the exact provided list: [${categories}].
+
+    Include the following keys:
+    1. 'is_valid_issue': Boolean (true/false). If the input is empty, chaotic, or clearly not a maintenance issue, set to false.
+    2. 'summary': A concise summary (3-10 words) describing the primary problem in detail.
+    3. 'category': One of [${categories}]. Choose the most appropriate Hebrew category name from this list.
+    4. 'urgency': One of [High, Moderate, Low]. High means critical danger or failure.
+    
+    Respond ONLY with the RAW JSON object.
+  `;
+
+  const contentParts: any[] = [prompt];
+  if (params.textInput) {
+    contentParts.push(`Resident description: "${params.textInput}"`);
+  }
+  if (params.imageBuffer) {
+    contentParts.push({
+      inlineData: {
+        data: params.imageBuffer.toString("base64"),
+        mimeType: params.imageMime || "image/jpeg"
+      }
+    });
+  }
+
+  const result = await model.generateContent(contentParts);
+  const responseText = result.response.text();
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  const cleanJson = jsonMatch ? jsonMatch[0] : responseText;
+
+  const finalData = JSON.parse(cleanJson || "{}");
+  if (!finalData.urgency && (finalData as any).severity) {
+    finalData.urgency = (finalData as any).severity;
+  }
+  return {
+    is_valid_issue: finalData.is_valid_issue !== false,
+    summary: finalData.summary || "דיווח תחזוקה",
+    category: finalData.category || "אחר",
+    urgency: finalData.urgency || "Low"
+  };
+}
+
+function buildPaginatedList(
+  allItems: string[],
+  pageIndex: number,
+  fieldType: 'location' | 'sublocation',
+  uiConfig?: { locationLabel?: string; subLocationLabel?: string },
+  allowSkip?: boolean
+): any {
+  const PAGE_SIZE = 8;
+  const totalItems = allItems.length;
+  const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+
+  const startIndex = pageIndex * PAGE_SIZE;
+  const endIndex = startIndex + PAGE_SIZE;
+  const sliced = allItems.slice(startIndex, endIndex);
+
+  const rows: any[] = sliced.map((item, index) => {
+    const actualIndex = startIndex + index;
+    return {
+      id: `select:${fieldType}:${actualIndex}`,
+      title: `בחירה: ${item}`.substring(0, 24)
+    };
+  });
+
+  if (pageIndex === 0 && allowSkip) {
+    const nextLabel = fieldType === 'location' ? (uiConfig?.subLocationLabel || "תת-מיקום") : "";
+    const skipTitle = fieldType === 'location'
+      ? `דלג ל${nextLabel}`
+      : "המשך ללא בחירה";
+
+    rows.unshift({
+      id: `select:${fieldType}:skip`,
+      title: skipTitle.substring(0, 24),
+      description: `מעבר לשלב הבא ללא הגדרת ${fieldType === 'location' ? (uiConfig?.locationLabel || "מיקום") : (uiConfig?.subLocationLabel || "תת-מיקום")}`
+    });
+  }
+
+  if (pageIndex < totalPages - 1) {
+    rows.push({
+      id: `nav:next:${fieldType}`,
+      title: "➡️ לעמוד הבא",
+      description: `הצג עמוד ${pageIndex + 2} מתוך ${totalPages}`
+    });
+  }
+
+  if (pageIndex > 0) {
+    rows.push({
+      id: `nav:prev:${fieldType}`,
+      title: "< חזרה",
+      description: `חזור לעמוד ${pageIndex}`
+    });
+  }
+
+  const label = fieldType === 'location'
+    ? (uiConfig?.locationLabel || "מיקום")
+    : (uiConfig?.subLocationLabel || "תת-מיקום");
+
+  return {
+    type: "list",
+    header: { type: "text", text: `בחירת ${label} הדיווח` },
+    body: { text: "נא לבחור מתוך הרשימה למטה:" },
+    action: {
+      button: `בחר ${label}`,
+      sections: [{
+        title: `אפשרויות (עמוד ${pageIndex + 1}/${totalPages})`,
+        rows: rows
+      }]
+    }
+  };
+}
+
+async function sendWhatsAppMessage(to: string, payloadBody: any, phoneNumberId: string, token: string) {
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: to,
+    ...payloadBody
+  };
+
+  const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const resData: any = await response.json();
+  if (!response.ok) {
+    logger.error(`Meta API error sending to ${to}:`, resData);
+    throw new Error(`Meta API error: ${JSON.stringify(resData)}`);
+  }
+  return resData;
+}
+
+async function sendWhatsAppText(to: string, text: string, phoneNumberId: string, token: string) {
+  return sendWhatsAppMessage(to, {
+    type: "text",
+    text: { preview_url: false, body: text }
+  }, phoneNumberId, token);
+}
+
+async function sendWhatsAppButtons(to: string, text: string, buttons: { id: string, title: string }[], phoneNumberId: string, token: string) {
+  return sendWhatsAppMessage(to, {
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: text },
+      action: {
+        buttons: buttons.map(b => ({
+          type: "reply",
+          reply: { id: b.id, title: b.title.substring(0, 20) }
+        }))
+      }
+    }
+  }, phoneNumberId, token);
+}
+
+export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN", "GEMINI_API_KEY"] }, async (req, res) => {
   // 1. Handle Meta Webhook Verification (GET)
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-
-    // Standard static verification token used in TikTak developer portal configuration
     const VERIFY_TOKEN = "tiktak_webhook_verify_token_2026";
 
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
@@ -1541,47 +1838,44 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
         const change = entry?.changes?.[0];
         const value = change?.value;
 
-        // Ensure we only process if a valid messages array is present (actual incoming user messages)
         if (value && value.messages && value.messages.length > 0) {
           const message = value.messages[0];
-          const from = message.from; // Sender's phone number
+          const from = message.from;
+          const token = process.env.WHATSAPP_ACCESS_TOKEN;
+          const phoneNumberId = value.metadata?.phone_number_id || "1046588828547584";
+
+          if (!token) {
+            logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager");
+            res.status(500).send("Access token missing");
+            return;
+          }
 
           if (from) {
-            const token = process.env.WHATSAPP_ACCESS_TOKEN;
-            const phoneNumberId = value.metadata?.phone_number_id || "1046588828547584";
-
-            if (!token) {
-              logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager for auto-reply");
-              res.status(500).send("Access token missing");
+            // A. Standardize phone number format (Local Israel schema starting with 0, 9-10 digits)
+            let localPhone = "";
+            try {
+              localPhone = normalizePhoneNumber(from);
+            } catch (err: any) {
+              logger.warn(`Rejected invalid phone number format from ${from}`, { error: err.message });
+              res.status(200).send("EVENT_RECEIVED");
               return;
             }
 
-            let isFeedback = false;
+            // B. Check for service feedback ratings (coexists with unresolved rating webhook clicks)
             let feedbackValue: 'good' | 'ok' | 'bad' | null = null;
-
             if (message.type === 'button') {
               const payload = (message.button?.payload || '').toLowerCase();
               const text = message.button?.text || '';
-
-              if (payload === 'service_feedback_good' || payload.includes('good') || payload.includes('מצוין') || text.includes('מצוין')) {
-                feedbackValue = 'good';
-              } else if (payload === 'service_feedback_ok' || payload.includes('ok') || payload.includes('בסדר') || text.includes('בסדר')) {
-                feedbackValue = 'ok';
-              } else if (payload === 'service_feedback_bad' || payload.includes('bad') || payload.includes('לא מרוצה') || text.includes('לא מרוצה')) {
-                feedbackValue = 'bad';
+              if (payload.includes('feedback') || payload.includes('good') || payload.includes('מצוין') || text.includes('מצוין')) {
+                if (payload.includes('good')) feedbackValue = 'good';
+                else if (payload.includes('ok') || payload.includes('בסדר') || text.includes('בסדר')) feedbackValue = 'ok';
+                else if (payload.includes('bad') || payload.includes('לא מרוצה') || text.includes('לא מרוצה')) feedbackValue = 'bad';
               }
             }
 
             if (feedbackValue) {
-              let firestorePhone = from;
-              if (from.startsWith('972') && from.length === 12) {
-                firestorePhone = '0' + from.substring(3);
-              }
-
               try {
-                const ticketsQuery = db.collectionGroup("tickets")
-                  .where("reporterPhone", "==", firestorePhone);
-
+                const ticketsQuery = db.collectionGroup("tickets").where("reporterPhone", "==", localPhone);
                 const querySnapshot = await ticketsQuery.get();
                 const fortyEightHoursAgoMs = Date.now() - 48 * 60 * 60 * 1000;
 
@@ -1612,7 +1906,7 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     action: 'SERVICE_FEEDBACK_SUBMITTED',
                     level: 'INFO',
                     actor: {
-                      uid: firestorePhone,
+                      uid: localPhone,
                       name: targetDoc.data()?.reporterName || 'Resident',
                       type: 'resident'
                     },
@@ -1623,66 +1917,937 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     }
                   });
 
-                  isFeedback = true;
+                  await sendWhatsAppText(from, "תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡", phoneNumberId, token);
+                  res.status(200).send("EVENT_RECEIVED");
+                  return;
                 }
               } catch (e: any) {
-                logger.error("Failed to update service feedback from WhatsApp webhook", { error: e.message });
+                logger.error("Failed to update service feedback", { error: e.message });
               }
             }
 
-            let shouldSendReply = true;
-            let autoReplyText = "";
+            // C. Retrieve/Initialize User Session
+            const sessionRef = db.collection("sessions").doc(localPhone);
+            const sessionDoc = await sessionRef.get();
+            const nowIso = new Date().toISOString();
 
-            if (message.type === 'button') {
-              // Only send a reply if it is a valid feedback button (we always thank them for rating)
-              if (feedbackValue) {
-                autoReplyText = `תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡`;
-              } else {
-                shouldSendReply = false;
+            let session = sessionDoc.exists ? (sessionDoc.data() as any) : {
+              phoneNumber: localPhone,
+              state: 'START',
+              tenantId: null,
+              tenantName: null,
+              reporterName: null,
+              draftTicket: null,
+              pagination: null,
+              lastMessageAt: nowIso,
+              updatedAt: nowIso,
+              messageCounter: 0,
+              counterResetAt: nowIso
+            };
+
+            // Message Deduplication
+            const messageId = message.id;
+            if (messageId) {
+              if (!session.processedMessageIds) {
+                session.processedMessageIds = [];
               }
+              if (session.processedMessageIds.includes(messageId)) {
+                logger.info(`Ignoring duplicate message: ${messageId}`);
+                res.status(200).send("EVENT_RECEIVED");
+                return;
+              }
+              session.processedMessageIds.push(messageId);
+              if (session.processedMessageIds.length > 20) {
+                session.processedMessageIds.shift();
+              }
+              // Save immediately to prevent race conditions on concurrent retries/spams
+              await sessionRef.set(session);
+            }
+
+            // D. Message Rate Throttling (Max 10 messages per 30 seconds)
+            const diffResetMs = Date.now() - Date.parse(session.counterResetAt || nowIso);
+            if (diffResetMs > 30000) {
+              session.messageCounter = 1;
+              session.counterResetAt = nowIso;
             } else {
-              // User wrote/sent something other than a button click
-              autoReplyText = `🛑 *הודעה אוטומטית מ-TikTak*
-
-ערוץ זה מיועד לשליחת עדכונים אוטומטיים בלבד ואינו מאויש על ידי בני אדם. הודעתך התקבלה אך לא תיקרא ולא תיענה.
-
-לפתיחת דיווח חדש, אנא השתמשו בקישור הייעודי.
-
-תודה, צוות *TikTak*! ⚡`;
-            }
-
-            if (shouldSendReply) {
-              const payload = {
-                messaging_product: "whatsapp",
-                recipient_type: "individual",
-                to: from,
-                type: "text",
-                text: {
-                  preview_url: false,
-                  body: autoReplyText
+              session.messageCounter = (session.messageCounter || 0) + 1;
+              if (session.messageCounter > 10) {
+                logger.warn(`Throttled sender ${localPhone} due to message spikes.`);
+                if (session.messageCounter === 11) {
+                  await sendWhatsAppText(from, "מערכת TikTak זיהתה קצב הודעות גבוה. אנא המתן 30 שניות לפני שליחת הודעה נוספת.", phoneNumberId, token);
                 }
-              };
-
-              logger.info(`Sending automated response to ${from}...`);
-
-              const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${token}`,
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-              });
-
-              const resData: any = await response.json();
-              if (!response.ok) {
-                logger.error(`Meta API returned error during automated reply to ${from}:`, resData);
-              } else {
-                logger.info(`Automated reply successfully sent to ${from}`, { messageId: resData.messages?.[0]?.id });
+                session.lastMessageAt = nowIso;
+                await sessionRef.set(session);
+                res.status(200).send("EVENT_RECEIVED");
+                return;
               }
-            } else {
-              logger.info(`Button click but not feedback or no auto-reply required for ${from}, skipping response.`);
             }
+
+            // E. Session timeout handling (reset after 30 minutes of inactivity)
+            const idleMs = Date.now() - Date.parse(session.updatedAt || nowIso);
+            if (idleMs > 30 * 60 * 1000) {
+              session.state = 'START';
+              session.tenantId = null;
+              session.draftTicket = null;
+              session.pagination = null;
+            }
+
+            // F. Process message through state machine
+            const messageText = sanitizeInput(
+              message.text?.body ||
+              message.interactive?.button_reply?.title ||
+              message.button?.text ||
+              ""
+            );
+            const interactiveId =
+              message.interactive?.button_reply?.id ||
+              message.interactive?.list_reply?.id ||
+              message.button?.payload ||
+              "";
+
+            // Global Cancel/Exit check (manual text input only)
+            const manualText = (message.text?.body || "").trim().toLowerCase();
+            const cancelKeywords = ["צא", "ביטול", "exit", "cancel"];
+            if (cancelKeywords.includes(manualText)) {
+              logger.info(`Session cancellation requested by ${from}`);
+              await sessionRef.delete();
+              await sendWhatsAppText(
+                from,
+                "התהליך בוטל בהצלחה. תוכל להתחיל תהליך חדש בכל עת.",
+                phoneNumberId,
+                token
+              );
+              res.status(200).send("EVENT_RECEIVED");
+              return;
+            }
+
+            // Global Reset Keywords check to resolve soft-locks
+            const lowerText = messageText.trim().toLowerCase();
+            const resetKeywords = ["איפוס", "ביטול", "התחל", "menu", "reset", "שלום", "היי", "hi", "hello", "restart"];
+            if (resetKeywords.includes(lowerText)) {
+              session.state = 'START';
+              session.tenantId = null;
+              session.draftTicket = null;
+              session.pagination = null;
+              logger.info(`Session reset requested by user ${from}`);
+            }
+
+            // G. Handle Meta/WhatsApp-delivered errors or malformed payloads
+            const hasErrors = message.errors && message.errors.length > 0;
+            const isMalformedInteractive = message.type === 'interactive' &&
+              !message.interactive?.button_reply &&
+              !message.interactive?.list_reply;
+
+            if (hasErrors || isMalformedInteractive) {
+              logger.warn(`Received error or malformed interactive payload from ${from}. Errors:`, message.errors || 'none');
+              const lang = session.tenantId ? (await db.collection("tenants").doc(session.tenantId).get()).data()?.language : "he";
+
+              let glitchKey = "whatsapp_glitch_generic";
+              if (session.state === "AWAITING_TENANT_SELECTION") {
+                glitchKey = "whatsapp_glitch_tenant";
+              } else if (session.state === "MAIN_MENU") {
+                glitchKey = "whatsapp_glitch_menu";
+              }
+
+              await sendWhatsAppText(
+                from,
+                t(glitchKey, lang),
+                phoneNumberId,
+                token
+              );
+              session.updatedAt = nowIso;
+              await sessionRef.set(session);
+              res.status(200).send("EVENT_RECEIVED");
+              return;
+            }
+
+            switch (session.state) {
+              case 'START': {
+                // Whitelist silent authentication check across all tenants
+                const whitelistQuery = await db.collectionGroup("reporters").where("phone", "==", localPhone).get();
+                if (whitelistQuery.empty) {
+                  await sendWhatsAppText(from, t("not_registered", "he"), phoneNumberId, token);
+                  session.state = 'START';
+                } else if (whitelistQuery.size === 1) {
+                  const rDoc = whitelistQuery.docs[0];
+                  const tId = rDoc.ref.path.split('/')[1];
+                  const tenantSnap = await db.collection("tenants").doc(tId).get();
+                  const tData = tenantSnap.data() || {};
+
+                  session.tenantId = tId;
+                  session.tenantName = tData.name || tId;
+                  session.reporterName = rDoc.data()?.name || "תושב/דייר";
+                  session.state = 'MAIN_MENU';
+
+                  await sendWhatsAppButtons(
+                    from,
+                    `שלום! ברוכים הבאים למערכת הדיווחים של *${session.tenantName}*. כיצד נוכל לעזור היום?\n\nבכל שלב, אם תרצה לצאת מהתהליך רשום *צא* או *ביטול*.`,
+                    [
+                      { id: "menu_report_image", title: "📸 דיווח עם תמונה" },
+                      { id: "menu_quicktap", title: "⚡ דיווח מהיר" },
+                      { id: "menu_report_no_image", title: "🎙️ דיווח ללא תמונה" }
+                    ],
+                    phoneNumberId,
+                    token
+                  );
+                } else {
+                  // Multiple tenants mapping
+                  const candidates: { id: string; name: string }[] = [];
+                  for (const docRef of whitelistQuery.docs) {
+                    const tId = docRef.ref.path.split('/')[1];
+                    const tenantSnap = await db.collection("tenants").doc(tId).get();
+                    candidates.push({ id: tId, name: tenantSnap.data()?.name || tId });
+                  }
+                  session.state = 'AWAITING_TENANT_SELECTION';
+                  session.candidates = candidates;
+
+                  const buttons = candidates.slice(0, 3).map(c => ({
+                    id: `select_tenant:${c.id}`,
+                    title: c.name
+                  }));
+
+                  await sendWhatsAppButtons(from, t("select_tenant_title", "he"), buttons, phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'AWAITING_TENANT_SELECTION': {
+                let selectedTenantId = "";
+                if (interactiveId.startsWith("select_tenant:")) {
+                  selectedTenantId = interactiveId.split(":")[1];
+                } else if (messageText && session.candidates) {
+                  // Fallback 1: Exact or substring match of candidate name
+                  const cleanInput = messageText.trim().toLowerCase();
+                  const matched = session.candidates.find((c: any) =>
+                    cleanInput === c.name.trim().toLowerCase() ||
+                    c.name.trim().toLowerCase().includes(cleanInput) ||
+                    cleanInput.includes(c.name.trim().toLowerCase())
+                  );
+                  if (matched) {
+                    selectedTenantId = matched.id;
+                  } else {
+                    // Fallback 2: Check for 1-based index (e.g. "1", "2")
+                    const numberMatch = parseInt(cleanInput);
+                    if (!isNaN(numberMatch) && numberMatch >= 1 && numberMatch <= session.candidates.length) {
+                      selectedTenantId = session.candidates[numberMatch - 1].id;
+                    }
+                  }
+                }
+
+                if (selectedTenantId) {
+                  const tId = selectedTenantId;
+                  const tenantSnap = await db.collection("tenants").doc(tId).get();
+                  const tData = tenantSnap.data() || {};
+
+                  session.tenantId = tId;
+                  session.tenantName = tData.name || tId;
+                  session.state = 'MAIN_MENU';
+                  delete session.candidates;
+
+                  await sendWhatsAppButtons(
+                    from,
+                    `שלום! ברוכים הבאים למערכת הדיווחים של *${session.tenantName}*. כיצד נוכל לעזור היום?`,
+                    [
+                      { id: "menu_report_image", title: "📸 דיווח עם תמונה" },
+                      { id: "menu_quicktap", title: "⚡ דיווח מהיר" },
+                      { id: "menu_report_no_image", title: "🎙️ דיווח ללא תמונה" }
+                    ],
+                    phoneNumberId,
+                    token
+                  );
+                } else {
+                  await sendWhatsAppText(from, t("select_tenant_fallback", "he"), phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'MAIN_MENU': {
+                const isReportImage = interactiveId === 'menu_report_image' || messageText.includes('דיווח עם תמונה') || messageText.includes('עם תמונה') || messageText === '1';
+                const isQuickTap = interactiveId === 'menu_quicktap' || messageText.includes('דיווח מהיר') || messageText.includes('QuickTap') || messageText === '2';
+                const isReportNoImage = interactiveId === 'menu_report_no_image' || messageText.includes('דיווח ללא תמונה') || messageText.includes('ללא תמונה') || messageText === '3';
+
+                if (isReportImage) {
+                  session.state = 'AWAITING_MEDIA';
+                  session.mediaTypeExpect = 'image';
+                  await sendWhatsAppText(from, "אנא שלח תמונה ברורה של המפגע (גודל קובץ מקסימלי: 2MB).", phoneNumberId, token);
+                } else if (isQuickTap) {
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const tenantData = tenantSnap.data() || {};
+                  const type = tenantData.type || 'building';
+                  const quickTapConfig = tenantData.quickTap || {};
+
+                  const hasItems = quickTapConfig.items && quickTapConfig.items.length > 0;
+                  const isEnabled = quickTapConfig.enabled !== false;
+
+                  if (!hasItems || !isEnabled) {
+                    const lang = tenantData.language || 'he';
+                    const configKey = type === 'municipality' ? 'no_quicktap_config_municipality' : 'no_quicktap_config_building';
+                    await sendWhatsAppText(from, t(configKey, lang), phoneNumberId, token);
+                    await sendWhatsAppButtons(
+                      from,
+                      "אנא בחר אחת מהאפשרויות הבאות:",
+                      [
+                        { id: "menu_report_image", title: "📸 דיווח עם תמונה" },
+                        { id: "menu_report_no_image", title: "🎙️ דיווח ללא תמונה" }
+                      ],
+                      phoneNumberId,
+                      token
+                    );
+                  } else {
+                    session.state = 'QUICKTAP_SELECT';
+                    const items: any[] = quickTapConfig.items;
+                    if (items.length <= 3) {
+                      const buttons = items.map(item => {
+                        const titleText = `${item.emoji || "⚡"} ${item.summary || item.label || "דיווח מהיר"}`;
+                        return {
+                          id: `quicktap:${item.id}`,
+                          title: titleText.substring(0, 20)
+                        };
+                      });
+                      await sendWhatsAppButtons(from, "אנא בחר דיווח מהיר מתוך הכפתורים:", buttons, phoneNumberId, token);
+                    } else {
+                      const rows = items.map(item => {
+                        const titleText = `${item.emoji || "⚡"} ${item.summary || item.label || "דיווח מהיר"}`;
+                        return {
+                          id: `quicktap:${item.id}`,
+                          title: titleText.substring(0, 24),
+                          description: `דיווח בקטגוריית ${item.category}`
+                        };
+                      });
+                      const listPayload = {
+                        type: "interactive",
+                        interactive: {
+                          type: "list",
+                          header: { type: "text", text: "דיווח מהיר QuickTap" },
+                          body: { text: "נא לבחור מפגע נפוץ מהרשימה:" },
+                          action: {
+                            button: "רשימת דיווחים",
+                            sections: [{
+                              title: "דיווחים מהירים",
+                              rows: rows
+                            }]
+                          }
+                        }
+                      };
+                      await sendWhatsAppMessage(from, listPayload, phoneNumberId, token);
+                    }
+                  }
+                } else if (isReportNoImage) {
+                  session.state = 'AWAITING_MEDIA';
+                  session.mediaTypeExpect = 'any_no_image';
+                  await sendWhatsAppText(from, "אנא הקלט הודעה קולית (Voice Note) עד 1MB או הקלד תיאור טקסטואלי של המפגע.", phoneNumberId, token);
+                } else {
+                  // Fallback resend menu
+                  await sendWhatsAppButtons(
+                    from,
+                    "פעולה לא מוכרת. אנא בחר אחת מהאפשרויות הבאות:",
+                    [
+                      { id: "menu_report_image", title: "📸 דיווח עם תמונה" },
+                      { id: "menu_quicktap", title: "⚡ דיווח מהיר" },
+                      { id: "menu_report_no_image", title: "🎙️ דיווח ללא תמונה" }
+                    ],
+                    phoneNumberId,
+                    token
+                  );
+                }
+                break;
+              }
+
+              case 'QUICKTAP_SELECT': {
+                if (interactiveId.startsWith("quicktap:")) {
+                  const itemId = interactiveId.split(":")[1];
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const quickTapItems: any[] = tenantSnap.data()?.quickTap?.items || [];
+                  const matched = quickTapItems.find(item => item.id === itemId);
+
+                  if (matched) {
+                    session.draftTicket = {
+                      summary: matched.summary || matched.label || "דיווח מהיר",
+                      category: matched.category,
+                      urgency: matched.urgency || "Low",
+                      location: matched.location || null,
+                      subLocation: matched.subLocation || null,
+                      imageId: "hidden-quicktap",
+                      audioId: null,
+                      comments: [],
+                      reportingMethod: "quicktap"
+                    };
+
+                    session.state = 'AWAITING_VERIFICATION';
+                    const previewText = `📝 *פרטי דיווח מהיר:*
+• *קטגוריה:* ${matched.category}
+• *מיקום:* ${matched.location || "לא נבחר"} / ${matched.subLocation || "לא נבחר"}
+• *תקציר:* ${matched.summary || matched.label || "דיווח מהיר"}
+• *דחיפות:* ${matched.urgency === 'High' ? 'גבוהה 🚨' : matched.urgency === 'Moderate' ? 'בינונית' : 'רגילה'}
+
+אשר את הדיווח?`;
+
+                    await sendWhatsAppButtons(
+                      from,
+                      previewText,
+                      [
+                        { id: "confirm_ticket", title: "⚡ אשרו ושילחו" },
+                        { id: "cancel_ticket", title: "❌ ביטול" }
+                      ],
+                      phoneNumberId,
+                      token
+                    );
+                  } else {
+                    await sendWhatsAppText(from, "הדיווח שנבחר אינו תקף.", phoneNumberId, token);
+                    session.state = 'MAIN_MENU';
+                  }
+                } else {
+                  session.state = 'MAIN_MENU';
+                }
+                break;
+              }
+
+              case 'AWAITING_MEDIA': {
+                let textInput = "";
+                let imageBuffer: Buffer | undefined;
+                let imageMime = "";
+                let imageId: string | null = null;
+                let audioId: string | null = null;
+                let isImage = false;
+
+                if (message.type === 'image') {
+                  if (session.mediaTypeExpect === 'any_no_image') {
+                    await sendWhatsAppText(from, "בחרת בדיווח ללא תמונה. אנא שלח הקלטה קולית או הקלד תיאור טקסטואלי של המפגע.", phoneNumberId, token);
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+                  const mediaId = message.image.id;
+                  try {
+                    const download = await downloadWhatsAppMedia(mediaId, token, 2 * 1024 * 1024); // 2MB limit
+                    imageBuffer = download.buffer;
+                    imageMime = download.mimeType;
+                    isImage = true;
+
+                    // Generate UUID for image filename
+                    imageId = randomUUID();
+
+                    // Save the image buffer to Cloud Storage so it is accessible in the admin dashboard
+                    const bucket = storage.bucket();
+                    const imageFile = bucket.file(`tenants/${session.tenantId}/${imageId}.jpg`);
+                    await imageFile.save(imageBuffer, {
+                      metadata: { contentType: imageMime || "image/jpeg" }
+                    });
+                  } catch (err: any) {
+                    if (err.message === 'FILE_TOO_LARGE') {
+                      await sendWhatsAppText(from, "התמונה ששלחת גדולה מדי. אנא שלח תמונה קטנה מ-2MB.", phoneNumberId, token);
+                    } else {
+                      await sendWhatsAppText(from, "שגיאה בהורדת התמונה. אנא נסה שוב.", phoneNumberId, token);
+                    }
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+                } else if (message.type === 'audio') {
+                  if (session.mediaTypeExpect === 'image') {
+                    await sendWhatsAppText(from, "בחרת בדיווח עם תמונה. אנא צלם או שלח תמונה של המפגע.", phoneNumberId, token);
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+                  const mediaId = message.audio.id;
+                  try {
+                    const download = await downloadWhatsAppMedia(mediaId, token, 1 * 1024 * 1024); // 1MB limit
+                    const audioMime = download.mimeType;
+
+                    // Generate UUID for audio filename
+                    audioId = randomUUID();
+
+                    // Save audio buffer to GCS so Admin Dashboard can fetch/play it
+                    const bucket = storage.bucket();
+                    const audioFile = bucket.file(`tenants/${session.tenantId}/${audioId}.webm`);
+                    await audioFile.save(download.buffer, {
+                      metadata: { contentType: audioMime }
+                    });
+
+                    // Don't transcribe the audio file
+                     textInput = "";
+                  } catch (err: any) {
+                    if (err.message === 'FILE_TOO_LARGE') {
+                      await sendWhatsAppText(from, "ההודעה הקולית ארוכה או גדולה מדי. המגבלה היא 1MB.", phoneNumberId, token);
+                    } else {
+                      await sendWhatsAppText(from, "שגיאה בפענוח ההקלטה. אנא נסה להקליט שוב או להקליד טקסט.", phoneNumberId, token);
+                    }
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+                } else if (message.type === 'text') {
+                  const isMenuKeyword =
+                    messageText.includes('דיווח עם תמונה') ||
+                    messageText.includes('דיווח מהיר') ||
+                    messageText.includes('QuickTap') ||
+                    messageText.includes('דיווח ללא תמונה');
+                  if (isMenuKeyword) {
+                    logger.info("Ignoring text message representing menu button selection in AWAITING_MEDIA: " + messageText);
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+                  if (session.mediaTypeExpect === 'image') {
+                    await sendWhatsAppText(from, "בחרת בדיווח עם תמונה. אנא צלם או שלח תמונה של המפגע.", phoneNumberId, token);
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+                  textInput = messageText;
+                } else {
+                  await sendWhatsAppText(from, "אנא שלח תמונה, הקלטה קולית או הודעת טקסט תקינה.", phoneNumberId, token);
+                  res.status(200).send("EVENT_RECEIVED");
+                  return;
+                }
+
+                if (isImage) {
+                  await sendWhatsAppText(from, "מנתח את הנתונים באמצעות TikTak AI... ⚡", phoneNumberId, token);
+
+                  try {
+                    const aiResult = await analyzeIncidentAI({
+                      tenantId: session.tenantId,
+                      imageBuffer,
+                      imageMime,
+                      textInput
+                    });
+
+                    if (!aiResult.is_valid_issue) {
+                      await sendWhatsAppText(from, "לא זיהינו מפגע תחזוקה ברור בתמונה ששלחת. אנא נסה לצלם שוב בבירור.", phoneNumberId, token);
+                      session.state = 'AWAITING_MEDIA';
+                      session.mediaTypeExpect = 'image';
+                    } else {
+                      // Pre-fill drafted ticket
+                      session.draftTicket = {
+                        summary: aiResult.summary || textInput || "מפגע תחזוקה",
+                        category: aiResult.category || "אחר",
+                        urgency: aiResult.urgency || "Moderate",
+                        location: null,
+                        subLocation: null,
+                        imageId: imageId,
+                        audioId: null,
+                        comments: [],
+                        reportingMethod: "ai"
+                      };
+
+                      await proceedToLocationOrVerification(session, from, phoneNumberId, token);
+                    }
+                  } catch (aiErr: any) {
+                    logger.error("Gemini AI incident analysis failed", aiErr);
+                    await sendWhatsAppText(from, "ניתוח ה-AI נכשל זמנית. נעבור להזנת פרטים ישירה.", phoneNumberId, token);
+                    session.draftTicket = {
+                      summary: textInput || "דיווח תחזוקה",
+                      category: "אחר",
+                      urgency: "Moderate",
+                      location: null,
+                      subLocation: null,
+                      imageId: imageId,
+                      audioId: null,
+                      comments: [],
+                      reportingMethod: "manual"
+                    };
+                    session.state = 'AWAITING_VERIFICATION';
+                    await sendVerificationPreview(from, session, phoneNumberId, token);
+                  }
+                } else {
+                  // No image report - skip AI entirely
+                  const isAudio = !!audioId;
+                  const rawSummary = textInput || "דיווח תחזוקה";
+                  const summaryText = isAudio ? "[דיווח קולי]" : rawSummary;
+
+                  session.draftTicket = {
+                    summary: summaryText,
+                    category: "אחר",
+                    urgency: "Low",
+                    location: null,
+                    subLocation: null,
+                    imageId: null,
+                    audioId: audioId,
+                    comments: [],
+                    reportingMethod: "manual"
+                  };
+
+                  await promptCategorySelection(session, from, phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'AWAITING_LOCATION': {
+                if (interactiveId.startsWith("nav:")) {
+                  const direction = interactiveId.split(":")[1];
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const tData = tenantSnap.data() || {};
+                  const locations = tData.config?.locations || [];
+                  const subLocations = tData.config?.subLocations || tData.config?.resources || [];
+
+                  let pageIndex = session.pagination?.pageIndex || 0;
+                  if (direction === 'next') pageIndex++;
+                  else if (direction === 'prev') pageIndex--;
+
+                  session.pagination = { items: locations, pageIndex, fieldType: 'location' };
+                  const allowSkip = subLocations.length > 0;
+                  const paginatedList = buildPaginatedList(locations, pageIndex, 'location', tData.uiConfig, allowSkip);
+                  await sendWhatsAppMessage(from, { type: "interactive", interactive: paginatedList }, phoneNumberId, token);
+                } else if (interactiveId === "select:location:skip") {
+                  session.draftTicket.location = null;
+
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const tData = tenantSnap.data() || {};
+                  const subLocations = tData.config?.subLocations || tData.config?.resources || [];
+
+                  if (subLocations.length > 0) {
+                    session.state = 'AWAITING_SUBLOCATION';
+                    session.pagination = {
+                      items: subLocations,
+                      pageIndex: 0,
+                      fieldType: 'sublocation'
+                    };
+                    const paginatedList = buildPaginatedList(subLocations, 0, 'sublocation', tData.uiConfig, false);
+                    await sendWhatsAppMessage(from, { type: "interactive", interactive: paginatedList }, phoneNumberId, token);
+                  } else {
+                    if (session.draftTicket.reportingMethod === 'manual') {
+                      await promptPrioritySelection(session, from, phoneNumberId, token);
+                    } else {
+                      session.state = 'AWAITING_VERIFICATION';
+                      await sendVerificationPreview(from, session, phoneNumberId, token);
+                    }
+                  }
+                } else if (interactiveId.startsWith("select:location:")) {
+                  const actualIdx = parseInt(interactiveId.split(":")[2]);
+                  const locationVal = session.pagination?.items?.[actualIdx];
+                  session.draftTicket.location = locationVal;
+
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const tData = tenantSnap.data() || {};
+                  const subLocations = tData.config?.subLocations || tData.config?.resources || [];
+
+                  if (subLocations.length > 0) {
+                    session.state = 'AWAITING_SUBLOCATION';
+                    session.pagination = {
+                      items: subLocations,
+                      pageIndex: 0,
+                      fieldType: 'sublocation'
+                    };
+                    const paginatedList = buildPaginatedList(subLocations, 0, 'sublocation', tData.uiConfig, true);
+                    await sendWhatsAppMessage(from, { type: "interactive", interactive: paginatedList }, phoneNumberId, token);
+                  } else {
+                    if (session.draftTicket.reportingMethod === 'manual') {
+                      await promptPrioritySelection(session, from, phoneNumberId, token);
+                    } else {
+                      session.state = 'AWAITING_VERIFICATION';
+                      await sendVerificationPreview(from, session, phoneNumberId, token);
+                    }
+                  }
+                } else {
+                  await sendWhatsAppText(from, "נא לבחור מיקום מתוך הרשימה.", phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'AWAITING_SUBLOCATION': {
+                if (interactiveId.startsWith("nav:")) {
+                  const direction = interactiveId.split(":")[1];
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const tData = tenantSnap.data() || {};
+                  const subLocations = tData.config?.subLocations || tData.config?.resources || [];
+
+                  let pageIndex = session.pagination?.pageIndex || 0;
+                  if (direction === 'next') pageIndex++;
+                  else if (direction === 'prev') pageIndex--;
+
+                  session.pagination = { items: subLocations, pageIndex, fieldType: 'sublocation' };
+                  const allowSkip = !!session.draftTicket?.location;
+                  const paginatedList = buildPaginatedList(subLocations, pageIndex, 'sublocation', tData.uiConfig, allowSkip);
+                  await sendWhatsAppMessage(from, { type: "interactive", interactive: paginatedList }, phoneNumberId, token);
+                } else if (interactiveId === "select:sublocation:skip") {
+                  session.draftTicket.subLocation = null;
+                  if (session.draftTicket.reportingMethod === 'manual') {
+                    await promptPrioritySelection(session, from, phoneNumberId, token);
+                  } else {
+                    session.state = 'AWAITING_VERIFICATION';
+                    await sendVerificationPreview(from, session, phoneNumberId, token);
+                  }
+                } else if (interactiveId.startsWith("select:sublocation:")) {
+                  const actualIdx = parseInt(interactiveId.split(":")[2]);
+                  const subLocationVal = session.pagination?.items?.[actualIdx];
+                  session.draftTicket.subLocation = subLocationVal;
+
+                  if (session.draftTicket.reportingMethod === 'manual') {
+                    await promptPrioritySelection(session, from, phoneNumberId, token);
+                  } else {
+                    session.state = 'AWAITING_VERIFICATION';
+                    await sendVerificationPreview(from, session, phoneNumberId, token);
+                  }
+                } else {
+                  await sendWhatsAppText(from, "נא לבחור מיקום מדוייק מתוך הרשימה.", phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'AWAITING_PRIORITY': {
+                let selectedPriority = "";
+                if (interactiveId.startsWith("select_priority:")) {
+                  selectedPriority = interactiveId.split(":")[1];
+                } else if (messageText) {
+                  const cleanInput = messageText.trim().toLowerCase();
+                  if (cleanInput.includes("נמוכה") || cleanInput.includes("רגילה") || cleanInput === "1" || cleanInput.includes("low")) {
+                    selectedPriority = "Low";
+                  } else if (cleanInput.includes("בינונית") || cleanInput === "2" || cleanInput.includes("moderate")) {
+                    selectedPriority = "Moderate";
+                  } else if (cleanInput.includes("דחופה") || cleanInput.includes("גבוהה") || cleanInput === "3" || cleanInput.includes("high")) {
+                    selectedPriority = "High";
+                  }
+                }
+
+                if (selectedPriority) {
+                  session.draftTicket.urgency = selectedPriority;
+                  session.state = 'AWAITING_VERIFICATION';
+                  await sendVerificationPreview(from, session, phoneNumberId, token);
+                } else {
+                  await sendWhatsAppText(from, "אנא בחר דחיפות תקינה מתוך הכפתורים או הקלד (1, 2 או 3).", phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'AWAITING_CATEGORY': {
+                let selectedCategory = "";
+                if (interactiveId.startsWith("select_category:")) {
+                  selectedCategory = interactiveId.split(":")[1];
+                } else if (messageText) {
+                  const cleanInput = messageText.trim().toLowerCase();
+                  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                  const categories: string[] = tenantSnap.data()?.config?.categories || [];
+                  const matched = categories.find((cat: string) =>
+                    cleanInput === cat.toLowerCase() ||
+                    cat.toLowerCase().includes(cleanInput) ||
+                    cleanInput.includes(cat.toLowerCase())
+                  );
+                  if (matched) {
+                    selectedCategory = matched;
+                  } else {
+                    const num = parseInt(cleanInput);
+                    if (!isNaN(num) && num >= 1 && num <= categories.length) {
+                      selectedCategory = categories[num - 1];
+                    }
+                  }
+                }
+
+                if (selectedCategory) {
+                  session.draftTicket.category = selectedCategory;
+                  await proceedToLocationOrVerification(session, from, phoneNumberId, token);
+                } else {
+                  await sendWhatsAppText(from, "אנא בחר קטגוריה תקינה מהרשימה.", phoneNumberId, token);
+                }
+                break;
+              }
+
+              case 'AWAITING_VERIFICATION': {
+                if (interactiveId === 'confirm_ticket') {
+                  const draft = session.draftTicket;
+                  if (!draft) {
+                    await sendWhatsAppText(from, "שגיאה: פרטי הטיוטה אבדו.", phoneNumberId, token);
+                    session.state = 'MAIN_MENU';
+                    break;
+                  }
+
+                  await sendWhatsAppText(from, "יוצר דיווח במערכת... ⚡", phoneNumberId, token);
+
+                  try {
+                    const tenantRef = db.collection("tenants").doc(session.tenantId);
+                    const ticketsCol = tenantRef.collection("tickets");
+                    const ticketId = draft.imageId && !draft.imageId.startsWith("hidden-") ? draft.imageId : randomUUID();
+                    const ticketRef = ticketsCol.doc(ticketId);
+
+                    const tenantDoc = await tenantRef.get();
+                    const tenantData = tenantDoc.data() || {};
+                    const tenantName = tenantData.name || session.tenantId;
+
+                    // Authenticate Whitelist once more
+                    const rDoc = await tenantRef.collection("reporters").doc(session.phoneNumber).get();
+                    if (!rDoc.exists) {
+                      await sendWhatsAppText(from, "אימות נכשל. הטלפון שלך הוסר מרשימת המדווחים.", phoneNumberId, token);
+                      session.state = 'START';
+                      break;
+                    }
+
+                    // Enforce tenant create ticket transactions
+                    const ticketNumber = await db.runTransaction(async (transaction) => {
+                      const tenantSnap = await transaction.get(tenantRef);
+                      const tData = tenantSnap.data() || {};
+                      const currentCount = tData.lastTicketNumber || 0;
+                      const nextNumber = currentCount + 1;
+
+                      transaction.update(tenantRef, { lastTicketNumber: nextNumber });
+
+                      const ticketData = {
+                        summary: draft.summary,
+                        category: draft.category,
+                        urgency: draft.urgency,
+                        location: draft.location || null,
+                        subLocation: draft.subLocation || null,
+                        ticketType: 'visible',
+                        source: 'whatsapp',
+                        reportingMethod: draft.reportingMethod || 'manual',
+                        imageId: draft.imageId && !draft.imageId.startsWith("hidden-") ? draft.imageId : null,
+                        audioId: draft.audioId || null,
+                        reporterPhone: session.phoneNumber,
+                        reporterName: rDoc.data()?.name || "תושב/דייר",
+                        status: 'open',
+                        ticketNumber: nextNumber,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        lastStatusChangeAt: new Date().toISOString(),
+                        total_days_in_new: 0,
+                        total_days_in_progress: 0,
+                        stagnationDays: 0,
+                        slaStatus: 'none',
+                        adminComments: [] as any[]
+                      };
+
+                      transaction.set(ticketRef, ticketData);
+                      return nextNumber;
+                    });
+
+                    // Stats increment
+                    try {
+                      await db.collection("global_stats").doc("counters").set({
+                        totalTicketsCount: admin.firestore.FieldValue.increment(1)
+                      }, { merge: true });
+                    } catch (statErr: any) {
+                      logger.error("Stats increment failed in whatsappbot", statErr);
+                    }
+
+                    // Log audit log
+                    await recordAuditLog({
+                      tenantId: session.tenantId,
+                      action: 'TICKET_CREATED',
+                      level: 'INFO',
+                      actor: {
+                        uid: session.phoneNumber,
+                        name: rDoc.data()?.name || session.phoneNumber,
+                        type: 'resident'
+                      },
+                      details: {
+                        ticketId,
+                        ticketNumber,
+                        summary: draft.summary,
+                        category: draft.category,
+                        urgency: draft.urgency,
+                        location: draft.location || null,
+                        subLocation: draft.subLocation || null,
+                        source: 'whatsapp',
+                        reportingMethod: draft.reportingMethod,
+                        hasImage: !!draft.imageId && !draft.imageId.startsWith("hidden-"),
+                        hasAudio: !!draft.audioId
+                      }
+                    });
+
+                    // Fetch administrative alert users
+                    const adminUsersSnap = await tenantRef.collection("adminUsers").get();
+                    const admins: { name: string; phone: string }[] = [];
+                    adminUsersSnap.forEach((userDoc) => {
+                      const data = userDoc.data();
+                      if (data && data.mobile && data.mobile.trim()) {
+                        admins.push({
+                          name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+                          phone: data.mobile.trim(),
+                        });
+                      }
+                    });
+
+                    // Alert Admin
+                    await sendWhatsAppNotification({
+                      tenantId: session.tenantId,
+                      tenantName,
+                      ticketNumber,
+                      category: draft.category,
+                      summary: draft.summary,
+                      location: draft.location,
+                      subLocation: draft.subLocation,
+                      urgency: draft.urgency,
+                      reporterName: rDoc.data()?.name || null,
+                      imageId: draft.imageId && !draft.imageId.startsWith("hidden-") ? draft.imageId : null,
+                      audioId: draft.audioId || null,
+                      admins
+                    });
+
+                    // Resident Confirmation Template Alert
+                    await sendResidentWhatsAppNotification({
+                      phone: session.phoneNumber,
+                      templateName: "new_ticket_confirmation",
+                      ticketNumber,
+                      category: draft.category,
+                      location: draft.location,
+                      subLocation: draft.subLocation,
+                      tenantId: session.tenantId
+                    });
+
+                    // Delete session document immediately so they start completely clean next time
+                    await sessionRef.delete();
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  } catch (tErr: any) {
+                    logger.error("Ticket creation failed inside state machine", tErr);
+                    await sendWhatsAppText(from, "מצטערים, יצירת הדיווח נכשלה עקב שגיאה במערכת. נסה שוב.", phoneNumberId, token);
+                    session.state = 'MAIN_MENU';
+                  }
+                } else if (interactiveId === 'cancel_ticket') {
+                  await sendWhatsAppText(from, "הדיווח בוטל בהצלחה.", phoneNumberId, token);
+                  await sessionRef.delete();
+                  res.status(200).send("EVENT_RECEIVED");
+                  return;
+                } else if (interactiveId === 'edit_summary') {
+                  if (session.draftTicket?.reportingMethod === 'quicktap') {
+                    await sendWhatsAppText(from, "לא ניתן לערוך תקציר בדיווח מהיר.", phoneNumberId, token);
+                  } else {
+                    session.state = 'EDITING_SUMMARY';
+                    await sendWhatsAppText(from, "נא הקלד את התיקון שלך לתקציר הדיווח:", phoneNumberId, token);
+                  }
+                } else {
+                  // Natural language free-text additions
+                  if (session.draftTicket?.reportingMethod !== 'quicktap' && messageText) {
+                    const comments = session.draftTicket.comments || [];
+                    comments.push(messageText);
+                    session.draftTicket.comments = comments;
+
+                    // Call Gemini to refine summary including the comment
+                    try {
+                      await sendWhatsAppText(from, "מעדכן את התקציר עם המידע החדש... ⚡", phoneNumberId, token);
+                      const apiKey = process.env.GEMINI_API_KEY!;
+                      const genAI = new GoogleGenerativeAI(apiKey);
+                      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+                      const refinePrompt = `
+                        Original Summary: "${session.draftTicket.summary}"
+                        Additional comment added by resident: "${messageText}"
+                        Refine the summary into a single, clean Hebrew sentence combining both contexts. Do not add formatting or intros. Max 8 words.
+                      `;
+                      const result = await model.generateContent(refinePrompt);
+                      session.draftTicket.summary = result.response.text().trim().replace(/[\\'"`;]/g, "");
+                    } catch (e) {
+                      logger.error("Gemini summary refinement failed", e);
+                      // Fallback: just append comment to summary
+                      session.draftTicket.summary = `${session.draftTicket.summary} - ${messageText}`.substring(0, 80);
+                    }
+
+                    await sendVerificationPreview(from, session, phoneNumberId, token);
+                  } else {
+                    await sendWhatsAppText(from, "פעולה לא מורשית בשלב אימות זה.", phoneNumberId, token);
+                  }
+                }
+                break;
+              }
+
+              case 'EDITING_SUMMARY': {
+                if (messageText) {
+                  session.draftTicket.summary = sanitizeInput(messageText);
+                  session.state = 'AWAITING_VERIFICATION';
+                  await sendVerificationPreview(from, session, phoneNumberId, token);
+                } else {
+                  await sendWhatsAppText(from, "אנא הקלד תקציר טקסטואלי תקין.", phoneNumberId, token);
+                }
+                break;
+              }
+            }
+
+            // G. Save Session Document
+            session.updatedAt = new Date().toISOString();
+            await sessionRef.set(session);
           }
         }
       }
@@ -1697,3 +2862,127 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
 
   res.status(405).send("Method Not Allowed");
 });
+
+async function sendVerificationPreview(to: string, session: any, phoneNumberId: string, token: string) {
+  const draft = session.draftTicket;
+  const isQuickTap = draft.reportingMethod === 'quicktap';
+  const hasAudio = !!draft.audioId;
+
+  const summaryDisplay = hasAudio ? "הודעה קולית 🎙️" : draft.summary;
+
+  const previewText = `📋 *אישור פרטי דיווח:*
+• *קטגוריה:* ${draft.category}
+• *מיקום:* ${draft.location || "לא נבחר"} / ${draft.subLocation || "לא נבחר"}
+• *תקציר:* ${summaryDisplay}
+• *דחיפות:* ${draft.urgency === 'High' ? 'גבוהה 🚨' : draft.urgency === 'Moderate' ? 'בינונית' : 'רגילה'}${draft.comments && draft.comments.length > 0 ? `\n• *הערות:* ${draft.comments.join(", ")}` : ""}
+
+האם הדיווח נכון?`;
+
+  const buttons = (isQuickTap || hasAudio)
+    ? [
+      { id: "confirm_ticket", title: "⚡ אשרו ושילחו" },
+      { id: "cancel_ticket", title: "❌ ביטול" }
+    ]
+    : [
+      { id: "confirm_ticket", title: "⚡ אשרו ושילחו" },
+      { id: "edit_summary", title: "✏️ ערוך תקציר" },
+      { id: "cancel_ticket", title: "❌ ביטול" }
+    ];
+
+  await sendWhatsAppButtons(to, previewText, buttons, phoneNumberId, token);
+}
+
+async function proceedToLocationOrVerification(session: any, from: string, phoneNumberId: string, token: string) {
+  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+  const tData = tenantSnap.data() || {};
+  const locations = tData.config?.locations || [];
+  const subLocations = tData.config?.subLocations || tData.config?.resources || [];
+
+  const hasLocations = locations.length > 0;
+  const hasSubLocations = subLocations.length > 0;
+
+  if (hasLocations) {
+    session.state = 'AWAITING_LOCATION';
+    session.pagination = {
+      items: locations,
+      pageIndex: 0,
+      fieldType: 'location'
+    };
+    const allowSkipLocation = hasSubLocations;
+    const paginatedList = buildPaginatedList(locations, 0, 'location', tData.uiConfig, allowSkipLocation);
+    await sendWhatsAppMessage(from, { type: "interactive", interactive: paginatedList }, phoneNumberId, token);
+  } else if (hasSubLocations) {
+    session.state = 'AWAITING_SUBLOCATION';
+    session.pagination = {
+      items: subLocations,
+      pageIndex: 0,
+      fieldType: 'sublocation'
+    };
+    const paginatedList = buildPaginatedList(subLocations, 0, 'sublocation', tData.uiConfig, false);
+    await sendWhatsAppMessage(from, { type: "interactive", interactive: paginatedList }, phoneNumberId, token);
+  } else {
+    if (session.draftTicket.reportingMethod === 'manual') {
+      await promptPrioritySelection(session, from, phoneNumberId, token);
+    } else {
+      session.state = 'AWAITING_VERIFICATION';
+      await sendVerificationPreview(from, session, phoneNumberId, token);
+    }
+  }
+}
+
+async function promptPrioritySelection(session: any, from: string, phoneNumberId: string, token: string) {
+  session.state = 'AWAITING_PRIORITY';
+  await sendWhatsAppButtons(
+    from,
+    "אנא בחר את רמת הדחיפות של המפגע:",
+    [
+      { id: "select_priority:Low", title: "רגילה (נמוכה) 🟢" },
+      { id: "select_priority:Moderate", title: "בינונית 🟡" },
+      { id: "select_priority:High", title: "דחופה 🚨" }
+    ],
+    phoneNumberId,
+    token
+  );
+}
+
+async function promptCategorySelection(session: any, from: string, phoneNumberId: string, token: string) {
+  const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+  const tData = tenantSnap.data() || {};
+  const categories = tData.config?.categories || [];
+
+  if (categories.length > 0) {
+    session.state = 'AWAITING_CATEGORY';
+    if (categories.length <= 3) {
+      const buttons = categories.map((cat: string) => ({
+        id: `select_category:${cat}`,
+        title: cat.substring(0, 20)
+      }));
+      await sendWhatsAppButtons(from, "אנא בחר קטגוריה מתאימה לדיווח:", buttons, phoneNumberId, token);
+    } else {
+      const rows = categories.map((cat: string) => ({
+        id: `select_category:${cat}`,
+        title: `בחירה: ${cat}`.substring(0, 24)
+      }));
+      const listPayload = {
+        type: "interactive",
+        interactive: {
+          type: "list",
+          header: { type: "text", text: "בחירת קטגוריית הדיווח" },
+          body: { text: "אנא בחר את הקטגוריה המתאימה ביותר מהרשימה:" },
+          action: {
+            button: "בחר קטגוריה",
+            sections: [{
+              title: "קטגוריות זמינות",
+              rows: rows
+            }]
+          }
+        }
+      };
+      await sendWhatsAppMessage(from, listPayload, phoneNumberId, token);
+    }
+  } else {
+    session.draftTicket.category = "אחר";
+    await proceedToLocationOrVerification(session, from, phoneNumberId, token);
+  }
+}
+

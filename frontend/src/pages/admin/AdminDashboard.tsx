@@ -89,7 +89,8 @@ type Ticket = {
   reporterName?: string;
   reporterPhone?: string;
   ticketNumber?: number;
-  source?: 'ai_camera' | 'manual' | 'quicktap';
+  source?: 'ai_camera' | 'manual' | 'quicktap' | 'web' | 'whatsapp';
+  reportingMethod?: 'ai_camera' | 'manual' | 'quicktap';
   // SLA Fields
   slaStatus?: 'none' | 'stale-2' | 'stale-5' | 'stale-9';
   stagnationDays?: number;
@@ -182,7 +183,8 @@ export default function AdminDashboard() {
     severity: 'all',
     search: '',
     statuses: ['new', 'in-progress', 'closed'],
-    source: 'all'
+    source: 'all',
+    channel: 'all'
   });
 
   const getAuditActor = () => ({
@@ -398,8 +400,17 @@ export default function AdminDashboard() {
       });
       if (!mappedStatuses.includes(t.status)) return false;
 
-      // e. Source
-      if (filters.source !== 'all' && t.source !== filters.source) return false;
+      // e. Source / Reporting Method
+      if (filters.source !== 'all') {
+        const method = t.reportingMethod || t.source;
+        if (method !== filters.source) return false;
+      }
+
+      // f. Channel / Platform
+      if (filters.channel !== 'all') {
+        const channel = (t.source === 'whatsapp' || t.source === 'web') ? t.source : 'web';
+        if (channel !== filters.channel) return false;
+      }
 
       return true;
     });
@@ -692,7 +703,8 @@ export default function AdminDashboard() {
       severity: 'all',
       search: '',
       statuses: ['new', 'in-progress', 'closed'],
-      source: 'all'
+      source: 'all',
+      channel: 'all'
     });
   };
 
@@ -714,10 +726,10 @@ export default function AdminDashboard() {
       if (!months[mo]) {
         months[mo] = { ai: 0, quicktap: 0, manual: 0 };
       }
-      const source = t.source || 'manual';
-      if (source === 'ai_camera') {
+      const method = t.reportingMethod || t.source || 'manual';
+      if (method === 'ai_camera') {
         months[mo].ai += 1;
-      } else if (source === 'quicktap') {
+      } else if (method === 'quicktap') {
         months[mo].quicktap += 1;
       } else {
         months[mo].manual += 1;
@@ -852,18 +864,32 @@ export default function AdminDashboard() {
                             <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
                             <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
                           </select>
-                          <span className="text-sm font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
+                            <span className="text-[11px] font-extrabold text-slate-600 bg-slate-100/80 border border-slate-200/60 px-1.5 py-0.5 rounded flex items-center gap-1 select-none" title={t.source === 'whatsapp' ? (isEn ? 'WhatsApp Bot' : 'בוט וואטסאפ') : (isEn ? 'Resident Web' : 'ווב דייר')}>
+                              {t.source === 'whatsapp'
+                                ? (isEn ? '🤖 Bot' : '🤖 בוט')
+                                : (isEn ? '📱 Web' : '📱 ווב')}
+                            </span>
+                          </div>
                         </div>
                         <div className="text-xs text-slate-400 font-bold text-left">
                           {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
                         </div>
                       </div>
 
-                      {/* QuickTap tag block (below top row) */}
-                      {t.source === 'quicktap' && (
+                      {/* Reporting Method tag block (below top row) */}
+                      {(t.reportingMethod === 'quicktap' || t.source === 'quicktap') && (
                         <div className="mb-2 flex justify-start">
                           <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "QuickTap" : "דיווח מהיר"}>
-                            ⚡ {uiLabels.quicktap}
+                            ⚡ {isEn ? "QuickTap" : "דיווח מהיר ⚡"}
+                          </span>
+                        </div>
+                      )}
+                      {(t.reportingMethod === 'ai_camera' || t.source === 'ai_camera') && (
+                        <div className="mb-2 flex justify-start">
+                          <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "AI Camera" : "צילום AI"}>
+                            📸 {isEn ? "AI Camera" : "צילום AI 📸"}
                           </span>
                         </div>
                       )}
@@ -1297,6 +1323,19 @@ export default function AdminDashboard() {
                   <option value="ai_camera">{isEn ? 'AI Camera' : 'מצלמת AI'}</option>
                   <option value="manual">{isEn ? 'Manual' : 'ידני'}</option>
                   <option value="quicktap">{isEn ? 'QuickTap' : 'דיווח מהיר ⚡'}</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5 min-w-[120px]">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{isEn ? 'Channel' : 'ערוץ דיווח'}</label>
+                <select
+                  value={filters.channel}
+                  onChange={e => setFilters({ ...filters, channel: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  <option value="web">{isEn ? 'Web App 📱' : 'ווב דייר 📱'}</option>
+                  <option value="whatsapp">{isEn ? 'WhatsApp 🤖' : 'וואטסאפ 🤖'}</option>
                 </select>
               </div>
 
