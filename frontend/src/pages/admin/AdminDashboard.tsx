@@ -864,35 +864,36 @@ export default function AdminDashboard() {
                             <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
                             <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
                           </select>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-black text-slate-500 tracking-tighter">#{t.ticketNumber}</span>
-                            <span className="text-[11px] font-extrabold text-slate-600 bg-slate-100/80 border border-slate-200/60 px-1.5 py-0.5 rounded flex items-center gap-1 select-none" title={t.source === 'whatsapp' ? (isEn ? 'WhatsApp Bot' : 'בוט וואטסאפ') : (isEn ? 'Resident Web' : 'ווב דייר')}>
-                              {t.source === 'whatsapp'
-                                ? (isEn ? '🤖 Bot' : '🤖 בוט')
-                                : (isEn ? '📱 Web' : '📱 ווב')}
-                            </span>
-                          </div>
+                          
                         </div>
-                        <div className="text-xs text-slate-400 font-bold text-left">
+                        <div className="text-xs text-slate-400 font-bold text-left shrink-0">
                           {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
                         </div>
                       </div>
 
-                      {/* Reporting Method tag block (below top row) */}
-                      {(t.reportingMethod === 'quicktap' || t.source === 'quicktap') && (
-                        <div className="mb-2 flex justify-start">
+                      {/* Tags block (below top row) */}
+                      <div className="mb-2 flex flex-wrap gap-1.5 justify-start items-center">
+                        <span className="text-[11px] font-extrabold text-slate-500 bg-slate-100/60 border border-slate-200/50 px-1.5 py-0.5 rounded select-none">
+                          #{t.ticketNumber}
+                        </span>
+
+                        <span className="text-[11px] font-extrabold text-slate-600 bg-slate-100/80 border border-slate-200/60 px-1.5 py-0.5 rounded flex items-center gap-1 select-none" title={t.source === 'whatsapp' ? (isEn ? 'WhatsApp Bot' : 'בוט וואטסאפ') : (isEn ? 'Resident Web' : 'ווב דייר')}>
+                          {t.source === 'whatsapp'
+                            ? (isEn ? '🤖 Bot' : '🤖 בוט')
+                            : (isEn ? '📱 Web' : '📱 ווב')}
+                        </span>
+                        
+                        {(t.reportingMethod === 'quicktap' || t.source === 'quicktap') && (
                           <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "QuickTap" : "דיווח מהיר"}>
                             ⚡ {isEn ? "QuickTap" : "דיווח מהיר ⚡"}
                           </span>
-                        </div>
-                      )}
-                      {(t.reportingMethod === 'ai_camera' || t.source === 'ai_camera') && (
-                        <div className="mb-2 flex justify-start">
+                        )}
+                        {(t.reportingMethod === 'ai_camera' || t.source === 'ai_camera') && (
                           <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "AI Camera" : "צילום AI"}>
                             📸 {isEn ? "AI Camera" : "צילום AI 📸"}
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
 
                       {/* Category & Summary */}
                       <div className="mb-4">
