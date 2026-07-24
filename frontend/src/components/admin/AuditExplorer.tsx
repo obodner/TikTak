@@ -232,6 +232,12 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} deleted a comment from ticket ${delCommTicketRef}`
                     : `${actor} מחק הערה מפנייה ${delCommTicketRef}`;
+            case 'WHATSAPP_UPDATE_SENT':
+                const waTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const waCommentSnippet = log.details.commentText ? ` ("${log.details.commentText}")` : '';
+                return isEn
+                    ? `${actor} sent WhatsApp update to resident for ticket ${waTicketRef}${waCommentSnippet}`
+                    : `${actor} שלח עדכון בוואטסאפ לתושב עבור פנייה ${waTicketRef}${waCommentSnippet}`;
             case 'TICKET_URGENCY_UPDATE':
                 const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn

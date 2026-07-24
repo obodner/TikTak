@@ -37,21 +37,21 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     danger: <AlertTriangle className="text-red-600" size={24} />,
     warning: <AlertCircle className="text-amber-600" size={24} />,
     info: <Info className="text-blue-600" size={24} />,
-    success: <CheckCircle2 className="text-green-600" size={24} />,
+    success: <CheckCircle2 className="text-blue-600" size={24} />,
   };
 
   const colors = {
     danger: 'bg-red-50 text-red-700 border-red-100',
     warning: 'bg-amber-50 text-amber-700 border-amber-100',
     info: 'bg-blue-50 text-blue-700 border-blue-100',
-    success: 'bg-green-50 text-green-700 border-green-100',
+    success: 'bg-blue-50 text-blue-700 border-blue-100',
   };
 
   const buttonColors = {
     danger: 'bg-red-600 hover:bg-red-700 shadow-red-100',
     warning: 'bg-amber-600 hover:bg-amber-700 shadow-amber-100',
     info: 'bg-blue-600 hover:bg-blue-700 shadow-blue-100',
-    success: 'bg-green-600 hover:bg-green-700 shadow-green-100',
+    success: 'bg-blue-600 hover:bg-blue-700 shadow-blue-100',
   };
 
   return (
@@ -82,25 +82,27 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         </div>
 
         <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-white border border-transparent hover:border-slate-200 rounded-lg transition-all"
-          >
-            {cancelLabel || defaultLabels.cancel}
-          </button>
           {onConfirm && (
-            <button 
-              onClick={() => {
-                onConfirm();
-                onClose();
-              }}
-              className={`px-6 py-2 text-xs font-black text-white rounded-lg transition-all shadow-lg active:scale-95 ${buttonColors[type]}`}
-            >
-              {confirmLabel || defaultLabels.confirm}
-            </button>
+            <>
+              <button 
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-white border border-transparent hover:border-slate-200 rounded-lg transition-all"
+              >
+                {cancelLabel || defaultLabels.cancel}
+              </button>
+              <button 
+                onClick={() => {
+                  onConfirm();
+                  onClose();
+                }}
+                className={`px-6 py-2 text-xs font-black text-white rounded-lg transition-all shadow-lg active:scale-95 ${buttonColors[type]}`}
+              >
+                {confirmLabel || defaultLabels.confirm}
+              </button>
+            </>
           )}
           {!onConfirm && (
-             <button 
+            <button 
               onClick={onClose}
               className={`px-6 py-2 text-xs font-black text-white rounded-lg transition-all shadow-lg active:scale-95 ${buttonColors[type]}`}
             >

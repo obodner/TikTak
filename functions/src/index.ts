@@ -1410,6 +1410,145 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
   }
 });
 
+export const sendWhatsAppCommentNotification = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+  try {
+    const { tenantId, ticketId, commentId, commentText, actorName } = req.body;
+    if (!tenantId || !ticketId || !commentId || !commentText) {
+      res.status(400).send({ error: "Missing required fields" });
+      return;
+    }
+
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+
+    if (!token) {
+      res.status(500).send({ error: "WhatsApp access token not configured" });
+      return;
+    }
+
+    // Get ticket document
+    const ticketRef = db.collection("tenants").doc(tenantId).collection("tickets").doc(ticketId);
+    const ticketSnap = await ticketRef.get();
+    if (!ticketSnap.exists) {
+      res.status(404).send({ error: "Ticket not found" });
+      return;
+    }
+    const ticketData = ticketSnap.data() || {};
+
+    const phoneNumberId = ticketData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+
+    // Get recipient phone and normalize to international 972... format
+    const rawPhone = ticketData.reporterPhone || ticketData.reporterPhoneE164 || ticketData.from;
+    if (!rawPhone) {
+      res.status(400).send({ error: "פנייה זו לא נפתחה דרך וואטסאפ ולא קיים מספר טלפון למדווח." });
+      return;
+    }
+
+    let recipientPhone = String(rawPhone).replace(/\D/g, "");
+    if (recipientPhone.startsWith("0")) {
+      recipientPhone = "972" + recipientPhone.substring(1);
+    }
+
+    const parseTimestampMillis = (val: any): number => {
+      if (!val) return 0;
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') {
+        const parsed = Date.parse(val);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      if (typeof val === 'object') {
+        if (typeof val.toMillis === 'function') return val.toMillis();
+        if (typeof val.toDate === 'function') return val.toDate().getTime();
+        if (typeof val.seconds === 'number') return val.seconds * 1000;
+        if (typeof val._seconds === 'number') return val._seconds * 1000;
+      }
+      return 0;
+    };
+
+    const ticketNumber = ticketData.ticketNumber || "";
+    const reporterName = ticketData.reporterName || ticketData.name || ticketData.reporter || "תושב/דייר";
+    
+    // Check if there is an active 24-hour WhatsApp customer window.
+    // Meta ONLY opens a 24h window if the user sent an INBOUND WhatsApp message (lastUserMessageAt).
+    // Web-created tickets (source !== 'whatsapp') do NOT have an active 24h WhatsApp session, so they require template messaging.
+    const lastUserMessageTime = parseTimestampMillis(ticketData.lastUserMessageAt);
+    const isWhatsAppSource = ticketData.source === 'whatsapp' || !!ticketData.lastUserMessageAt;
+    const isWithin24h = isWhatsAppSource && lastUserMessageTime > 0 && (Date.now() - lastUserMessageTime) < 24 * 60 * 60 * 1000;
+
+    let sentViaTemplate = false;
+
+    const formattedFallbackText = `שלום ${reporterName},\nנשלח עבורך עדכון חדש במערכת לגבי פנייה מספר #${ticketNumber}:\n\n${commentText}\n\nתודה על שיתוף הפעולה!\n\n_*שימו לב: זוהי הודעה אוטומטית ממערכת TikTak ואין להשיב עליה (תגובות אינן מגיעות למזכירות).*_`;
+
+    if (isWithin24h) {
+      // Send free-form text message inside active 24h customer window
+      await sendWhatsAppText(recipientPhone, formattedFallbackText, phoneNumberId, token);
+    } else {
+      // Send template message (3 variables: {{1}} name, {{2}} ticketNumber, {{3}} commentText)
+      // Meta template parameters CANNOT contain newlines or tabs
+      const cleanCommentForTemplate = commentText.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      sentViaTemplate = true;
+      try {
+        await sendWhatsAppTemplate(
+          recipientPhone,
+          "ticket_status_update",
+          "he",
+          [reporterName, String(ticketNumber), cleanCommentForTemplate],
+          phoneNumberId,
+          token
+        );
+      } catch (templateErr: any) {
+        logger.error(`Template ticket_status_update failed for ticket #${ticketNumber}:`, templateErr);
+        res.status(400).send({ 
+          error: `שליחת הודעת וואטסאפ נכשלה (חלון 24 שעות סגור והתבנית ב-Meta עדיין לא פעילה או נדחתה). שגיאה: ${templateErr.message || 'Template error'}` 
+        });
+        return;
+      }
+    }
+
+    // Update the comment inside adminComments array on ticket document
+    const existingComments: any[] = ticketData.adminComments || [];
+    let commentFound = false;
+
+    const updatedComments = existingComments.map((c) => {
+      if (c.id === commentId) {
+        commentFound = true;
+        return {
+          ...c,
+          sentToWhatsApp: true,
+          sentToWhatsAppAt: new Date().toISOString(),
+          sentViaTemplate
+        };
+      }
+      return c;
+    });
+
+    if (!commentFound) {
+      // If comment was newly created and not yet in adminComments array
+      updatedComments.push({
+        id: commentId,
+        text: commentText,
+        createdAt: new Date().toISOString(),
+        authorName: actorName || "מנהל",
+        sentToWhatsApp: true,
+        sentToWhatsAppAt: new Date().toISOString(),
+        sentViaTemplate
+      });
+    }
+
+    await ticketRef.update({
+      adminComments: updatedComments
+    });
+
+    res.status(200).send({
+      success: true,
+      sentViaTemplate,
+      sentToWhatsAppAt: new Date().toISOString()
+    });
+  } catch (err: any) {
+    logger.error("Error sending WhatsApp comment notification:", err);
+    res.status(500).send({ error: err.message || "Failed to send WhatsApp update" });
+  }
+});
+
 
 /**
  * SLA Tracker: Responds to status changes to update cumulative statistics.
@@ -1790,6 +1929,22 @@ async function sendWhatsAppText(to: string, text: string, phoneNumberId: string,
   return sendWhatsAppMessage(to, {
     type: "text",
     text: { preview_url: false, body: text }
+  }, phoneNumberId, token);
+}
+
+async function sendWhatsAppTemplate(to: string, templateName: string, langCode: string, parameters: string[], phoneNumberId: string, token: string) {
+  return sendWhatsAppMessage(to, {
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: langCode },
+      components: [
+        {
+          type: "body",
+          parameters: parameters.map(p => ({ type: "text", text: p }))
+        }
+      ]
+    }
   }, phoneNumberId, token);
 }
 

@@ -166,7 +166,7 @@ export default function AdminDashboard() {
     setConfirmState({ isOpen: true, title, message, onConfirm, type, confirmLabel, cancelLabel });
   };
 
-  const showAlert = (title: string, message: string, type: ConfirmType = 'danger') => {
+  const showAlert = (title: string, message: string, type: ConfirmType = 'info') => {
     setConfirmState({ isOpen: true, title, message, type });
   };
   const navigate = useNavigate();
@@ -577,6 +577,125 @@ export default function AdminDashboard() {
       showAlert(
         isEn ? 'Error' : 'שגיאה',
         isEn ? 'Failed to save comment' : 'שמירת ההערה נכשלה'
+      );
+    }
+  };
+
+  const handleSendWhatsAppComment = async (ticket: any, comment: any) => {
+    if (!tenantId || !ticket) return;
+    const authorName = adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (isEn ? 'Admin' : 'מנהל');
+    
+    try {
+      const response = await fetch('https://sendwhatsappcommentnotification-xzfu3ennuq-uc.a.run.app', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          ticketId: ticket.id,
+          commentId: comment.id,
+          commentText: comment.text,
+          actorName: authorName
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || (isEn ? 'Failed to send WhatsApp update' : 'שליחת עדכון בוואטסאפ נכשלה'));
+      }
+
+      // Audit Log
+      await logAction({
+        tenantId,
+        action: 'WHATSAPP_UPDATE_SENT',
+        actor: getAuditActor(),
+        details: {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          commentId: comment.id,
+          commentText: comment.text,
+          sentViaTemplate: data.sentViaTemplate
+        }
+      });
+
+      // Update local state
+      const nowIso = data.sentToWhatsAppAt || new Date().toISOString();
+      setTickets(prev => prev.map(t => {
+        if (t.id !== ticket.id) return t;
+        const updatedComments = (t.adminComments || []).map(c => {
+          if (c.id === comment.id) {
+            return {
+              ...c,
+              sentToWhatsApp: true,
+              sentToWhatsAppAt: nowIso,
+              sentViaTemplate: data.sentViaTemplate
+            };
+          }
+          return c;
+        });
+        return { ...t, adminComments: updatedComments };
+      }));
+
+      showAlert(
+        isEn ? 'WhatsApp Update Sent' : 'עדכון וואטסאפ נשלח',
+        isEn ? 'WhatsApp message dispatched to reporter successfully.' : 'הודעת הוואטסאפ נשלחה בהצלחה לתושב/דייר.',
+        'info'
+      );
+    } catch (err: any) {
+      console.error('WhatsApp dispatch error:', err);
+      showAlert(
+        isEn ? 'Error' : 'שגיאה',
+        err.message || (isEn ? 'Failed to send WhatsApp message' : 'שליחת הודעת הוואטסאפ נכשלה'),
+        'danger'
+      );
+    }
+  };
+
+  const handleSaveAndSendWhatsAppComment = async (ticket: any, text: string) => {
+    if (!tenantId || !ticket) return;
+    const ticketId = ticket.id;
+    const authorName = adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (isEn ? 'Admin' : 'מנהל');
+    const commentId = Math.random().toString(36).substr(2, 9);
+    
+    const newComment = {
+      id: commentId,
+      text,
+      createdAt: new Date().toISOString(),
+      authorName
+    };
+
+    try {
+      // First save comment internally
+      await updateDoc(doc(db, "tenants", tenantId, "tickets", ticketId), {
+        adminComments: arrayUnion(newComment)
+      });
+
+      // Log comment creation
+      await logAction({
+        tenantId,
+        action: 'COMMENT_CREATED',
+        actor: getAuditActor(),
+        details: {
+          ticketId,
+          ticketNumber: ticket.ticketNumber,
+          commentId: newComment.id,
+          text: newComment.text
+        }
+      });
+
+      // Optimistically add comment to local state
+      setTickets(prev => prev.map(t =>
+        t.id === ticketId
+          ? { ...t, adminComments: [...(t.adminComments || []), newComment] }
+          : t
+      ));
+
+      // Dispatch WhatsApp message
+      await handleSendWhatsAppComment(ticket, newComment);
+    } catch (err: any) {
+      console.error(err);
+      showAlert(
+        isEn ? 'Error' : 'שגיאה',
+        err.message || (isEn ? 'Failed to save comment' : 'שמירת ההערה נכשלה')
       );
     }
   };
@@ -1447,6 +1566,8 @@ export default function AdminDashboard() {
           onClose={() => setCommentTicketId(null)}
           ticket={tickets.find(t => t.id === commentTicketId) || null}
           onSave={handleSaveComment}
+          onSaveAndSendWhatsApp={handleSaveAndSendWhatsAppComment}
+          onSendWhatsApp={handleSendWhatsAppComment}
           onDelete={handleDeleteComment}
           isEn={isEn}
         />

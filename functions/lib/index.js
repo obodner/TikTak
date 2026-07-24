@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.whatsappWebhook = exports.onTicketUpdate = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
+exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
@@ -1211,6 +1211,119 @@ exports.manageTenantUser = (0, https_1.onRequest)({ cors: true }, async (req, re
         res.status(500).send({ error: err.message });
     }
 });
+exports.sendWhatsAppCommentNotification = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+    try {
+        const { tenantId, ticketId, commentId, commentText, actorName } = req.body;
+        if (!tenantId || !ticketId || !commentId || !commentText) {
+            res.status(400).send({ error: "Missing required fields" });
+            return;
+        }
+        const token = process.env.WHATSAPP_ACCESS_TOKEN;
+        if (!token) {
+            res.status(500).send({ error: "WhatsApp access token not configured" });
+            return;
+        }
+        const ticketRef = db.collection("tenants").doc(tenantId).collection("tickets").doc(ticketId);
+        const ticketSnap = await ticketRef.get();
+        if (!ticketSnap.exists) {
+            res.status(404).send({ error: "Ticket not found" });
+            return;
+        }
+        const ticketData = ticketSnap.data() || {};
+        const phoneNumberId = ticketData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+        const rawPhone = ticketData.reporterPhone || ticketData.reporterPhoneE164 || ticketData.from;
+        if (!rawPhone) {
+            res.status(400).send({ error: "פנייה זו לא נפתחה דרך וואטסאפ ולא קיים מספר טלפון למדווח." });
+            return;
+        }
+        let recipientPhone = String(rawPhone).replace(/\D/g, "");
+        if (recipientPhone.startsWith("0")) {
+            recipientPhone = "972" + recipientPhone.substring(1);
+        }
+        const parseTimestampMillis = (val) => {
+            if (!val)
+                return 0;
+            if (typeof val === 'number')
+                return val;
+            if (typeof val === 'string') {
+                const parsed = Date.parse(val);
+                return isNaN(parsed) ? 0 : parsed;
+            }
+            if (typeof val === 'object') {
+                if (typeof val.toMillis === 'function')
+                    return val.toMillis();
+                if (typeof val.toDate === 'function')
+                    return val.toDate().getTime();
+                if (typeof val.seconds === 'number')
+                    return val.seconds * 1000;
+                if (typeof val._seconds === 'number')
+                    return val._seconds * 1000;
+            }
+            return 0;
+        };
+        const ticketNumber = ticketData.ticketNumber || "";
+        const reporterName = ticketData.reporterName || ticketData.name || ticketData.reporter || "תושב/דייר";
+        const lastUserMessageTime = parseTimestampMillis(ticketData.lastUserMessageAt);
+        const isWhatsAppSource = ticketData.source === 'whatsapp' || !!ticketData.lastUserMessageAt;
+        const isWithin24h = isWhatsAppSource && lastUserMessageTime > 0 && (Date.now() - lastUserMessageTime) < 24 * 60 * 60 * 1000;
+        let sentViaTemplate = false;
+        const formattedFallbackText = `שלום ${reporterName},\nנשלח עבורך עדכון חדש במערכת לגבי פנייה מספר #${ticketNumber}:\n\n${commentText}\n\nתודה על שיתוף הפעולה!\n\n_*שימו לב: זוהי הודעה אוטומטית ממערכת TikTak ואין להשיב עליה (תגובות אינן מגיעות למזכירות).*_`;
+        if (isWithin24h) {
+            await sendWhatsAppText(recipientPhone, formattedFallbackText, phoneNumberId, token);
+        }
+        else {
+            const cleanCommentForTemplate = commentText.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+            sentViaTemplate = true;
+            try {
+                await sendWhatsAppTemplate(recipientPhone, "ticket_status_update", "he", [reporterName, String(ticketNumber), cleanCommentForTemplate], phoneNumberId, token);
+            }
+            catch (templateErr) {
+                logger.error(`Template ticket_status_update failed for ticket #${ticketNumber}:`, templateErr);
+                res.status(400).send({
+                    error: `שליחת הודעת וואטסאפ נכשלה (חלון 24 שעות סגור והתבנית ב-Meta עדיין לא פעילה או נדחתה). שגיאה: ${templateErr.message || 'Template error'}`
+                });
+                return;
+            }
+        }
+        const existingComments = ticketData.adminComments || [];
+        let commentFound = false;
+        const updatedComments = existingComments.map((c) => {
+            if (c.id === commentId) {
+                commentFound = true;
+                return {
+                    ...c,
+                    sentToWhatsApp: true,
+                    sentToWhatsAppAt: new Date().toISOString(),
+                    sentViaTemplate
+                };
+            }
+            return c;
+        });
+        if (!commentFound) {
+            updatedComments.push({
+                id: commentId,
+                text: commentText,
+                createdAt: new Date().toISOString(),
+                authorName: actorName || "מנהל",
+                sentToWhatsApp: true,
+                sentToWhatsAppAt: new Date().toISOString(),
+                sentViaTemplate
+            });
+        }
+        await ticketRef.update({
+            adminComments: updatedComments
+        });
+        res.status(200).send({
+            success: true,
+            sentViaTemplate,
+            sentToWhatsAppAt: new Date().toISOString()
+        });
+    }
+    catch (err) {
+        logger.error("Error sending WhatsApp comment notification:", err);
+        res.status(500).send({ error: err.message || "Failed to send WhatsApp update" });
+    }
+});
 exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants/{tenantId}/tickets/{ticketId}", secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
@@ -1528,6 +1641,21 @@ async function sendWhatsAppText(to, text, phoneNumberId, token) {
     return sendWhatsAppMessage(to, {
         type: "text",
         text: { preview_url: false, body: text }
+    }, phoneNumberId, token);
+}
+async function sendWhatsAppTemplate(to, templateName, langCode, parameters, phoneNumberId, token) {
+    return sendWhatsAppMessage(to, {
+        type: "template",
+        template: {
+            name: templateName,
+            language: { code: langCode },
+            components: [
+                {
+                    type: "body",
+                    parameters: parameters.map(p => ({ type: "text", text: p }))
+                }
+            ]
+        }
     }, phoneNumberId, token);
 }
 async function sendWhatsAppButtons(to, text, buttons, phoneNumberId, token) {

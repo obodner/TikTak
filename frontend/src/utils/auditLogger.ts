@@ -16,7 +16,8 @@ export type AuditAction =
   | 'LOGIN'
   | 'APP_FEEDBACK_SUBMITTED'
   | 'APP_FEEDBACK_SUBMMITTED'
-  | 'SERVICE_FEEDBACK_SUBMITTED';
+  | 'SERVICE_FEEDBACK_SUBMITTED'
+  | 'WHATSAPP_UPDATE_SENT';
 
 export interface AuditActor {
   uid: string;
