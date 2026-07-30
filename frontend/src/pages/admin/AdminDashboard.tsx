@@ -7,10 +7,11 @@ import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
 import { CommentModal } from '../../components/admin/CommentModal';
 import { ClosureModal } from '../../components/admin/ClosureModal';
+import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon, Pause, GripVertical } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon, Pause, GripVertical, Share2 } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -99,6 +100,9 @@ type Ticket = {
   vaadRating?: string;
   meToo?: number;
   meTooReporters?: { name: string; phone: string; votedAt: string }[];
+  vendorForwardCount?: number;
+  lastVendorForwardAt?: string;
+  vendors?: { phone: string; name: string; status: string; sentAt: string; updatedAt?: string }[];
 };
 
 const CustomTooltip = ({ active, payload, label, isEn }: any) => {
@@ -142,6 +146,73 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'new' | 'progress' | 'resolved'>('new');
   const [commentTicketId, setCommentTicketId] = useState<string | null>(null);
   const [closureTicketId, setClosureTicketId] = useState<string | null>(null);
+  const [forwardTicket, setForwardTicket] = useState<any | null>(null);
+
+  const getAdminDisplayName = () => {
+    if (adminProfile && (adminProfile.firstName || adminProfile.lastName)) {
+      const full = `${adminProfile.firstName || ''} ${adminProfile.lastName || ''}`.trim();
+      if (full) return full;
+    }
+    if (user?.displayName && !user.displayName.includes('@')) {
+      return user.displayName;
+    }
+    return isEn ? 'Admin' : 'מנהל';
+  };
+
+  const handleSendForwardToVendor = async (vendorPhone: string, messageText: string, vendorName?: string) => {
+    if (!tenantId || !forwardTicket) return;
+
+    try {
+      const response = await fetch('/api/forwardTicketToVendor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          ticketId: forwardTicket.id,
+          vendorPhone,
+          vendorName,
+          messageText,
+          actorName: getAdminDisplayName()
+        })
+      });
+
+      const resData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(resData.error || (isEn ? 'Failed to forward ticket' : 'שליחת הפנייה לספק נכשלה'));
+      }
+
+      const newCount = resData.forwardCount || ((forwardTicket.vendorForwardCount || 0) + 1);
+      const updatedVendors = resData.vendors || forwardTicket.vendors || [];
+
+      setTickets(prev => prev.map(t =>
+        t.id === forwardTicket.id
+          ? { 
+              ...t, 
+              vendorForwardCount: newCount, 
+              lastVendorForwardAt: new Date().toISOString(),
+              vendors: updatedVendors
+            }
+          : t
+      ));
+
+      showAlert(
+        isEn ? 'Ticket Forwarded' : 'פנייה הועברה לספק',
+        isEn 
+          ? `Template message sent to vendor (${vendorName || vendorPhone})!` 
+          : `הודעה נשלחה בהצלחה לספק (${vendorName || vendorPhone})!`,
+        'info'
+      );
+    } catch (err: any) {
+      console.error('Error in handleSendForwardToVendor:', err);
+      showAlert(
+        isEn ? 'Forward Failed' : 'שליחה נכשלה',
+        err.message || (isEn ? 'Failed to send WhatsApp message.' : 'שליחת הודעת וואטסאפ נכשלה.'),
+        'warning'
+      );
+      throw err;
+    }
+  };
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
   const [holidays, setHolidays] = useState<string[]>([]);
   const [myTenants, setMyTenants] = useState<{ id: string, name?: string }[]>([]);
@@ -1127,6 +1198,46 @@ export default function AdminDashboard() {
                         {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
                           <InlineAudioPlayer src={`/aud/${tenantId}/${t.audioId}`} isEn={isEn} />
                         )}
+
+                        {/* Forward to Vendor Action Button */}
+                        {!['resolved', 'dismissed', 'closed'].includes(String(t.status).toLowerCase()) && (
+                          (() => {
+                            const fwdCount = t.vendorForwardCount || 0;
+                            const isMaxReached = fwdCount >= 3;
+                            return (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isMaxReached) setForwardTicket(t);
+                                }}
+                                disabled={isMaxReached}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg shadow-sm transition-all ms-auto select-none shrink-0 ${
+                                  isMaxReached
+                                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                                    : 'text-white bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 cursor-pointer'
+                                }`}
+                                title={(() => {
+                                  const baseTitle = isMaxReached
+                                    ? (isEn ? "Maximum 3 vendor forwards reached for this ticket" : "הגעת למכסת 3 העברות לספק עבור פנייה זו")
+                                    : (isEn ? `Forward ticket to vendor via WhatsApp (${3 - fwdCount} left)` : `העבר פרטי פנייה לספק בוואטסאפ (נותרו ${3 - fwdCount})`);
+                                  
+                                  const vList: any[] = Array.isArray(t.vendors) ? t.vendors : [];
+                                  if (vList.length > 0) {
+                                    const vLines = vList.map(v => `${v.phone || v.name}: ${v.status || (isEn ? 'Awaiting vendor response ...' : 'ממתין לתשובה מהספק ...')}`);
+                                    return `${baseTitle}\n\n${vLines.join('\n')}`;
+                                  }
+                                  return baseTitle;
+                                })()}
+                              >
+                                <Share2 size={13} />
+                                <span>
+                                  {isEn ? "Forward to Vendor" : "העבר לספק"}
+                                  {fwdCount > 0 && <span className="opacity-85 text-[10px] ms-1">({fwdCount}/3)</span>}
+                                </span>
+                              </button>
+                            );
+                          })()
+                        )}
                       </div>
 
                       {/* Bottom Info: Reporter (Right), Location, Sublocation */}
@@ -1580,6 +1691,18 @@ export default function AdminDashboard() {
             isEn={isEn}
           />
         )}
+
+        <ForwardToVendorModal
+          isOpen={!!forwardTicket}
+          onClose={() => setForwardTicket(null)}
+          ticket={forwardTicket}
+          tenantName={tenantConfig?.name || tenantId}
+          tenantType={tenantConfig?.type}
+          tenantId={tenantId}
+          adminName={getAdminDisplayName()}
+          onSend={handleSendForwardToVendor}
+          isEn={isEn}
+        />
 
         <HelpModal
           isOpen={isHelpOpen}

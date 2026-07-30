@@ -72,6 +72,13 @@
                 }
             },
             {
+                "source": "/api/forwardTicketToVendor",
+                "function": {
+                    "functionId": "forwardTicketToVendor",
+                    "region": "us-central1"
+                }
+            },
+            {
                 "source": "/api/checkAuth",
                 "function": {
                     "functionId": "checkAuth",

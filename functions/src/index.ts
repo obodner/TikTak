@@ -1466,7 +1466,7 @@ export const sendWhatsAppCommentNotification = onRequest({ cors: true, secrets: 
 
     const ticketNumber = ticketData.ticketNumber || "";
     const reporterName = ticketData.reporterName || ticketData.name || ticketData.reporter || "תושב/דייר";
-    
+
     // Check if there is an active 24-hour WhatsApp customer window.
     // Meta ONLY opens a 24h window if the user sent an INBOUND WhatsApp message (lastUserMessageAt).
     // Web-created tickets (source !== 'whatsapp') do NOT have an active 24h WhatsApp session, so they require template messaging.
@@ -1497,8 +1497,8 @@ export const sendWhatsAppCommentNotification = onRequest({ cors: true, secrets: 
         );
       } catch (templateErr: any) {
         logger.error(`Template ticket_status_update failed for ticket #${ticketNumber}:`, templateErr);
-        res.status(400).send({ 
-          error: `שליחת הודעת וואטסאפ נכשלה (חלון 24 שעות סגור והתבנית ב-Meta עדיין לא פעילה או נדחתה). שגיאה: ${templateErr.message || 'Template error'}` 
+        res.status(400).send({
+          error: `שליחת הודעת וואטסאפ נכשלה (חלון 24 שעות סגור והתבנית ב-Meta עדיין לא פעילה או נדחתה). שגיאה: ${templateErr.message || 'Template error'}`
         });
         return;
       }
@@ -2018,14 +2018,26 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
 
             // B. Check for service feedback ratings (coexists with unresolved rating webhook clicks)
             let feedbackValue: 'good' | 'ok' | 'bad' | null = null;
+
             if (message.type === 'button') {
               const payload = (message.button?.payload || '').toLowerCase();
-              const text = message.button?.text || '';
-              if (payload.includes('feedback') || payload.includes('good') || payload.includes('מצוין') || text.includes('מצוין')) {
-                if (payload.includes('good')) feedbackValue = 'good';
-                else if (payload.includes('ok') || payload.includes('בסדר') || text.includes('בסדר')) feedbackValue = 'ok';
-                else if (payload.includes('bad') || payload.includes('לא מרוצה') || text.includes('לא מרוצה')) feedbackValue = 'bad';
-              }
+              const text = (message.button?.text || '').toLowerCase();
+              const combined = `${payload} ${text}`;
+              if (combined.includes('good') || combined.includes('מצוין')) feedbackValue = 'good';
+              else if (combined.includes('ok') || combined.includes('בסדר')) feedbackValue = 'ok';
+              else if (combined.includes('bad') || combined.includes('לא מרוצה')) feedbackValue = 'bad';
+            } else if (message.type === 'interactive') {
+              const title = (message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '').toLowerCase();
+              const id = (message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || '').toLowerCase();
+              const combined = `${id} ${title}`;
+              if (combined.includes('good') || combined.includes('מצוין')) feedbackValue = 'good';
+              else if (combined.includes('ok') || combined.includes('בסדר')) feedbackValue = 'ok';
+              else if (combined.includes('bad') || combined.includes('לא מרוצה')) feedbackValue = 'bad';
+            } else if (message.type === 'text') {
+              const text = (message.text?.body || '').trim().toLowerCase();
+              if (text === 'מצוין') feedbackValue = 'good';
+              else if (text === 'בסדר') feedbackValue = 'ok';
+              else if (text === 'לא מרוצה') feedbackValue = 'bad';
             }
 
             if (feedbackValue) {
@@ -2071,13 +2083,111 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                       rating: feedbackValue
                     }
                   });
+                }
 
-                  await sendWhatsAppText(from, "תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡", phoneNumberId, token);
+                await sendWhatsAppText(from, "תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡", phoneNumberId, token);
+                res.status(200).send("EVENT_RECEIVED");
+                return;
+              } catch (e: any) {
+                logger.error("Failed to update service feedback", { error: e.message });
+                res.status(200).send("EVENT_RECEIVED");
+                return;
+              }
+            }
+
+            // B2. Check for Vendor Interactive Response Buttons ("קיבלתי את ההודעה" / "בוצע")
+            let vendorResponseText: string | null = null;
+
+            if (message.type === 'button') {
+              const payload = message.button?.payload || '';
+              const text = message.button?.text || '';
+              if (text.includes('קיבלתי את ההודעה') || payload.includes('VENDOR_ACK') || payload.includes('קיבלתי')) {
+                vendorResponseText = 'קיבלתי את ההודעה';
+              } else if (text.includes('בוצע') || payload.includes('VENDOR_DONE') || payload.includes('בוצע')) {
+                vendorResponseText = 'בוצע';
+              }
+            } else if (message.type === 'interactive') {
+              const title = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '';
+              const id = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || '';
+              if (title.includes('קיבלתי את ההודעה') || id.includes('VENDOR_ACK')) {
+                vendorResponseText = 'קיבלתי את ההודעה';
+              } else if (title.includes('בוצע') || id.includes('VENDOR_DONE')) {
+                vendorResponseText = 'בוצע';
+              }
+            } else if (message.type === 'text') {
+              const text = (message.text?.body || '').trim();
+              if (text === 'קיבלתי את ההודעה' || text === 'קיבלתי') {
+                vendorResponseText = 'קיבלתי את ההודעה';
+              } else if (text === 'בוצע') {
+                vendorResponseText = 'בוצע';
+              }
+            }
+
+            if (vendorResponseText) {
+              try {
+                logger.info(`Received vendor button click '${vendorResponseText}' from phone ${localPhone} (raw: ${from})`);
+
+                const querySnapshot = await db.collectionGroup("tickets").get();
+                let updatedCount = 0;
+
+                for (const docSnap of querySnapshot.docs) {
+                  const tData = docSnap.data();
+                  const vList: any[] = Array.isArray(tData.vendors) ? tData.vendors : [];
+
+                  const vIndex = vList.findIndex((v: any) =>
+                    v.phone === localPhone ||
+                    v.rawPhone === localPhone ||
+                    v.intlPhone === from ||
+                    (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, ''))
+                  );
+
+                  if (vIndex !== -1) {
+                    vList[vIndex].status = vendorResponseText;
+                    vList[vIndex].updatedAt = new Date().toISOString();
+
+                    await docSnap.ref.update({
+                      vendors: vList,
+                      lastVendorResponseAt: new Date().toISOString()
+                    });
+
+                    const pathParts = docSnap.ref.path.split('/');
+                    const tenantId = pathParts[1];
+
+                    const auditAction = vendorResponseText === 'בוצע' ? 'VENDOR_COMPLETED_TICKET' : 'VENDOR_ACKNOWLEDGED_TICKET';
+                    await recordAuditLog({
+                      tenantId,
+                      action: auditAction,
+                      level: 'INFO',
+                      actor: {
+                        uid: localPhone,
+                        name: vList[vIndex].name || localPhone,
+                        type: 'resident'
+                      },
+                      details: {
+                        ticketId: docSnap.id,
+                        ticketNumber: tData.ticketNumber,
+                        vendorPhone: localPhone,
+                        vendorName: vList[vIndex].name || localPhone,
+                        responseText: vendorResponseText
+                      }
+                    });
+
+                    updatedCount++;
+                  }
+                }
+
+                if (updatedCount > 0) {
+                  await sendWhatsAppText(
+                    from,
+                    `תודה! העדכון שלך ("${vendorResponseText}") נקלט בהצלחה במערכת TikTak. 🛠️`,
+                    phoneNumberId,
+                    token
+                  );
                   res.status(200).send("EVENT_RECEIVED");
                   return;
                 }
-              } catch (e: any) {
-                logger.error("Failed to update service feedback", { error: e.message });
+              } catch (err: any) {
+                logger.error("Failed to process vendor button response", { error: err.message });
               }
             }
 
@@ -2518,7 +2628,7 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     });
 
                     // Don't transcribe the audio file
-                     textInput = "";
+                    textInput = "";
                   } catch (err: any) {
                     if (err.message === 'FILE_TOO_LARGE') {
                       await sendWhatsAppText(from, "ההודעה הקולית ארוכה או גדולה מדי. המגבלה היא 1MB.", phoneNumberId, token);
@@ -3140,4 +3250,141 @@ async function promptCategorySelection(session: any, from: string, phoneNumberId
     await proceedToLocationOrVerification(session, from, phoneNumberId, token);
   }
 }
+
+export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+  try {
+    const { tenantId, ticketId, vendorPhone, vendorName, messageText, actorName } = req.body;
+    if (!tenantId || !ticketId || !vendorPhone || !messageText) {
+      res.status(400).send({ error: "Missing required parameters (tenantId, ticketId, vendorPhone, messageText)" });
+      return;
+    }
+
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!token) {
+      res.status(500).send({ error: "WhatsApp access token not configured" });
+      return;
+    }
+
+    // 1. Verify Ticket Document
+    const ticketRef = db.collection("tenants").doc(tenantId).collection("tickets").doc(ticketId);
+    const ticketSnap = await ticketRef.get();
+    if (!ticketSnap.exists) {
+      res.status(404).send({ error: "Ticket not found" });
+      return;
+    }
+    const ticketData = ticketSnap.data() || {};
+
+    const currentStatus = String(ticketData.status || '').toLowerCase();
+    if (['resolved', 'dismissed', 'closed'].includes(currentStatus)) {
+      res.status(400).send({ error: "לא ניתן להעביר לספק פנייה שטופלה ונסגרה" });
+      return;
+    }
+
+    const currentCount = ticketData.vendorForwardCount || 0;
+    if (currentCount >= 3) {
+      res.status(400).send({ error: "הגעת למכסת 3 העברות לספק עבור פנייה זו" });
+      return;
+    }
+
+    const phoneNumberId = ticketData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+
+    // 2. Format recipient phone to 972...
+    let cleanPhone = String(vendorPhone).replace(/\D/g, "");
+    if (cleanPhone.startsWith("0")) {
+      cleanPhone = "972" + cleanPhone.substring(1);
+    }
+
+    // 3. Clean message parameter for Meta API (Meta template variables CANNOT contain raw \n or \r)
+    const cleanMessageForMeta = messageText.replace(/[\r\n\t]+/g, ' • ').replace(/\s{2,}/g, ' ').trim();
+
+    logger.info(`Forwarding ticket #${ticketData.ticketNumber || ticketId} to vendor ${cleanPhone} via Meta API template 'vendor_ticket_dispatch'...`);
+
+    // 4. Send Meta Template vendor_ticket_dispatch
+    let apiResult: any = null;
+    try {
+      apiResult = await sendWhatsAppTemplate(
+        cleanPhone,
+        "vendor_ticket_dispatch",
+        "he",
+        [cleanMessageForMeta],
+        phoneNumberId,
+        token
+      );
+    } catch (templateErr: any) {
+      logger.error(`Template vendor_ticket_dispatch failed for ticket #${ticketData.ticketNumber}:`, templateErr);
+
+      const errStr = typeof templateErr === 'string'
+        ? templateErr
+        : (templateErr.message || JSON.stringify(templateErr));
+
+      let userFriendlyMsg = "שליחת הודעת WhatsApp נכשלה מול Meta API.";
+
+      if (errStr.includes("132001") || errStr.includes("does not exist")) {
+        userFriendlyMsg = "תבנית ה-WhatsApp (vendor_ticket_dispatch) עדיין לא אושרה או שאינה קיימת בחשבון Meta WhatsApp Manager בשפה העברית. אנא וודא שהתבנית נוצרה ואושרה ב-Meta.";
+      } else if (errStr.includes("131026") || errStr.includes("Undeliverable")) {
+        userFriendlyMsg = "מספר הטלפון של הספק אינו זמין בוואטסאפ או שלא ניתן לקבל הודעות במספר זה.";
+      } else if (errStr.includes("131009")) {
+        userFriendlyMsg = "חורג מפורמט הפרמטרים המורשה בתבנית Meta.";
+      } else if (errStr.includes("OAuthException") || errStr.includes("190")) {
+        userFriendlyMsg = "פג תוקפו של אסימון הגישה (Access Token) ל-Meta WhatsApp API. יש לחדש את ה-Token בהגדרות השרת.";
+      }
+
+      res.status(400).send({ error: userFriendlyMsg });
+      return;
+    }
+
+    const newCount = currentCount + 1;
+    const resolvedVendorName = String(vendorName || '').trim() || vendorPhone;
+
+    const newVendorEntry = {
+      phone: vendorPhone,
+      intlPhone: cleanPhone,
+      name: resolvedVendorName,
+      status: "ממתין לתשובה מהספק ...",
+      sentAt: new Date().toISOString()
+    };
+
+    const existingVendors: any[] = Array.isArray(ticketData.vendors) ? ticketData.vendors : [];
+    const filteredVendors = existingVendors.filter((v: any) => v.phone !== vendorPhone && v.intlPhone !== cleanPhone);
+    const updatedVendors = [...filteredVendors, newVendorEntry];
+
+    // 5. Update ticket document & Audit log
+    await ticketRef.update({
+      vendorForwardCount: newCount,
+      lastVendorForwardAt: new Date().toISOString(),
+      vendors: updatedVendors
+    });
+
+    await db.collection("tenants").doc(tenantId).collection("audit_logs").add({
+      timestamp: new Date().toISOString(),
+      action: "TICKET_FORWARDED_TO_VENDOR",
+      actor: {
+        name: actorName || "מנהל",
+        type: "admin"
+      },
+      details: {
+        ticketId,
+        ticketNumber: ticketData.ticketNumber || "",
+        category: ticketData.category || "",
+        vendorPhone,
+        vendorName: resolvedVendorName,
+        formattedPhone: cleanPhone,
+        messageText,
+        forwardCount: newCount,
+        sentViaMetaCloudApi: true
+      }
+    });
+
+    res.status(200).send({
+      success: true,
+      message: "הפנייה הועברה בהצלחה לספק באמצעות Meta WhatsApp Cloud API",
+      forwardCount: newCount,
+      vendors: updatedVendors,
+      metaMessageId: apiResult?.messages?.[0]?.id
+    });
+  } catch (err: any) {
+    logger.error("Exception in forwardTicketToVendor Cloud Function:", err);
+    res.status(500).send({ error: err.message || "שליחת הפנייה לספק באמצעות Meta API נכשלה" });
+  }
+});
 

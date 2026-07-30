@@ -114,6 +114,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                         <span className="text-amber-500">⚡</span>
                         <span><strong>QuickTap</strong>: דיווח ב-2 לחיצות על אייקונים מוגדרים מראש (למשל: "אור שרוף").</span>
                       </li>
+                      <li className="flex gap-2">
+                        <span className="text-emerald-500">💬</span>
+                        <span><strong>WhatsApp Bot</strong>: תושבים הרשומים ברשימת המורשים (Whitelist) יכולים לפתוח קריאת שירות חדשה ישירות בוואטסאפ. כדי לדווח על תקלה שלחו <strong>"הי"</strong> בהודעה למספר ה-TikTak של המערכת ועקבו אחר הנחיות הבוט.</span>
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -156,6 +160,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                       <li><strong>לוח בקרה דינמי</strong>: כל פילטר משפיע על הגרפים והסטטיסטיקות למעלה בזמן אמת.</li>
                       <li><strong>עדכון סטטוס בגרירה</strong>: גררו כרטיסים בין העמודות כדי לעדכן סטטוס מיידית (מתועד ביומן הפעילות).</li>
                       <li><strong>זיהוי QuickTap</strong>: תקלות אלו מסומנות בתג כחול בולט ⚡ QuickTap.</li>
+                      <li><strong>העברה לספק (Forward to Vendor)</strong>: בלחיצה על הכפתור הירוק <em>"העבר לספק"</em> בכרטיס התקלה, נפתח חלון עריכה לשליחת פרטי הקריאה לספק חיצוני בוואטסאפ. ההודעה כוללת כפתורי מענה אינטראקטיביים (<em>"קיבלתי את ההודעה"</em> / <em>"בוצע"</em>), וסטטוס תגובת הספק מתעדכן בזמן אמת ב-Tooltip של הכרטיס (עד 3 ספקים לתקלה).</li>
+                      <li><strong>כתיבת הערה ועדכון המדווח בוואטסאפ</strong>: בלחיצה על אייקון ההערות 💬 בכרטיס התקלה, ניתן לכתוב הערת מנהל ולבחור ב-<em>"שמור הערה"</em> לשמירה פנימית, או ב-<em>"שמור ושלח לווטסאפ"</em> / <em>"שלח לווטסאפ"</em> לשליחת עדכון מעוצב ישירות לוואטסאפ של התושב המדווח.</li>
                       <li><strong>ניתוח תקלה</strong>: הקליקו על כרטיס לצפייה במדיה. מומלץ להשתמש באוזניות להקלטות.</li>
                     </ul>
                   </div>
@@ -278,6 +284,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                         <span className="text-amber-500">⚡</span>
                         <span><strong>QuickTap</strong>: Report instantly with pre-set buttons in just 2 clicks.</span>
                       </li>
+                      <li className="flex gap-2">
+                        <span className="text-emerald-500">💬</span>
+                        <span><strong>WhatsApp Bot</strong>: Authorized residents registered in the whitelist can report new maintenance issues directly inside WhatsApp. To report an issue, send <strong>"Hi"</strong> to TikTak's WhatsApp number and follow the bot prompts.</span>
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -320,6 +330,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                       <li><strong>Dynamic Panel</strong>: Filters update stats and charts in real-time.</li>
                       <li><strong>Drag & Drop Status</strong>: Move cards between columns to update status instantly (recorded in Audit Log).</li>
                       <li><strong>QuickTap ID</strong>: These tickets are marked with a blue ⚡ QuickTap tag.</li>
+                      <li><strong>Forward to Vendor</strong>: Click the green <em>"Forward to Vendor"</em> button on any ticket card to open an editable dispatch modal. Sends structured ticket details to external vendors via WhatsApp with interactive Quick Reply buttons (<em>"Received the message"</em> / <em>"Done"</em>). Vendor response status tracks in real-time inside the card button tooltip (up to 3 vendor dispatches per ticket).</li>
+                      <li><strong>Comments & Reporter Notifications</strong>: Click the comment icon 💬 on any ticket card to write admin notes. Use <em>"Save Comment"</em> for internal storage, or <em>"Save & Send to WhatsApp"</em> / <em>"Send to WhatsApp"</em> to dispatch a formatted progress update directly to the reporter's WhatsApp.</li>
                       <li><strong>Ticket Analysis</strong>: Click cards to view media. Use headphones for audio.</li>
                     </ul>
                   </div>

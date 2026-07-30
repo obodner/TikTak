@@ -45,6 +45,10 @@ export const CommentModal: React.FC<CommentModalProps> = ({
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
+  const [hoveredPreview, setHoveredPreview] = useState<{
+    text: string;
+    rect: { top: number; left: number; width: number; height: number };
+  } | null>(null);
 
   if (!isOpen || !ticket) return null;
 
@@ -98,6 +102,24 @@ export const CommentModal: React.FC<CommentModalProps> = ({
     }
   };
 
+  const handleMouseEnterWhatsApp = (e: React.MouseEvent<HTMLElement>, text: string) => {
+    if (!hasWhatsAppPhone || !text.trim()) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoveredPreview({
+      text: text.trim(),
+      rect: {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height
+      }
+    });
+  };
+
+  const handleMouseLeaveWhatsApp = () => {
+    setHoveredPreview(null);
+  };
+
   const formatDate = (dateStr: string) => {
     try {
       const date = parseISO(dateStr);
@@ -109,6 +131,53 @@ export const CommentModal: React.FC<CommentModalProps> = ({
 
   const recipientName = (ticket as any).reporterName || (ticket as any).name || (ticket as any).reporter || (isEn ? 'Resident' : 'תושב/דייר');
   const tNumber = ticket.ticketNumber || '';
+
+  const renderFixedPreviewPopover = () => {
+    if (!hoveredPreview) return null;
+
+    const popoverWidth = 288;
+    const popoverEstimatedHeight = 160;
+
+    let top = hoveredPreview.rect.top + hoveredPreview.rect.height + 8;
+    if (top + popoverEstimatedHeight > window.innerHeight - 12) {
+      top = Math.max(12, hoveredPreview.rect.top - popoverEstimatedHeight - 8);
+    }
+
+    let left = isEn 
+      ? hoveredPreview.rect.left
+      : hoveredPreview.rect.left + hoveredPreview.rect.width - popoverWidth;
+
+    if (left + popoverWidth > window.innerWidth - 12) {
+      left = window.innerWidth - popoverWidth - 12;
+    }
+    if (left < 12) {
+      left = 12;
+    }
+
+    return (
+      <div 
+        style={{ top: `${top}px`, left: `${left}px` }}
+        className="pointer-events-none fixed flex flex-col w-72 bg-slate-900 text-white rounded-2xl p-3.5 shadow-2xl z-[300] animate-in fade-in zoom-in-95 duration-150 border border-slate-700/80"
+      >
+        <div className="text-[11px] font-bold text-slate-300 mb-2 flex items-center gap-1.5">
+          <MessageCircle size={14} className="text-[#25D366]" />
+          <span>{isEn ? 'Send this note as a WhatsApp update to reporter:' : 'שלח הערה זו כהודעת וואטסאפ לתושב:'}</span>
+        </div>
+
+        <div className="bg-[#075E54] text-white text-[11px] leading-relaxed p-3 rounded-xl border border-emerald-600/40 shadow-inner font-sans text-right" dir={isEn ? 'ltr' : 'rtl'}>
+          <div className="text-emerald-200 font-semibold mb-1">
+            {isEn ? `Hello ${recipientName}, new update for ticket #${tNumber}:` : `שלום ${recipientName},\nנשלח עבורך עדכון חדש במערכת לגבי פנייה מספר #${tNumber}:`}
+          </div>
+          <div className="bg-white/10 p-2 rounded-lg my-1.5 text-white font-medium break-words whitespace-pre-wrap border border-white/15 shadow-sm">
+            {hoveredPreview.text}
+          </div>
+          <div className="text-[10px] text-emerald-300/80 mt-1 italic">
+            {isEn ? '*Automated update from TikTak. Please do not reply.*' : '*שימו לב: זוהי הודעה אוטומטית ממערכת TikTak ואין להשיב עליה.*'}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -162,45 +231,21 @@ export const CommentModal: React.FC<CommentModalProps> = ({
                         <span>{isEn ? 'WhatsApp Sent' : 'עדכון נשלח בוואטסאפ'}</span>
                       </div>
                     ) : (
-                      <div className="relative group/whatsapp-item-btn">
-                        <button
-                          onClick={() => handleSendExistingCommentWhatsApp(c)}
-                          disabled={!hasWhatsAppPhone || sendingWhatsAppId === c.id}
-                          className={`px-2.5 py-1 text-[11px] font-bold rounded-md flex items-center gap-1.5 transition-all shadow-sm ${
-                            hasWhatsAppPhone 
-                              ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white active:scale-95 cursor-pointer' 
-                              : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                          }`}
-                        >
-                          <MessageCircle size={13} />
-                          <span>{sendingWhatsAppId === c.id ? (isEn ? 'Sending...' : 'שולח...') : (isEn ? 'Send to WhatsApp' : 'עדכן בוואטסאפ')}</span>
-                        </button>
-
-                        {/* Rich WhatsApp Message Preview Tooltip */}
-                        {hasWhatsAppPhone && (
-                          <div className={`pointer-events-none absolute bottom-full mb-2.5 hidden group-hover/whatsapp-item-btn:flex flex-col w-72 bg-slate-900 text-white rounded-xl p-3 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 border border-slate-700/80 ${isEn ? 'right-0' : 'left-0'}`}>
-                            <div className="text-[11px] font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                              <MessageCircle size={13} className="text-[#25D366]" />
-                              <span>{isEn ? 'Send this note as a WhatsApp update to reporter:' : 'שלח הערה זו כהודעת וואטסאפ לתושב:'}</span>
-                            </div>
-
-                            {/* WhatsApp Note Bubble */}
-                            <div className="bg-[#075E54] text-white text-[11px] leading-relaxed p-2.5 rounded-xl border border-emerald-600/40 shadow-inner font-sans text-right" dir={isEn ? 'ltr' : 'rtl'}>
-                              <div className="text-emerald-200 font-semibold mb-1">
-                                {isEn ? `Hello ${recipientName}, new update for ticket #${tNumber}:` : `שלום ${recipientName},\nנשלח עבורך עדכון חדש במערכת לגבי פנייה מספר #${tNumber}:`}
-                              </div>
-                              <div className="bg-white/10 p-2 rounded-lg my-1.5 text-white font-medium break-words whitespace-pre-wrap border border-white/15 shadow-sm">
-                                {c.text}
-                              </div>
-                              <div className="text-[10px] text-emerald-300/80 mt-1 italic">
-                                {isEn ? '*Automated update from TikTak. Please do not reply.*' : '*שימו לב: זוהי הודעה אוטומטית ממערכת TikTak ואין להשיב עליה.*'}
-                              </div>
-                            </div>
-
-                            <div className={`absolute top-full -mt-1 border-4 border-transparent border-t-slate-900 ${isEn ? 'right-6' : 'left-6'}`} />
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => handleSendExistingCommentWhatsApp(c)}
+                        onMouseEnter={(e) => handleMouseEnterWhatsApp(e, c.text)}
+                        onMouseLeave={handleMouseLeaveWhatsApp}
+                        disabled={!hasWhatsAppPhone || sendingWhatsAppId === c.id}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-md flex items-center gap-1.5 transition-all shadow-sm ${
+                          hasWhatsAppPhone 
+                            ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white active:scale-95 cursor-pointer' 
+                            : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                        }`}
+                        title={hasWhatsAppPhone ? undefined : (isEn ? 'Ticket was not opened via WhatsApp' : 'פנייה זו לא נפתחה דרך וואטסאפ')}
+                      >
+                        <MessageCircle size={13} />
+                        <span>{sendingWhatsAppId === c.id ? (isEn ? 'Sending...' : 'שולח...') : (isEn ? 'Send to WhatsApp' : 'עדכן בוואטסאפ')}</span>
+                      </button>
                     )}
 
                     <button 
@@ -252,45 +297,22 @@ export const CommentModal: React.FC<CommentModalProps> = ({
                 <Send size={13} />
                 {labels.save}
               </button>
-              <div className="relative group/whatsapp-footer-btn">
-                <button 
-                  onClick={handleSaveAndSendWhatsAppAction}
-                  disabled={!newComment.trim() || loading || !hasWhatsAppPhone}
-                  className="px-4 py-2 text-xs font-black text-white bg-[#25D366] hover:bg-[#20bd5a] disabled:bg-slate-200 disabled:text-slate-400 rounded-lg transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  <MessageCircle size={14} />
-                  {labels.saveAndSendWhatsApp}
-                </button>
-
-                {/* Rich WhatsApp Message Preview Tooltip for footer button */}
-                {hasWhatsAppPhone && newComment.trim() && (
-                  <div className={`pointer-events-none absolute bottom-full mb-2.5 hidden group-hover/whatsapp-footer-btn:flex flex-col w-72 bg-slate-900 text-white rounded-xl p-3 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 border border-slate-700/80 ${isEn ? 'right-0' : 'left-0'}`}>
-                    <div className="text-[11px] font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                      <MessageCircle size={13} className="text-[#25D366]" />
-                      <span>{isEn ? 'Send this note as a WhatsApp update to reporter:' : 'שלח הערה זו כהודעת וואטסאפ לתושב:'}</span>
-                    </div>
-
-                    {/* WhatsApp Note Bubble */}
-                    <div className="bg-[#075E54] text-white text-[11px] leading-relaxed p-2.5 rounded-xl border border-emerald-600/40 shadow-inner font-sans text-right" dir={isEn ? 'ltr' : 'rtl'}>
-                      <div className="text-emerald-200 font-semibold mb-1">
-                        {isEn ? `Hello ${recipientName}, new update for ticket #${tNumber}:` : `שלום ${recipientName},\nנשלח עבורך עדכון חדש במערכת לגבי פנייה מספר #${tNumber}:`}
-                      </div>
-                      <div className="bg-white/10 p-2 rounded-lg my-1.5 text-white font-medium break-words whitespace-pre-wrap border border-white/15 shadow-sm">
-                        {newComment.trim()}
-                      </div>
-                      <div className="text-[10px] text-emerald-300/80 mt-1 italic">
-                        {isEn ? '*Automated update from TikTak. Please do not reply.*' : '*שימו לב: זוהי הודעה אוטומטית ממערכת TikTak ואין להשיב עליה.*'}
-                      </div>
-                    </div>
-
-                    <div className={`absolute top-full -mt-1 border-4 border-transparent border-t-slate-900 ${isEn ? 'right-6' : 'left-6'}`} />
-                  </div>
-                )}
-              </div>
+              <button 
+                onClick={handleSaveAndSendWhatsAppAction}
+                onMouseEnter={(e) => handleMouseEnterWhatsApp(e, newComment)}
+                onMouseLeave={handleMouseLeaveWhatsApp}
+                disabled={!newComment.trim() || loading || !hasWhatsAppPhone}
+                className="px-4 py-2 text-xs font-black text-white bg-[#25D366] hover:bg-[#20bd5a] disabled:bg-slate-200 disabled:text-slate-400 rounded-lg transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                title={hasWhatsAppPhone ? undefined : (isEn ? 'Ticket was not opened via WhatsApp' : 'פנייה זו לא נפתחה דרך וואטסאפ')}
+              >
+                <MessageCircle size={14} />
+                {labels.saveAndSendWhatsApp}
+              </button>
             </div>
           </div>
         </div>
       </div>
+      {renderFixedPreviewPopover()}
     </div>
   );
 };

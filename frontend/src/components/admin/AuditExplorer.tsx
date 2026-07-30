@@ -238,6 +238,12 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} sent WhatsApp update to resident for ticket ${waTicketRef}${waCommentSnippet}`
                     : `${actor} שלח עדכון בוואטסאפ לתושב עבור פנייה ${waTicketRef}${waCommentSnippet}`;
+            case 'TICKET_FORWARDED_TO_VENDOR':
+                const fwdTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const vendorPhone = log.details.vendorPhone || '';
+                return isEn
+                    ? `${actor} forwarded ticket ${fwdTicketRef} to vendor (${vendorPhone}) via WhatsApp`
+                    : `${actor} העביר פנייה ${fwdTicketRef} לספק (${vendorPhone}) בוואטסאפ`;
             case 'TICKET_URGENCY_UPDATE':
                 const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn
