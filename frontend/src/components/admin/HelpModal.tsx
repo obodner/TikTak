@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLink } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLink, Download, ChevronDown } from 'lucide-react';
+import { toPng } from 'html-to-image';
+import heMessages from '../../locales/he.json';
+import enMessages from '../../locales/en.json';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -11,11 +14,17 @@ interface HelpModalProps {
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language, tenantId, tenantName }) => {
   const [copied, setCopied] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const residentSectionRef = useRef<HTMLDivElement>(null);
+  const managerSectionRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen) return null;
 
   const isHe = language === 'he';
   const reportUrl = `https://tiktak2026.web.app/report/${tenantId}`;
+  const dict = (isHe ? (heMessages as any).HelpGuide : (enMessages as any).HelpGuide) || {};
 
   const handleCopy = () => {
     const message = isHe
@@ -25,6 +34,39 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
     navigator.clipboard.writeText(message);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExportImage = async (type: 'resident' | 'manager') => {
+    const node = type === 'resident' ? residentSectionRef.current : managerSectionRef.current;
+    if (!node) return;
+
+    try {
+      setIsExporting(true);
+      setIsExportOpen(false);
+
+      await new Promise(r => setTimeout(r, 100));
+
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        style: {
+          padding: '24px',
+          borderRadius: '24px',
+          overflow: 'hidden'
+        }
+      });
+
+      const link = document.createElement('a');
+      const filenameType = type === 'resident' ? 'User_Guide' : 'Admin_Guide';
+      link.download = `TikTak_${filenameType}_${language}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Error exporting image:', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -44,361 +86,240 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
               <BookOpen size={24} />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900">{isHe ? 'מדריך למשתמש TikTak' : 'TikTak User Guide'}</h2>
-              <p className="text-xs text-slate-500 font-bold">{isHe ? 'Snap. Send. Solved.' : 'Snap. Send. Solved.'}</p>
+              <h2 className="text-xl font-black text-slate-900">{dict.title}</h2>
+              <p className="text-xs text-slate-500 font-bold">{dict.tagline}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400"
-          >
-            <X size={24} />
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Export to Image Action Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setIsExportOpen(!isExportOpen)}
+                disabled={isExporting}
+                className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Download size={15} />
+                <span>{isExporting ? (dict.exporting || 'מייצא...') : (dict.export_btn || 'ייצוא לתמונה')}</span>
+                <ChevronDown size={14} className={`transition-transform ${isExportOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isExportOpen && (
+                <div
+                  className={`absolute top-full ${isHe ? 'left-0' : 'right-0'} mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden py-1 animate-in zoom-in-95 duration-150`}
+                >
+                  <button
+                    onClick={() => handleExportImage('resident')}
+                    className="w-full px-4 py-2.5 text-right flex items-center gap-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors cursor-pointer"
+                    dir={isHe ? 'rtl' : 'ltr'}
+                  >
+                    <User size={16} className="text-blue-500 shrink-0" />
+                    <span>{dict.export_user_guide || 'מדריך לתושב (תמונה)'}</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportImage('manager')}
+                    className="w-full px-4 py-2.5 text-right flex items-center gap-2 text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors cursor-pointer"
+                    dir={isHe ? 'rtl' : 'ltr'}
+                  >
+                    <Shield size={16} className="text-emerald-500 shrink-0" />
+                    <span>{dict.export_admin_guide || 'מדריך למנהל (תמונה)'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400 cursor-pointer"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-12">
-          {isHe ? (
-            <>
-              {/* Hebrew Content */}
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 text-blue-600 mb-6">
-                  <User size={24} />
-                  <h3 className="text-2xl font-black">1. מדריך לתושב</h3>
-                </div>
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-12 bg-slate-50/50">
+          {/* 1. Resident Guide Section */}
+          <div
+            ref={residentSectionRef}
+            className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 space-y-6"
+            dir={isHe ? 'rtl' : 'ltr'}
+          >
+            <div className="flex items-center gap-3 text-blue-600 pb-4 border-b border-slate-100">
+              <User size={26} />
+              <h3 className="text-2xl font-black">{dict.resident_section_title}</h3>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between">
-                    <div>
-                      <h4 className="font-black text-slate-900 mb-2">שלב א': סריקה וזיהוי</h4>
-                      <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                        חפשו את ה-QR וסרקו אותו או ליחצו על הלינק למטה. בעת הדיווח הראשון תתבקשו להזין טלפון לאימות מול רשימת המורשים. המערכת תזכור אתכם לדיווחים הבאים.
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 group">
-                        <a
-                          href={reportUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-bold text-blue-600 truncate hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink size={12} />
-                          {reportUrl}
-                        </a>
-                        <button
-                          onClick={handleCopy}
-                          className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-blue-600 flex items-center gap-1"
-                          title="העתק הודעה לוואטסאפ"
-                        >
-                          {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
-                          <span className="text-[10px] font-black uppercase tracking-tighter">{copied ? 'הועתק' : 'העתק'}</span>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 font-bold px-1 italic">* לחיצה על העתק תייצר הודעת TikTak מוכנה לשליחה בוואטסאפ</p>
-                    </div>
+            <section className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between">
+                  <div>
+                    <h4 className="font-black text-slate-900 mb-2">{dict.step1_title}</h4>
+                    <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                      {dict.step1_desc}
+                    </p>
                   </div>
-
-                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                    <h4 className="font-black text-slate-900 mb-2">שלב ב': תיעוד המפגע</h4>
-                    <ul className="text-sm text-slate-600 space-y-3">
-                      <li className="flex gap-2">
-                        <span className="text-red-500">📸</span>
-                        <span><strong>Snap</strong>: לחצו על המצלמה האדומה. ה-AI יסווג את התקלה אוטומטית.</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-blue-500">📝</span>
-                        <span><strong>Manual</strong>: מיועד לרעשים, ריחות ומפגעים שקשה לתעד חזותית. ניתן להוסיף הקלטה קולית בתוך הטופס.</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-amber-500">⚡</span>
-                        <span><strong>QuickTap</strong>: דיווח ב-2 לחיצות על אייקונים מוגדרים מראש (למשל: "אור שרוף").</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-emerald-500">💬</span>
-                        <span><strong>WhatsApp Bot</strong>: תושבים הרשומים ברשימת המורשים (Whitelist) יכולים לפתוח קריאת שירות חדשה ישירות בוואטסאפ. כדי לדווח על תקלה שלחו <strong>"הי"</strong> בהודעה למספר ה-TikTak של המערכת ועקבו אחר הנחיות הבוט.</span>
-                      </li>
-                    </ul>
+                  <div className="space-y-3">
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 group">
+                      <a
+                        href={reportUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold text-blue-600 truncate hover:underline flex items-center gap-1"
+                      >
+                        <ExternalLink size={12} />
+                        {reportUrl}
+                      </a>
+                      <button
+                        onClick={handleCopy}
+                        className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-blue-600 flex items-center gap-1"
+                        title={dict.copy_btn}
+                      >
+                        {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                        <span className="text-[10px] font-black uppercase tracking-tighter">{copied ? dict.copied_btn : dict.copy_btn}</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold px-1 italic">{dict.copy_notice}</p>
                   </div>
                 </div>
 
-                <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 mt-6">
-                  <h4 className="font-black text-blue-900 mb-2">שלב ג' וד': דיוק ושליחה</h4>
-                  <p className="text-sm text-blue-800 leading-relaxed">
-                    ודאו את המיקום והקטגוריה, ולחצו על הכפתור הירוק למטה. המערכת תשלח את הדיווח אוטומטית דרך השרת, ללא צורך בפתיחת וואטסאפ או לחיצה ידנית על "שלח"!
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-6">
-                  <h4 className="font-black text-slate-900 mb-2">אזור הדייר (הדשבורד שלכם)</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                    בכניסה לקישור "צפייה בדיווחים קודמים", תתוודעו לאפשרויות המעקב והתקשורת לגבי תקלות בבניין:
-                  </p>
-                  <ul className="text-sm text-slate-600 space-y-3.5 pr-2 list-disc list-inside">
-                    <li><strong>טאב "הדיווחים שלי"</strong>: מציג את כל התקלות שפתחתם ב-12 החודשים האחרונים עם לוח סטטיסטיקה צבעוני (כמות דיווחים, כמה חדשים, כמה בטיפול וכמה נפתרו).</li>
-                    <li><strong>טאב "דיווחים פתוחים"</strong>: מציג תקלות פעילות בבניין של תושבים אחרים (בסיווג "חדש" או "בטיפול").</li>
-                    <li><strong>הצבעת "גם לי יש את זה" (Me Too)</strong>: במקום לפתוח דיווחים כפולים, תוכלו להצביע על תקלה קיימת בבניין כדי להעלות את החשיבות שלה (לא ניתן להצביע על תקלה שפתחתם בעצמכם).</li>
-                    <li><strong>הערות ועדכונים</strong>: בעת פתיחת כרטיס תקלה מורחב, תוכלו לראות תיאור מלא, תמונות מצורפות (הקליקו להגדלה), עדכוני התקדמות ולהוסיף הערות חדשות שיגיעו ישירות להנהלה.</li>
-                    <li><strong>ממשק קבוע ונוח (Sticky UI)</strong>: שורת הכותרת והטאבים נשארים נעולים בחלק העליון של המסך כדי לאפשר מעבר מהיר ונוח בתוך הדשבורד ללא צורך בגלילה חזרה.</li>
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                  <h4 className="font-black text-slate-900 mb-2">{dict.step2_title}</h4>
+                  <ul className="text-sm text-slate-600 space-y-3">
+                    <li className="flex gap-2">
+                      <span className="text-red-500">📸</span>
+                      <span><strong>Snap</strong>: {dict.step2_snap}</span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-blue-500">📝</span>
+                      <span><strong>Manual</strong>: {dict.step2_manual}</span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-amber-500">⚡</span>
+                      <span><strong>QuickTap</strong>: {dict.step2_quicktap}</span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-emerald-500">💬</span>
+                      <span dangerouslySetInnerHTML={{ __html: dict.step2_bot }} />
+                    </li>
                   </ul>
                 </div>
-              </section>
+              </div>
 
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 text-blue-600 mb-6">
-                  <Shield size={24} />
-                  <h3 className="text-2xl font-black">2. מדריך למנהל</h3>
-                </div>
+              <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 mt-6">
+                <h4 className="font-black text-blue-900 mb-2">{dict.step3_4_title}</h4>
+                <p className="text-sm text-blue-800 leading-relaxed">
+                  {dict.step3_4_desc}
+                </p>
+              </div>
 
-                <div className="space-y-6">
-                  <div className="border-r-4 border-blue-500 pr-6 space-y-4">
-                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                      <Database size={20} className="text-blue-500" />
-                      ניהול תקלות
-                    </h4>
-                    <ul className="text-sm text-slate-600 space-y-3">
-                      <li><strong>לוח בקרה דינמי</strong>: כל פילטר משפיע על הגרפים והסטטיסטיקות למעלה בזמן אמת.</li>
-                      <li><strong>עדכון סטטוס בגרירה</strong>: גררו כרטיסים בין העמודות כדי לעדכן סטטוס מיידית (מתועד ביומן הפעילות).</li>
-                      <li><strong>זיהוי QuickTap</strong>: תקלות אלו מסומנות בתג כחול בולט ⚡ QuickTap.</li>
-                      <li><strong>העברה לספק (Forward to Vendor)</strong>: בלחיצה על הכפתור הירוק <em>"העבר לספק"</em> בכרטיס התקלה, נפתח חלון עריכה לשליחת פרטי הקריאה לספק חיצוני בוואטסאפ. ההודעה כוללת כפתורי מענה אינטראקטיביים (<em>"קיבלתי את ההודעה"</em> / <em>"בוצע"</em>), וסטטוס תגובת הספק מתעדכן בזמן אמת ב-Tooltip של הכרטיס (עד 3 ספקים לתקלה).</li>
-                      <li><strong>כתיבת הערה ועדכון המדווח בוואטסאפ</strong>: בלחיצה על אייקון ההערות 💬 בכרטיס התקלה, ניתן לכתוב הערת מנהל ולבחור ב-<em>"שמור הערה"</em> לשמירה פנימית, או ב-<em>"שמור ושלח לווטסאפ"</em> / <em>"שלח לווטסאפ"</em> לשליחת עדכון מעוצב ישירות לוואטסאפ של התושב המדווח.</li>
-                      <li><strong>ניתוח תקלה</strong>: הקליקו על כרטיס לצפייה במדיה. מומלץ להשתמש באוזניות להקלטות.</li>
-                    </ul>
-                  </div>
-
-                  <div className="border-r-4 border-green-500 pr-6 space-y-4">
-                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                      <span className="text-green-500">⏱️</span>
-                      מדדי SLA והתראות וואטסאפ
-                    </h4>
-                    <div className="text-sm text-slate-600 space-y-4">
-                      <div>
-                        <strong className="block text-slate-900 mb-1">עמידה בזמני טיפול (SLA):</strong>
-                        <p className="leading-relaxed mb-2">המערכת מודדת אוטומטית את ימי העבודה שחלפו מרגע פתיחת התקלה או עדכון הסטטוס שלה:</p>
-                        <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <li className="flex items-center gap-2 bg-yellow-50 text-yellow-800 px-3 py-1.5 rounded-xl border border-yellow-200">
-                            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
-                            <span><strong>מעל 2 ימים:</strong> אזהרה (צהוב)</span>
-                          </li>
-                          <li className="flex items-center gap-2 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-xl border border-orange-200">
-                            <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
-                            <span><strong>מעל 5 ימים:</strong> דחוף (כתום)</span>
-                          </li>
-                          <li className="flex items-center gap-2 bg-red-50 text-red-800 px-3 py-1.5 rounded-xl border border-red-200">
-                            <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>
-                            <span><strong>מעל 9 ימים:</strong> חריגה (אדום)</span>
-                          </li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                        <strong className="block text-blue-950 mb-1">💬 התראות וואטסאפ אוטומטיות (ללא מאמץ):</strong>
-                        <ul className="space-y-1.5 text-blue-900 leading-relaxed pr-2 list-disc list-inside">
-                          <li><strong>פתיחת דיווח:</strong> ברגע שתושב שולח דיווח, נשלחת לו מיידית הודעת אישור לוואטסאפ, ובמקביל נשלחת התראה מפורטת לוואטסאפ של חברי הוועד / המנהלים.</li>
-                          <li><strong>עדכון סטטוס:</strong> כאשר אתם גוררים תקלה ל-<em>"בטיפול"</em> או מסמנים אותה כ-<em>"טופל" / "נדחה"</em>, המערכת שולחת אוטומטית עדכון וואטסאפ מנוסח ומקצועי ישירות לתושב שדיווח.</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-r-4 border-amber-500 pr-6 space-y-4">
-                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                      <Settings size={20} className="text-amber-500" />
-                      הגדרות ישות
-                    </h4>
-                    <ul className="text-sm text-slate-600 space-y-3">
-                      <li><strong className="text-red-600">הרשאות (CSV Upload)</strong>: הלב של המערכת. רשימת האימות (Whitelist) של המדווחים.</li>
-                      <li><strong>ניהול משתמשים</strong>: הוספת ועריכת מנהלים בעלי גישה למערכת.</li>
-                      <li><strong>ניהול QuickTap</strong>: הגדרת עד 5 כפתורים מקוצרים לתקלות נפוצות.</li>
-                      <li><strong>מיתוג ונתונים</strong>: עדכון שמות, תוויות, מיקומים וקטגוריות.</li>
-                    </ul>
-                  </div>
-                </div>
-              </section>
-
-              <section className="bg-slate-900 text-slate-100 p-8 rounded-3xl">
-                <h3 className="text-xl font-black mb-4 flex items-center gap-2">
-                  <Shield size={20} className="text-blue-400" />
-                  פרטיות וטיפול בנתונים
-                </h3>
-                <ul className="text-sm space-y-2 opacity-90">
-                  <li>• תמונות והקלטות נמחקות אוטומטית לאחר שנה אחת.</li>
-                  <li>• מספר הטלפון משמש לאימות בלבד ואינו מועבר לצד שלישי.</li>
-                  <li>• המידע נשמר בצורה מאובטחת ומנוהל תחת תקני אבטחה מחמירים.</li>
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-6">
+                <h4 className="font-black text-slate-900 mb-2">{dict.resident_dashboard_title}</h4>
+                <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                  {dict.resident_dashboard_desc}
+                </p>
+                <ul className={`text-sm text-slate-600 space-y-3.5 list-disc list-inside ${isHe ? 'pr-2' : 'pl-2'}`}>
+                  <li><strong>{isHe ? 'טאב "הדיווחים שלי"' : '"My Reports" Tab'}</strong>: {dict.res_my_reports}</li>
+                  <li><strong>{isHe ? 'טאב "דיווחים פתוחים"' : '"Open Reports" Tab'}</strong>: {dict.res_open_reports}</li>
+                  <li><strong>{isHe ? 'הצבעת "גם לי יש את זה" (Me Too)' : '"Me Too" Voting'}</strong>: {dict.res_me_too}</li>
+                  <li><strong>{isHe ? 'הערות ועדכונים' : 'Comments & Media'}</strong>: {dict.res_comments}</li>
+                  <li><strong>{isHe ? 'ממשק קבוע ונוח (Sticky UI)' : 'Frozen Header & Tabs (Sticky UI)'}</strong>: {dict.res_sticky_ui}</li>
                 </ul>
-              </section>
-            </>
-          ) : (
-            <>
-              {/* English Content */}
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 text-blue-600 mb-6">
-                  <User size={24} />
-                  <h3 className="text-2xl font-black">1. Resident Guide</h3>
-                </div>
+              </div>
+            </section>
+          </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between">
-                    <div>
-                      <h4 className="font-black text-slate-900 mb-2">Step 1: Scan & ID</h4>
-                      <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                        Find and scan the QR code or click the link below. On your first report, enter your phone number to verify against the building list. The system will remember you.
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 group">
-                        <a
-                          href={reportUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-bold text-blue-600 truncate hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink size={12} />
-                          {reportUrl}
-                        </a>
-                        <button
-                          onClick={handleCopy}
-                          className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-blue-600 flex items-center gap-1"
-                          title="Copy WhatsApp Message"
-                        >
-                          {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
-                          <span className="text-[10px] font-black uppercase tracking-tighter">{copied ? 'Copied' : 'Copy'}</span>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 font-bold px-1 italic">* Clicking copy will generate a pre-formatted TikTak WhatsApp message</p>
-                    </div>
-                  </div>
+          {/* 2. Manager Guide Section */}
+          <div
+            ref={managerSectionRef}
+            className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 space-y-6"
+            dir={isHe ? 'rtl' : 'ltr'}
+          >
+            <div className="flex items-center gap-3 text-blue-600 pb-4 border-b border-slate-100">
+              <Shield size={26} />
+              <h3 className="text-2xl font-black">{dict.manager_section_title}</h3>
+            </div>
 
-                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                    <h4 className="font-black text-slate-900 mb-2">Step 2: Document Issue</h4>
-                    <ul className="text-sm text-slate-600 space-y-3">
-                      <li className="flex gap-2">
-                        <span className="text-red-500">📸</span>
-                        <span><strong>Snap</strong>: Use the red camera button. AI automatically categorizes the issue.</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-blue-500">📝</span>
-                        <span><strong>Manual</strong>: For non-visual issues like noises or smells. Voice recording available inside.</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-amber-500">⚡</span>
-                        <span><strong>QuickTap</strong>: Report instantly with pre-set buttons in just 2 clicks.</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-emerald-500">💬</span>
-                        <span><strong>WhatsApp Bot</strong>: Authorized residents registered in the whitelist can report new maintenance issues directly inside WhatsApp. To report an issue, send <strong>"Hi"</strong> to TikTak's WhatsApp number and follow the bot prompts.</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 mt-6">
-                  <h4 className="font-black text-blue-900 mb-2">Step 3 & 4: Refine & Send</h4>
-                  <p className="text-sm text-blue-800 leading-relaxed">
-                    Verify the location/category and click the green button. The system sends the report automatically via our backend – no need to open WhatsApp or click "Send" manually!
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-6">
-                  <h4 className="font-black text-slate-900 mb-2">Resident Area (Your Status Dashboard)</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                    By accessing the "View previous reports" link, authorized residents can track and interact with active issues in the building:
-                  </p>
-                  <ul className="text-sm text-slate-600 space-y-3.5 pl-2 list-disc list-inside">
-                    <li><strong>"My Reports" Tab</strong>: Shows all reports you submitted in the last 12 months along with a colored metrics row (showing total, new, in-progress, and resolved counts).</li>
-                    <li><strong>"Open Reports" Tab</strong>: Shows active reports in the building submitted by other residents (grouped as "New" or "In Progress").</li>
-                    <li><strong>"Me Too" Voting</strong>: Instead of opening duplicates, click "Me Too" on an existing open ticket to highlight its urgency to the committee (you cannot vote on your own reports).</li>
-                    <li><strong>Comments & Media</strong>: Tap any card to expand it, view attached photos (click to zoom), check progress updates, and write new comments that sync directly to the committee dashboard.</li>
-                    <li><strong>Frozen Header & Tabs (Sticky UI)</strong>: The top navigation rows and tabs remain locked at the top of the viewport for easy, friction-free browsing and switching on mobile.</li>
+            <section className="space-y-6">
+              <div className="space-y-6">
+                <div className={`${isHe ? 'border-r-4 pr-6' : 'border-l-4 pl-6'} border-blue-500 space-y-4`}>
+                  <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <Database size={20} className="text-blue-500" />
+                    {dict.mgr_ticket_mgmt}
+                  </h4>
+                  <ul className="text-sm text-slate-600 space-y-3">
+                    <li><strong>{isHe ? 'לוח בקרה דינמי' : 'Dynamic Panel'}</strong>: {dict.mgr_dynamic_panel}</li>
+                    <li><strong>{isHe ? 'עדכון סטטוס בגרירה' : 'Drag & Drop Status'}</strong>: {dict.mgr_drag_drop}</li>
+                    <li><strong>{isHe ? 'זיהוי QuickTap' : 'QuickTap ID'}</strong>: {dict.mgr_quicktap_id}</li>
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${isHe ? 'העברה לספק (Forward to Vendor)' : 'Forward to Vendor'}</strong>: ${dict.mgr_forward_vendor}` }} />
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${isHe ? 'כתיבת הערה ועדכון המדווח בוואטסאפ' : 'Comments & Reporter Notifications'}</strong>: ${dict.mgr_comments_whatsapp}` }} />
+                    <li><strong>{isHe ? 'ניתוח תקלה' : 'Ticket Analysis'}</strong>: {dict.mgr_ticket_analysis}</li>
                   </ul>
                 </div>
-              </section>
 
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 text-blue-600 mb-6">
-                  <Shield size={24} />
-                  <h3 className="text-2xl font-black">2. Manager Guide</h3>
-                </div>
+                <div className={`${isHe ? 'border-r-4 pr-6' : 'border-l-4 pl-6'} border-green-500 space-y-4`}>
+                  <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <span className="text-green-500">⏱️</span>
+                    {dict.mgr_sla_title}
+                  </h4>
+                  <div className="text-sm text-slate-600 space-y-4">
+                    <div>
+                      <strong className="block text-slate-900 mb-1">{dict.mgr_sla_subhead}</strong>
+                      <p className="leading-relaxed mb-2">{dict.mgr_sla_desc}</p>
+                      <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <li className="flex items-center gap-2 bg-yellow-50 text-yellow-800 px-3 py-1.5 rounded-xl border border-yellow-200">
+                          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                          <span><strong>{dict.mgr_sla_2days}</strong></span>
+                        </li>
+                        <li className="flex items-center gap-2 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-xl border border-orange-200">
+                          <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                          <span><strong>{dict.mgr_sla_5days}</strong></span>
+                        </li>
+                        <li className="flex items-center gap-2 bg-red-50 text-red-800 px-3 py-1.5 rounded-xl border border-red-200">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+                          <span><strong>{dict.mgr_sla_9days}</strong></span>
+                        </li>
+                      </ul>
+                    </div>
 
-                <div className="space-y-6">
-                  <div className="border-l-4 border-blue-500 pl-6 space-y-4">
-                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                      <Database size={20} className="text-blue-500" />
-                      Admin Dashboard
-                    </h4>
-                    <ul className="text-sm text-slate-600 space-y-3">
-                      <li><strong>Dynamic Panel</strong>: Filters update stats and charts in real-time.</li>
-                      <li><strong>Drag & Drop Status</strong>: Move cards between columns to update status instantly (recorded in Audit Log).</li>
-                      <li><strong>QuickTap ID</strong>: These tickets are marked with a blue ⚡ QuickTap tag.</li>
-                      <li><strong>Forward to Vendor</strong>: Click the green <em>"Forward to Vendor"</em> button on any ticket card to open an editable dispatch modal. Sends structured ticket details to external vendors via WhatsApp with interactive Quick Reply buttons (<em>"Received the message"</em> / <em>"Done"</em>). Vendor response status tracks in real-time inside the card button tooltip (up to 3 vendor dispatches per ticket).</li>
-                      <li><strong>Comments & Reporter Notifications</strong>: Click the comment icon 💬 on any ticket card to write admin notes. Use <em>"Save Comment"</em> for internal storage, or <em>"Save & Send to WhatsApp"</em> / <em>"Send to WhatsApp"</em> to dispatch a formatted progress update directly to the reporter's WhatsApp.</li>
-                      <li><strong>Ticket Analysis</strong>: Click cards to view media. Use headphones for audio.</li>
-                    </ul>
-                  </div>
-
-                  <div className="border-l-4 border-green-500 pl-6 space-y-4">
-                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                      <span className="text-green-500">⏱️</span>
-                      SLA Thresholds & WhatsApp Alerts
-                    </h4>
-                    <div className="text-sm text-slate-600 space-y-4">
-                      <div>
-                        <strong className="block text-slate-900 mb-1">Service Level Agreement (SLA):</strong>
-                        <p className="leading-relaxed mb-2">The system automatically calculates working days spent on each ticket from creation or status update:</p>
-                        <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <li className="flex items-center gap-2 bg-yellow-50 text-yellow-800 px-3 py-1.5 rounded-xl border border-yellow-200">
-                            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
-                            <span><strong>Over 2 Days:</strong> Warning (Yellow)</span>
-                          </li>
-                          <li className="flex items-center gap-2 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-xl border border-orange-200">
-                            <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
-                            <span><strong>Over 5 Days:</strong> Urgent (Orange)</span>
-                          </li>
-                          <li className="flex items-center gap-2 bg-red-50 text-red-800 px-3 py-1.5 rounded-xl border border-red-200">
-                            <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>
-                            <span><strong>Over 9 Days:</strong> Breach (Red)</span>
-                          </li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                        <strong className="block text-blue-950 mb-1">💬 Automated WhatsApp Notifications:</strong>
-                        <ul className="space-y-1.5 text-blue-900 leading-relaxed pl-2 list-disc list-inside">
-                          <li><strong>Ticket Creation:</strong> Instantly notifies the resident with a confirmation, and alerts building administrators with a high-density structured summary.</li>
-                          <li><strong>Status Updates:</strong> Moving a ticket to <em>"In Progress"</em> or marking it as <em>"Resolved" / "Rejected"</em> automatically triggers a professionally drafted WhatsApp update straight to the reporter's phone.</li>
-                        </ul>
-                      </div>
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                      <strong className="block text-blue-950 mb-1">{dict.mgr_wa_subhead}</strong>
+                      <ul className={`space-y-1.5 text-blue-900 leading-relaxed list-disc list-inside ${isHe ? 'pr-2' : 'pl-2'}`}>
+                        <li><strong>{isHe ? 'פתיחת דיווח:' : 'Ticket Creation:'}</strong> {dict.mgr_wa_creation}</li>
+                        <li dangerouslySetInnerHTML={{ __html: `<strong>${isHe ? 'עדכון סטטוס:' : 'Status Updates:'}</strong> ${dict.mgr_wa_status}` }} />
+                      </ul>
                     </div>
                   </div>
-
-                  <div className="border-l-4 border-amber-500 pl-6 space-y-4">
-                    <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                      <Settings size={20} className="text-amber-500" />
-                      Tenant Settings
-                    </h4>
-                    <ul className="text-sm text-slate-600 space-y-3">
-                      <li><strong className="text-red-600">Permissions (CSV)</strong>: The heart of the system. The Whitelist for authorized reporters.</li>
-                      <li><strong>User Management</strong>: Add/Edit admin users with system access.</li>
-                      <li><strong>QuickTap Setup</strong>: Configure up to 5 pre-set buttons for common issues.</li>
-                      <li><strong>Branding</strong>: Update names, labels, and data lists.</li>
-                    </ul>
-                  </div>
                 </div>
-              </section>
 
-              <section className="bg-slate-900 text-slate-100 p-8 rounded-3xl">
-                <h3 className="text-xl font-black mb-4 flex items-center gap-2">
-                  <Shield size={20} className="text-blue-400" />
-                  Privacy & Data Handling
-                </h3>
-                <ul className="text-sm space-y-2 opacity-90">
-                  <li>• Media is automatically deleted after 1 year.</li>
-                  <li>• Phone numbers are used for authentication only.</li>
-                  <li>• Data is stored securely under strict industry standards.</li>
-                </ul>
-              </section>
-            </>
-          )}
+                <div className={`${isHe ? 'border-r-4 pr-6' : 'border-l-4 pl-6'} border-amber-500 space-y-4`}>
+                  <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <Settings size={20} className="text-amber-500" />
+                    {dict.mgr_settings_title}
+                  </h4>
+                  <ul className="text-sm text-slate-600 space-y-3">
+                    <li><strong className="text-red-600">{isHe ? 'ניהול מורשים (Whitelist)' : 'Permissions & Whitelist'}</strong>: {dict.mgr_settings_whitelist}</li>
+                    <li><strong>{isHe ? 'ניהול משתמשים' : 'User Management'}</strong>: {dict.mgr_settings_users}</li>
+                    <li><strong>{isHe ? 'ניהול QuickTap' : 'QuickTap Setup'}</strong>: {dict.mgr_settings_quicktap}</li>
+                    <li><strong>{isHe ? 'מיתוג ונתונים' : 'Branding'}</strong>: {dict.mgr_settings_branding}</li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Privacy Section */}
+          <section className="bg-slate-900 text-slate-100 p-8 rounded-3xl">
+            <h3 className="text-xl font-black mb-4 flex items-center gap-2">
+              <Shield size={20} className="text-blue-400" />
+              {dict.privacy_title}
+            </h3>
+            <ul className="text-sm space-y-2 opacity-90">
+              <li>{dict.privacy_media}</li>
+              <li>{dict.privacy_phone}</li>
+              <li>{dict.privacy_security}</li>
+            </ul>
+          </section>
         </div>
 
         {/* Footer */}
