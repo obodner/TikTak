@@ -219,11 +219,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   {dict.resident_dashboard_desc}
                 </p>
                 <ul className={`text-sm text-slate-600 space-y-3.5 list-disc list-inside ${isHe ? 'pr-2' : 'pl-2'}`}>
-                  <li><strong>{isHe ? 'טאב "הדיווחים שלי"' : '"My Reports" Tab'}</strong>: {dict.res_my_reports}</li>
-                  <li><strong>{isHe ? 'טאב "דיווחים פתוחים"' : '"Open Reports" Tab'}</strong>: {dict.res_open_reports}</li>
-                  <li><strong>{isHe ? 'הצבעת "גם לי יש את זה" (Me Too)' : '"Me Too" Voting'}</strong>: {dict.res_me_too}</li>
-                  <li><strong>{isHe ? 'הערות ועדכונים' : 'Comments & Media'}</strong>: {dict.res_comments}</li>
-                  <li><strong>{isHe ? 'ממשק קבוע ונוח (Sticky UI)' : 'Frozen Header & Tabs (Sticky UI)'}</strong>: {dict.res_sticky_ui}</li>
+                  <li><strong>{dict.res_my_reports_label || (isHe ? 'טאב "הדיווחים שלי"' : '"My Reports" Tab')}</strong>: {dict.res_my_reports}</li>
+                  <li><strong>{dict.res_open_reports_label || (isHe ? 'טאב "דיווחים פתוחים"' : '"Open Reports" Tab')}</strong>: {dict.res_open_reports}</li>
+                  <li><strong>{dict.res_me_too_label || (isHe ? 'הצבעת "גם לי יש את זה" (Me Too)' : '"Me Too" Voting')}</strong>: {dict.res_me_too}</li>
+                  <li><strong>{dict.res_comments_label || (isHe ? 'הערות ועדכונים' : 'Comments & Media')}</strong>: {dict.res_comments}</li>
+                  <li><strong>{dict.res_sticky_ui_label || (isHe ? 'ממשק קבוע ונוח (Sticky UI)' : 'Frozen Header & Tabs (Sticky UI)')}</strong>: {dict.res_sticky_ui}</li>
                 </ul>
               </div>
             </section>
@@ -248,12 +248,13 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     {dict.mgr_ticket_mgmt}
                   </h4>
                   <ul className="text-sm text-slate-600 space-y-3">
-                    <li><strong>{isHe ? 'לוח בקרה דינמי' : 'Dynamic Panel'}</strong>: {dict.mgr_dynamic_panel}</li>
-                    <li><strong>{isHe ? 'עדכון סטטוס בגרירה' : 'Drag & Drop Status'}</strong>: {dict.mgr_drag_drop}</li>
-                    <li><strong>{isHe ? 'זיהוי QuickTap' : 'QuickTap ID'}</strong>: {dict.mgr_quicktap_id}</li>
-                    <li dangerouslySetInnerHTML={{ __html: `<strong>${isHe ? 'העברה לספק (Forward to Vendor)' : 'Forward to Vendor'}</strong>: ${dict.mgr_forward_vendor}` }} />
-                    <li dangerouslySetInnerHTML={{ __html: `<strong>${isHe ? 'כתיבת הערה ועדכון המדווח בוואטסאפ' : 'Comments & Reporter Notifications'}</strong>: ${dict.mgr_comments_whatsapp}` }} />
-                    <li><strong>{isHe ? 'ניתוח תקלה' : 'Ticket Analysis'}</strong>: {dict.mgr_ticket_analysis}</li>
+                    <li><strong>{dict.mgr_dynamic_panel_label || (isHe ? 'לוח בקרה דינמי' : 'Dynamic Panel')}</strong>: {dict.mgr_dynamic_panel}</li>
+                    <li><strong>{dict.mgr_drag_drop_label || (isHe ? 'עדכון סטטוס בגרירה' : 'Drag & Drop Status')}</strong>: {dict.mgr_drag_drop}</li>
+                    <li><strong>{dict.mgr_quicktap_id_label || (isHe ? 'זיהוי QuickTap' : 'QuickTap ID')}</strong>: {dict.mgr_quicktap_id}</li>
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_backlog_label || (isHe ? 'מצבור משימות (Backlog)' : 'Tasks Backlog')}</strong>: ${dict.mgr_backlog}` }} />
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_forward_vendor_label || (isHe ? 'העברה לספק (Forward to Vendor)' : 'Forward to Vendor')}</strong>: ${dict.mgr_forward_vendor}` }} />
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_comments_whatsapp_label || (isHe ? 'כתיבת הערה ועדכון המדווח בוואטסאפ' : 'Comments & Reporter Notifications')}</strong>: ${dict.mgr_comments_whatsapp}` }} />
+                    <li><strong>{dict.mgr_ticket_analysis_label || (isHe ? 'ניתוח תקלה' : 'Ticket Analysis')}</strong>: {dict.mgr_ticket_analysis}</li>
                   </ul>
                 </div>
 
