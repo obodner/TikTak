@@ -81,7 +81,9 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED',
         'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN',
         'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED',
-        'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED'
+        'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED',
+        'TICKET_FORWARDED_TO_VENDOR', 'VENDOR_ACKNOWLEDGED_TICKET', 'VENDOR_COMPLETED_TICKET',
+        'TICKET_BACKLOG_MOVED', 'BACKLOG_TICKET_REORDERED'
     ];
 
     useEffect(() => {
@@ -238,12 +240,55 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} sent WhatsApp update to resident for ticket ${waTicketRef}${waCommentSnippet}`
                     : `${actor} שלח עדכון בוואטסאפ לתושב עבור פנייה ${waTicketRef}${waCommentSnippet}`;
-            case 'TICKET_FORWARDED_TO_VENDOR':
-                const fwdTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-                const vendorPhone = log.details.vendorPhone || '';
+            case 'TICKET_FORWARDED_TO_VENDOR': {
+                const fwdTicketRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const vPhone = log.details?.vendorPhone || '';
+                const vNameStr = log.details?.vendorName ? `${log.details.vendorName} (${vPhone})` : vPhone;
                 return isEn
-                    ? `${actor} forwarded ticket ${fwdTicketRef} to vendor (${vendorPhone}) via WhatsApp`
-                    : `${actor} העביר פנייה ${fwdTicketRef} לספק (${vendorPhone}) בוואטסאפ`;
+                    ? `${actor} forwarded ticket ${fwdTicketRef} to vendor ${vNameStr} via WhatsApp`
+                    : `${actor} העביר פנייה ${fwdTicketRef} לספק ${vNameStr} בוואטסאפ`;
+            }
+            case 'VENDOR_ACKNOWLEDGED_TICKET': {
+                const ackTicketRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
+                    ? `#${log.details.ticketNumber}`
+                    : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const vName = log.details?.vendorName || log.actor?.name || log.details?.vendorPhone || actor;
+                return isEn
+                    ? `Vendor (${vName}) acknowledged receipt of ticket ${ackTicketRef} via WhatsApp`
+                    : `הספק (${vName}) אישר קבלת פנייה ${ackTicketRef} בוואטסאפ`;
+            }
+            case 'VENDOR_COMPLETED_TICKET': {
+                const doneTicketRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
+                    ? `#${log.details.ticketNumber}`
+                    : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const vName = log.details?.vendorName || log.actor?.name || log.details?.vendorPhone || actor;
+                return isEn
+                    ? `Vendor (${vName}) marked ticket ${doneTicketRef} as completed (Done) via WhatsApp`
+                    : `הספק (${vName}) דיווח על ביצוע (בוצע) עבור פנייה ${doneTicketRef} בוואטסאפ`;
+            }
+            case 'TICKET_BACKLOG_MOVED': {
+                const bkgRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null) 
+                    ? `#${log.details.ticketNumber}` 
+                    : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `${actor} moved ticket ${bkgRef} to Tasks Backlog (Important & Urgent)`
+                    : `${actor} העביר/ה את פנייה ${bkgRef} למצבור משימות (חשוב ודחוף)`;
+            }
+            case 'BACKLOG_TICKET_REORDERED': {
+                const reordRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null) 
+                    ? `#${log.details.ticketNumber}` 
+                    : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const colNames: Record<string, { he: string; en: string }> = {
+                    'important-urgent': { he: 'חשוב ודחוף', en: 'Important & Urgent' },
+                    'important-not-urgent': { he: 'חשוב ולא דחוף', en: 'Important & Not Urgent' },
+                    'not-important-urgent': { he: 'לא חשוב ודחוף', en: 'Not Important & Urgent' }
+                };
+                const colKey = log.details?.toColumn || 'important-urgent';
+                const colName = isEn ? (colNames[colKey]?.en || colKey) : (colNames[colKey]?.he || colKey);
+                return isEn
+                    ? `${actor} updated priority/position of ticket ${reordRef} in Backlog (${colName})`
+                    : `${actor} עדכן/ה מיקום/עדיפות פנייה ${reordRef} במצבור משימות (${colName})`;
+            }
             case 'TICKET_URGENCY_UPDATE':
                 const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn

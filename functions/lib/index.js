@@ -1855,7 +1855,7 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                             actor: {
                                                 uid: localPhone,
                                                 name: vList[vIndex].name || localPhone,
-                                                type: 'resident'
+                                                type: 'vendor'
                                             },
                                             details: {
                                                 ticketId: docSnap.id,

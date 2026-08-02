@@ -1,17 +1,16 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
 import { logAction } from '../../utils/auditLogger';
 import { ConfirmModal, ConfirmType } from '../../components/admin/ConfirmModal';
 import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, arrayRemove, where, limit } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import { db, auth } from '../../lib/firebase';
+import { db } from '../../lib/firebase';
 import { CommentModal } from '../../components/admin/CommentModal';
 import { ClosureModal } from '../../components/admin/ClosureModal';
 import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, LogOut, Calendar, Shield, HelpCircle, Image as ImageIcon, Pause, GripVertical, Share2 } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2 } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -77,7 +76,10 @@ type Ticket = {
   category: string;
   createdAt: string;
   imageId?: string;
-  status: 'open' | 'in-progress' | 'resolved' | 'dismissed';
+  status: 'open' | 'in-progress' | 'resolved' | 'dismissed' | 'backlog';
+  backlogColumn?: 'important-urgent' | 'important-not-urgent' | 'not-important-urgent';
+  backlogOrder?: number;
+  backloggedAt?: string;
   summary: string;
   urgency: 'High' | 'Moderate' | 'Low';
   location?: string;
@@ -135,7 +137,6 @@ const CustomTooltip = ({ active, payload, label, isEn }: any) => {
 
 export default function AdminDashboard() {
   const { tenantId } = useParams();
-  const [isSuper, setIsSuper] = useState(false);
   const { user, loading: authLoading } = useAuthState();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -215,7 +216,6 @@ export default function AdminDashboard() {
   };
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
   const [holidays, setHolidays] = useState<string[]>([]);
-  const [myTenants, setMyTenants] = useState<{ id: string, name?: string }[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
@@ -240,7 +240,6 @@ export default function AdminDashboard() {
   const showAlert = (title: string, message: string, type: ConfirmType = 'info') => {
     setConfirmState({ isOpen: true, title, message, type });
   };
-  const navigate = useNavigate();
 
 
   // Filter State
@@ -376,24 +375,8 @@ export default function AdminDashboard() {
       const parsed: Ticket[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
       setTickets(parsed);
 
-      // Fetch current admin profile and user's tenants
+      // Fetch current admin profile
       if (user.uid) {
-        const token = await user.getIdTokenResult();
-        const superRole = token.claims.role === 'super';
-        setIsSuper(superRole);
-
-        let userTenants: { id: string, name?: string }[] = [];
-        if (superRole) {
-          const allTenantsSnap = await getDocs(collection(db, "tenants"));
-          userTenants = allTenantsSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
-        } else {
-          const tenantsRef = collection(db, "tenants");
-          const tQuery = query(tenantsRef, where("adminUids", "array-contains", user.uid));
-          const tSnap = await getDocs(tQuery);
-          userTenants = tSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
-        }
-        setMyTenants(userTenants);
-
         let uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
 
         // Fallback: If not found in current tenant (common for Super Admins switching context),
@@ -487,26 +470,47 @@ export default function AdminDashboard() {
     });
   }, [tickets, filters]);
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error("Logout failed:", err);
-    }
-  };
-
   const handleStatusUpdate = async (ticketId: string, newStatus: Ticket['status'], ticketObj?: Ticket) => {
     if (!tenantId) return;
     setUpdatingId(ticketId);
     try {
       const ticketRef = doc(db, "tenants", tenantId, "tickets", ticketId);
+      const ticket = ticketObj || tickets.find(t => t.id === ticketId);
+      const nowIso = new Date().toISOString();
+
+      if (newStatus === 'backlog') {
+        await updateDoc(ticketRef, {
+          status: 'backlog',
+          backlogColumn: 'important-urgent',
+          backlogOrder: -Date.now(),
+          backloggedAt: nowIso,
+          updatedAt: nowIso
+        });
+
+        await logAction({
+          tenantId,
+          action: 'TICKET_BACKLOG_MOVED',
+          actor: getAuditActor(),
+          details: {
+            ticketId,
+            ticketNumber: ticket?.ticketNumber,
+            fromStatus: ticket?.status || 'open',
+            targetColumn: 'important-urgent'
+          },
+          changes: ticket ? { previousValue: { status: ticket.status }, newValue: { status: 'backlog' } } : null
+        });
+
+        setTickets(prev => prev.filter(t => t.id !== ticketId));
+        await fetchData();
+        return;
+      }
+
       await updateDoc(ticketRef, {
         status: newStatus,
-        updatedAt: new Date().toISOString()
+        updatedAt: nowIso
       });
 
       // Audit Log
-      const ticket = ticketObj || tickets.find(t => t.id === ticketId);
       await logAction({
         tenantId,
         action: 'TICKET_STATUS_UPDATE',
@@ -1053,6 +1057,9 @@ export default function AdminDashboard() {
                             <option value="in-progress">{isEn ? 'In Progress' : 'בטיפול'}</option>
                             <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
                             <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
+                            {(t.status === 'open' || t.status === 'in-progress') && (
+                              <option value="backlog">{isEn ? '📥 Move to Backlog' : '📥 העבר לבקלוג'}</option>
+                            )}
                           </select>
                           
                         </div>
@@ -1277,84 +1284,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-white" dir={isEn ? 'ltr' : 'rtl'}>
-      <header className="bg-slate-900 text-white p-3 md:p-5 sticky top-0 z-50 shadow-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto flex justify-between items-center px-2 md:px-4">
-          <div className="flex items-center gap-2 md:gap-4 text-right" dir={isEn ? "ltr" : "rtl"}>
-            <div className="flex items-center justify-center transition-transform hover:scale-105 shrink-0">
-              <img
-                src="/logo_transparent.png"
-                alt="TikTak"
-                className="h-12 md:h-20 w-auto object-contain filter drop-shadow-[0_0_1px_rgba(255,255,255,0.5)]"
-              />
-            </div>
-
-            <span className="text-slate-600 font-light text-xl md:text-2xl hidden sm:inline">|</span>
-
-            {myTenants.length > 1 ? (
-              <div className="relative">
-                <select
-                  value={tenantId}
-                  onChange={(e) => navigate(`/admin/${e.target.value}/dashboard`)}
-                  className="bg-slate-800 text-slate-200 text-sm md:text-lg font-medium py-1 pl-8 pr-3 md:px-4 md:pl-10 rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none cursor-pointer hover:bg-slate-700 transition-colors truncate max-w-[150px] sm:max-w-[200px] md:max-w-none"
-                  dir={isEn ? "ltr" : "rtl"}
-                >
-                  {myTenants.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name || t.id}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className={`absolute top-1/2 -translate-y-1/2 ${isEn ? 'right-2' : 'left-2'} text-slate-400 pointer-events-none`} size={16} />
-              </div>
-            ) : (
-              <span className="text-sm md:text-lg text-slate-300 font-medium truncate max-w-[120px] sm:max-w-[200px] md:max-w-none">
-                {tenantConfig?.name || tenantId}
-              </span>
-            )}
-
-            <span className="text-slate-600 font-light text-xl md:text-2xl hidden md:inline">|</span>
-
-            <span className="text-sm md:text-lg text-white font-bold whitespace-nowrap hidden md:inline">
-              {isEn ? 'Dashboard' : 'דשבורד'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3">
-            {isSuper && (
-              <Link
-                to="/admin/god-view"
-                className="hidden sm:flex items-center gap-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 px-3 md:px-4 py-2 rounded-lg transition-all shadow-lg shadow-blue-900/20"
-              >
-                <Shield size={14} /> {isEn ? 'God Mode' : 'מצב אל'}
-              </Link>
-            )}
-            <Link
-              to={`/admin/${tenantId}/settings`}
-              className="text-xs font-bold bg-slate-800 hover:bg-slate-700 px-3 md:px-4 py-2 rounded-lg transition-all border border-slate-700 flex items-center gap-2"
-              title={uiLabels.settings}
-            >
-              <span className="hidden md:inline">{uiLabels.settings}</span>
-              <span className="md:hidden">⚙️</span>
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-500 px-3 md:px-4 py-2 rounded-lg transition-all border border-red-500/30 flex items-center gap-2"
-              title={isEn ? "Logout" : "התנתק"}
-            >
-              <LogOut size={16} />
-              <span className="hidden md:inline">{isEn ? 'Logout' : 'התנתק'}</span>
-            </button>
-            <button
-              onClick={() => setIsHelpOpen(true)}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all shrink-0"
-              title={isHe ? "עזרה ומדריך" : "Help & Guide"}
-            >
-              <HelpCircle size={24} />
-            </button>
-          </div>
-        </div>
-      </header>
-
       <main className="max-w-7xl mx-auto p-6 flex flex-col gap-8">
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 font-medium">

@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useParams, Navigate, Link } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
 import { HelpModal } from '../../components/admin/HelpModal';
-import { ArrowRight, HelpCircle } from 'lucide-react';
 import { logAction } from '../../utils/auditLogger';
 import { InfrastructureTab } from '../../components/admin/InfrastructureTab';
 import { UsersTab } from '../../components/admin/UsersTab';
@@ -308,54 +307,7 @@ export default function TenantSettings() {
   const isBuilding = type === 'building';
 
   return (
-    <div key={tenantId} className="min-h-screen bg-slate-50" dir="rtl">
-      <header className="bg-slate-900 text-white p-3 md:p-5 sticky top-0 z-50 shadow-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto flex justify-between items-center px-2 md:px-4">
-          <div className="flex items-center gap-2 md:gap-4 text-right" dir="rtl">
-            {/* Right: Logo */}
-            <div className="flex items-center justify-center transition-transform hover:scale-105 shrink-0">
-              <img
-                src="/logo_transparent.png"
-                alt="TikTak"
-                className="h-12 md:h-20 w-auto object-contain filter drop-shadow-[0_0_1px_rgba(255,255,255,0.5)]"
-              />
-            </div>
-
-            <span className="text-slate-600 font-light text-xl md:text-2xl hidden sm:inline">|</span>
-
-            {/* Middle: Tenant Name */}
-            <span className="text-sm md:text-lg text-slate-300 font-medium truncate max-w-[120px] sm:max-w-[200px] md:max-w-none">
-              {tenantName || tenantId}
-            </span>
-
-            <span className="text-slate-600 font-light text-xl md:text-2xl hidden md:inline">|</span>
-
-            {/* Left: Page Name */}
-            <span className="text-sm md:text-lg text-white font-bold whitespace-nowrap hidden md:inline">
-              הגדרות {isBuilding ? 'בניין' : 'עירייה'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3">
-            <Link
-              to={`/admin/${tenantId}/dashboard`}
-              className="text-xs font-bold bg-slate-800 hover:bg-slate-700 px-3 md:px-4 py-2 rounded-lg transition-all border border-slate-700 flex items-center gap-2 shrink-0"
-            >
-              <ArrowRight size={16} />
-              <span className="hidden md:inline">חזרה לדשבורד</span>
-            </Link>
-
-            <button
-              onClick={() => setIsHelpOpen(true)}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all"
-              title="עזרה"
-            >
-              <HelpCircle size={24} />
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <div key={tenantId} className="min-h-screen bg-slate-50" dir={language === 'en' ? 'ltr' : 'rtl'}>
       {/* Horizontal Sub-navigation Tab Bar */}
       <div className="border-b border-slate-200 bg-white sticky top-[72px] md:top-[104px] z-40 shadow-sm">
         <div className="max-w-4xl mx-auto flex justify-around sm:justify-start sm:gap-8 px-4" dir="rtl">

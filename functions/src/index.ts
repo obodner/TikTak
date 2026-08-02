@@ -19,7 +19,7 @@ async function recordAuditLog(params: {
   tenantId: string;
   action: string;
   level: 'INFO' | 'WARN' | 'ERROR';
-  actor: { uid: string; name: string; email?: string; type: 'admin' | 'resident' };
+  actor: { uid: string; name: string; email?: string; type: 'admin' | 'resident' | 'vendor' };
   details: any;
 }) {
   const { tenantId, action, level, actor, details } = params;
@@ -2161,7 +2161,7 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                       actor: {
                         uid: localPhone,
                         name: vList[vIndex].name || localPhone,
-                        type: 'resident'
+                        type: 'vendor'
                       },
                       details: {
                         ticketId: docSnap.id,

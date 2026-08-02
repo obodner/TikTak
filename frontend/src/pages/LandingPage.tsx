@@ -585,7 +585,7 @@ export default function LandingPage() {
                   className="w-full aspect-[16/9] overflow-hidden select-none bg-slate-100 cursor-zoom-in"
                   onClick={() => setIsDashboardLightboxOpen(true)}
                 >
-                  <img src="/dashboard.png" alt="TikTak Admin Dashboard" className="w-full h-full object-cover object-top hover:scale-[1.01] transition-transform duration-500" />
+                  <img src="/admin_dashboard_preview.png" alt="TikTak Admin Dashboard" className="w-full h-full object-cover object-top hover:scale-[1.01] transition-transform duration-500" />
                 </div>
               </div>
 
@@ -1065,7 +1065,7 @@ export default function LandingPage() {
             </button>
             <div className={`p-4 ${isDashboardZoomed ? 'block text-center min-w-max' : 'flex items-center justify-center min-h-[80vh]'}`}>
               <img 
-                src="/dashboard.png" 
+                src="/admin_dashboard_preview.png" 
                 alt="TikTak Admin Dashboard Full Size" 
                 onClick={() => setIsDashboardZoomed(!isDashboardZoomed)}
                 className={`transition-all duration-300 select-none ${

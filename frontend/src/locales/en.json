@@ -175,6 +175,7 @@
         "mgr_dynamic_panel": "Filters update stats and charts in real-time.",
         "mgr_drag_drop": "Move cards between columns to update status instantly (recorded in Audit Log).",
         "mgr_quicktap_id": "These tickets are marked with a blue ⚡ QuickTap tag.",
+        "mgr_backlog": "Tasks Backlog: Defer tickets from the active triage dashboard to an Eisenhower priority matrix (Important & Urgent / Important & Not Urgent / Not Important & Urgent) for long-term planning.",
         "mgr_forward_vendor": "Click the green <em>\"Forward to Vendor\"</em> button on any ticket card to open an editable dispatch modal. Sends structured ticket details to external vendors via WhatsApp with interactive Quick Reply buttons (<em>\"Received the message\"</em> / <em>\"Done\"</em>). Vendor response status tracks in real-time inside the card button tooltip (up to 3 vendor dispatches per ticket).",
         "mgr_comments_whatsapp": "Click the comment icon 💬 on any ticket card to write admin notes. Use <em>\"Save Comment\"</em> for internal storage, or <em>\"Save & Send to WhatsApp\"</em> / <em>\"Send to WhatsApp\"</em> to dispatch a formatted progress update directly to the reporter's WhatsApp.",
         "mgr_ticket_analysis": "Click cards to view media. Use headphones for audio.",

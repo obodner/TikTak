@@ -22,6 +22,7 @@
         }
     ],
     "hosting": {
+        "site": "tiktak2026",
         "public": "frontend/dist",
         "ignore": [
             "firebase.json",
@@ -126,6 +127,14 @@
                     "functionId": "getAudio",
                     "region": "us-central1"
                 }
+            },
+            {
+                "source": "/admin/**",
+                "destination": "/index.html"
+            },
+            {
+                "source": "/report/**",
+                "destination": "/index.html"
             },
             {
                 "source": "**",
