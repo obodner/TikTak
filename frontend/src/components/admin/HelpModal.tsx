@@ -196,7 +196,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     </li>
                     <li className="flex gap-2">
                       <span className="text-amber-500">⚡</span>
-                      <span><strong>QuickTap</strong>: {dict.step2_quicktap}</span>
+                      <span><strong>{isHe ? 'דיווחים מהירים' : 'QuickTap'}</strong>: {dict.step2_quicktap}</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="text-emerald-500">💬</span>
@@ -250,7 +250,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <ul className="text-sm text-slate-600 space-y-3">
                     <li><strong>{dict.mgr_dynamic_panel_label || (isHe ? 'לוח בקרה דינמי' : 'Dynamic Panel')}</strong>: {dict.mgr_dynamic_panel}</li>
                     <li><strong>{dict.mgr_drag_drop_label || (isHe ? 'עדכון סטטוס בגרירה' : 'Drag & Drop Status')}</strong>: {dict.mgr_drag_drop}</li>
-                    <li><strong>{dict.mgr_quicktap_id_label || (isHe ? 'זיהוי QuickTap' : 'QuickTap ID')}</strong>: {dict.mgr_quicktap_id}</li>
+                    <li><strong>{dict.mgr_quicktap_id_label || (isHe ? 'זיהוי דיווחים מהירים' : 'QuickTap ID')}</strong>: {dict.mgr_quicktap_id}</li>
                     <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_backlog_label || (isHe ? 'מצבור משימות (Backlog)' : 'Tasks Backlog')}</strong>: ${dict.mgr_backlog}` }} />
                     <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_forward_vendor_label || (isHe ? 'העברה לספק (Forward to Vendor)' : 'Forward to Vendor')}</strong>: ${dict.mgr_forward_vendor}` }} />
                     <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_comments_whatsapp_label || (isHe ? 'כתיבת הערה ועדכון המדווח בוואטסאפ' : 'Comments & Reporter Notifications')}</strong>: ${dict.mgr_comments_whatsapp}` }} />
@@ -301,7 +301,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <ul className="text-sm text-slate-600 space-y-3">
                     <li><strong className="text-red-600">{isHe ? 'ניהול מורשים (Whitelist)' : 'Permissions & Whitelist'}</strong>: {dict.mgr_settings_whitelist}</li>
                     <li><strong>{isHe ? 'ניהול מנהלים' : 'User Management'}</strong>: {dict.mgr_settings_users}</li>
-                    <li><strong>{isHe ? 'ניהול QuickTap' : 'QuickTap Setup'}</strong>: {dict.mgr_settings_quicktap}</li>
+                    <li><strong>{isHe ? 'ניהול אנשי שירות (ספקים)' : 'Vendors Management'}</strong>: {dict.mgr_settings_vendors}</li>
+                    <li><strong>{isHe ? 'ניהול דיווחים מהירים' : 'QuickTap Setup'}</strong>: {dict.mgr_settings_quicktap}</li>
                     <li><strong>{isHe ? 'מיתוג ונתונים' : 'Branding'}</strong>: {dict.mgr_settings_branding}</li>
                   </ul>
                 </div>

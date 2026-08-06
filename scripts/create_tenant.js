@@ -36,6 +36,7 @@ async function main() {
   }
 
   const name = await question("Enter Tenant Name: ");
+  const address = await question("Enter Tenant Address: ");
   const tenantId = await question("Enter Tenant ID: ");
 
   if (!name || !tenantId) {
@@ -82,6 +83,7 @@ async function main() {
 
   const tenantData = {
     name: name,
+    address: address || "",
     type: type,
     language: "he",
     country: "IL", // Default for new tenants
@@ -117,6 +119,7 @@ async function main() {
     console.log("-----------------------------------------");
     console.log(`✅ SUCCESS: Tenant [${tenantId}] created!`);
     console.log(`🏠 Name: ${name}`);
+    console.log(`📍 Address: ${address || "N/A"}`);
     console.log(`🏷️  Type: ${type}`);
     console.log(`📍 Labels: ${config.locationLabel} / ${config.subLocationLabel}`);
     console.log("-----------------------------------------");
