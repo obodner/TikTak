@@ -300,7 +300,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   </h4>
                   <ul className="text-sm text-slate-600 space-y-3">
                     <li><strong className="text-red-600">{isHe ? 'ניהול מורשים (Whitelist)' : 'Permissions & Whitelist'}</strong>: {dict.mgr_settings_whitelist}</li>
-                    <li><strong>{isHe ? 'ניהול משתמשים' : 'User Management'}</strong>: {dict.mgr_settings_users}</li>
+                    <li><strong>{isHe ? 'ניהול מנהלים' : 'User Management'}</strong>: {dict.mgr_settings_users}</li>
                     <li><strong>{isHe ? 'ניהול QuickTap' : 'QuickTap Setup'}</strong>: {dict.mgr_settings_quicktap}</li>
                     <li><strong>{isHe ? 'מיתוג ונתונים' : 'Branding'}</strong>: {dict.mgr_settings_branding}</li>
                   </ul>

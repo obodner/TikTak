@@ -330,7 +330,7 @@ export default function TenantSettings() {
                 : 'text-slate-400 border-transparent hover:text-slate-600'
             }`}
           >
-            ניהול משתמשים
+            ניהול מנהלים
           </button>
 
           <button

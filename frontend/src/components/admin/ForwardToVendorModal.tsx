@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Share2, X, Send, Phone, AlertCircle, MessageSquare } from 'lucide-react';
+import { Share2, X, Send, Phone, AlertCircle, MessageSquare, Briefcase, UserCheck } from 'lucide-react';
+import { collection, getDocs, query } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import heMessages from '../../locales/he.json';
 import enMessages from '../../locales/en.json';
 
@@ -17,6 +19,14 @@ export interface Ticket {
   audioId?: string;
   createdAt: string;
   [key: string]: any;
+}
+
+export interface VendorItem {
+  id: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  profession?: string;
 }
 
 export interface ForwardToVendorModalProps {
@@ -47,6 +57,8 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
   const [messageText, setMessageText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [savedVendors, setSavedVendors] = useState<VendorItem[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   const dict = (isEn ? (enMessages as any).ForwardToVendor : (heMessages as any).ForwardToVendor) || {};
 
@@ -55,9 +67,26 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
       setVendorName('');
       setPhone('');
       setError(null);
+      setShowDropdown(false);
       setMessageText(buildDefaultVendorMessage(ticket, tenantName, tenantType, tenantId, adminName, isEn));
     }
   }, [ticket, tenantName, tenantType, tenantId, adminName, isEn]);
+
+  useEffect(() => {
+    if (!isOpen || !tenantId) return;
+    const activeTenantId = tenantId;
+    async function loadSavedVendors() {
+      try {
+        const q = query(collection(db, "tenants", activeTenantId, "vendors"));
+        const snap = await getDocs(q);
+        const list: VendorItem[] = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as VendorItem));
+        setSavedVendors(list);
+      } catch (err) {
+        console.error("Error loading saved vendors:", err);
+      }
+    }
+    loadSavedVendors();
+  }, [isOpen, tenantId]);
 
   if (!isOpen || !ticket) return null;
 
@@ -79,7 +108,7 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
   const handleSendAction = async () => {
     setError(null);
     const cleanPhone = phone.trim().replace(/[-\s]/g, '');
-    const isPhoneValid = /^0\d{8,9}$/.test(cleanPhone);
+    const isPhoneValid = /^(0|\+)[0-9]{6,14}$/.test(cleanPhone);
 
     if (!isPhoneValid) {
       setError(labels.invalidPhone);
@@ -107,8 +136,18 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
   };
 
   const cleanPhone = phone.trim().replace(/[-\s]/g, '');
-  const isPhoneValid = /^0\d{8,9}$/.test(cleanPhone);
+  const isPhoneValid = /^(0|\+)[0-9]{6,14}$/.test(cleanPhone);
   const vendorList: any[] = Array.isArray(ticket.vendors) ? ticket.vendors : [];
+
+  const filteredVendors = savedVendors.filter(v => {
+    if (!vendorName.trim()) return true;
+    const term = vendorName.trim().toLowerCase();
+    return (
+      v.fullName.toLowerCase().includes(term) ||
+      (v.profession && v.profession.toLowerCase().includes(term)) ||
+      (v.phone && v.phone.includes(term))
+    );
+  });
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -164,19 +203,74 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
             </div>
           )}
 
-          {/* Vendor Name Input */}
-          <div>
-            <label className="block text-xs font-extrabold text-slate-700 mb-1.5 flex items-center gap-1.5">
-              <Share2 size={14} className="text-emerald-600" />
-              <span>{labels.vendorNameLabel}</span>
+          {/* Vendor Name Input with Saved Vendors Dropdown */}
+          <div className="relative">
+            <label className="block text-xs font-extrabold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <UserCheck size={14} className="text-emerald-600" />
+                <span>{labels.vendorNameLabel}</span>
+              </span>
+              {savedVendors.length > 0 && (
+                <span className="text-[10px] text-slate-400 font-normal">
+                  ({savedVendors.length} אנשי שירות שמורים)
+                </span>
+              )}
             </label>
             <input 
               type="text"
               value={vendorName}
-              onChange={(e) => setVendorName(e.target.value)}
+              onChange={(e) => {
+                setVendorName(e.target.value);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => {
+                // Short delay to allow onMouseDown on dropdown items to execute
+                setTimeout(() => setShowDropdown(false), 200);
+              }}
               placeholder={labels.vendorNamePlaceholder}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
             />
+
+            {/* Dropdown list of saved vendors */}
+            {showDropdown && savedVendors.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
+                {filteredVendors.length === 0 ? (
+                  <div className="p-3 text-xs text-slate-400 text-center italic">
+                    לא נמצא איש שירות מתאים
+                  </div>
+                ) : (
+                  filteredVendors.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onMouseDown={() => {
+                        setVendorName(v.fullName);
+                        setPhone(v.phone);
+                        if (error) setError(null);
+                        setShowDropdown(false);
+                      }}
+                      className="w-full text-right px-3.5 py-2.5 hover:bg-emerald-50/60 transition-colors flex items-center justify-between gap-2 group cursor-pointer"
+                    >
+                      <div className="flex flex-col text-right">
+                        <span className="font-bold text-slate-800 text-xs group-hover:text-emerald-700 transition-colors">
+                          {v.fullName}
+                        </span>
+                        {v.profession && (
+                          <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                            <Briefcase size={10} className="text-slate-400" />
+                            {v.profession}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono font-semibold text-emerald-700 bg-emerald-50 group-hover:bg-emerald-100 px-2 py-0.5 rounded-md transition-colors" dir="ltr">
+                        {v.phone}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           {/* Phone Number Input */}
@@ -189,12 +283,12 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
               type="tel"
               value={phone}
               onChange={(e) => {
-                const val = e.target.value.replace(/[^\d]/g, '');
+                const val = e.target.value.replace(/(?!^\+)[^\d]/g, '');
                 setPhone(val);
                 if (error) setError(null);
               }}
               placeholder={labels.phonePlaceholder}
-              maxLength={10}
+              maxLength={15}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-mono tracking-wider text-slate-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all dir-ltr text-right"
               autoFocus
             />

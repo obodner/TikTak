@@ -1,5 +1,6 @@
 import React from 'react';
 import { UserManagement } from './UserManagement';
+import { VendorManagement } from './VendorManagement';
 import { CsvUploadPanel } from './CsvUploadPanel';
 
 
@@ -18,6 +19,11 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     <div className="flex flex-col gap-6 max-w-2xl mx-auto">
       <div className="flex flex-col gap-6">
         <UserManagement
+          tenantId={tenantId}
+          callerUid={callerUid}
+          callerName={callerName}
+        />
+        <VendorManagement
           tenantId={tenantId}
           callerUid={callerUid}
           callerName={callerName}

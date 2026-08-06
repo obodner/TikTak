@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { UserPlus, Trash2, Mail, Phone, ShieldCheck, Key, Loader2, X, Pencil, Info } from 'lucide-react';
+import { UserPlus, Trash2, Mail, Phone, ShieldCheck, Key, Loader2, X, Pencil, Info, AlertCircle } from 'lucide-react';
 import { ConfirmModal, ConfirmType } from './ConfirmModal';
 import { logAction } from '../../utils/auditLogger';
 
@@ -200,7 +200,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-1.5">
             <ShieldCheck className="text-blue-600" size={16} />
-            <h3 className="font-bold text-slate-800 text-sm whitespace-nowrap">ניהול משתמשים</h3>
+            <h3 className="font-bold text-slate-800 text-sm whitespace-nowrap">ניהול מנהלים</h3>
           </div>
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter shrink-0">
              <span className={isLimitReached ? 'text-amber-600' : 'text-blue-600'}>{users.length}/5</span>
@@ -217,7 +217,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
       </div>
 
       <div className="p-3">
-        {error && <div className="mb-3 p-2 bg-red-50 text-red-600 rounded-lg text-[11px] font-bold border border-red-100">{error}</div>}
+        {!modalOpen && error && <div className="mb-3 p-2 bg-red-50 text-red-600 rounded-lg text-[11px] font-bold border border-red-100">{error}</div>}
         {msg && <div className="mb-3 p-2 bg-green-50 text-green-600 rounded-lg text-[11px] font-bold border border-green-100">{msg}</div>}
 
         {loading ? (
@@ -291,7 +291,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <h4 className="font-bold text-slate-800">{editingId ? 'עריכת משתמש' : 'הוספת משתמש חדש'}</h4>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setModalOpen(false); setError(''); }} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
@@ -300,6 +300,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
               e.preventDefault();
               callManager(editingId ? 'update' : 'create', editingId ? { uid: editingId, ...formData } : formData);
             }}>
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                  <AlertCircle size={16} className="shrink-0 text-red-500" />
+                  <span>{error}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase mb-1 px-1">שם פרטי</label>

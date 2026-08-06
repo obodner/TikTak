@@ -10,7 +10,7 @@ import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModa
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2 } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -242,6 +242,9 @@ export default function AdminDashboard() {
   };
 
 
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [savedVendors, setSavedVendors] = useState<any[]>([]);
+
   // Filter State
   const [filters, setFilters] = useState({
     timeRange: 'all',
@@ -256,6 +259,16 @@ export default function AdminDashboard() {
     source: 'all',
     channel: 'all'
   });
+
+  const activeSecondaryFilterCount = useMemo(() => {
+    return [
+      filters.severity !== 'all',
+      filters.location !== 'all',
+      filters.subLocation !== 'all',
+      filters.source !== 'all',
+      filters.channel !== 'all'
+    ].filter(Boolean).length;
+  }, [filters]);
 
   const getAuditActor = () => ({
     uid: user?.uid || 'unknown',
@@ -374,6 +387,14 @@ export default function AdminDashboard() {
       const snapshot = await getDocs(q);
       const parsed: Ticket[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
       setTickets(parsed);
+
+      // Fetch vendors list for tooltip lookup
+      try {
+        const vSnap = await getDocs(collection(db, "tenants", tenantId as string, "vendors"));
+        setSavedVendors(vSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (ve) {
+        console.error("Failed to fetch vendors list for dashboard:", ve);
+      }
 
       // Fetch current admin profile
       if (user.uid) {
@@ -1230,7 +1251,15 @@ export default function AdminDashboard() {
                                   
                                   const vList: any[] = Array.isArray(t.vendors) ? t.vendors : [];
                                   if (vList.length > 0) {
-                                    const vLines = vList.map(v => `${v.phone || v.name}: ${v.status || (isEn ? 'Awaiting vendor response ...' : 'ממתין לתשובה מהספק ...')}`);
+                                    const vLines = vList.map(v => {
+                                      const cleanVPhone = (v.phone || '').replace(/[-\s]/g, '');
+                                      const matchedVendor = savedVendors.find(sv => 
+                                        (sv.fullName && v.name && sv.fullName.trim() === v.name.trim()) ||
+                                        (sv.phone && (sv.phone.replace(/[-\s]/g, '') === cleanVPhone || cleanVPhone.endsWith(sv.phone.replace(/[-\s]/g, ''))))
+                                      );
+                                      const displayName = v.name || matchedVendor?.fullName || v.phone;
+                                      return `${displayName}: ${v.status || (isEn ? 'Awaiting vendor response ...' : 'ממתין לתשובה מהספק ...')}`;
+                                    });
                                     return `${baseTitle}\n\n${vLines.join('\n')}`;
                                   }
                                   return baseTitle;
@@ -1361,149 +1390,85 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <section className="bg-slate-50/50 p-3 rounded-2xl border border-slate-200 shadow-sm backdrop-blur-sm">
-          <div className="flex flex-col lg:flex-row items-end gap-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:flex xl:flex-nowrap gap-3 w-full lg:w-auto">
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.time}</label>
-                <select
-                  value={filters.timeRange}
-                  onChange={e => setFilters({ ...filters, timeRange: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  {Object.entries(uiLabels.filters.ranges).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[120px] relative">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.status}</label>
-                <button
-                  onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer flex items-center justify-between gap-2 min-h-[34px]"
-                >
-                  <span className="truncate">
-                    {filters.statuses.length === 3
-                      ? uiLabels.filters.all
-                      : filters.statuses.map(s => statusOptions.find(opt => opt.id === s)?.label).join(', ')}
-                  </span>
-                  <ChevronDown size={14} className={`transition-transform ${isStatusFilterOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isStatusFilterOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setIsStatusFilterOpen(false)}
-                    />
-                    <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl z-20 py-2 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
-                      {statusOptions.map(option => (
-                        <label
-                          key={option.id}
-                          className="flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={filters.statuses.includes(option.id)}
-                            onChange={(e) => {
-                              const newStatuses = e.target.checked
-                                ? [...filters.statuses, option.id]
-                                : filters.statuses.filter(s => s !== option.id);
-                              if (newStatuses.length > 0) {
-                                setFilters({ ...filters, statuses: newStatuses });
-                              }
-                            }}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="text-xs font-bold text-slate-700">{option.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[100px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.severity}</label>
-                <select
-                  value={filters.severity}
-                  onChange={e => setFilters({ ...filters, severity: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  <option value="all">{uiLabels.filters.all}</option>
-                  <option value="High">{uiLabels.urgency.High}</option>
-                  <option value="Moderate">{uiLabels.urgency.Moderate}</option>
-                  <option value="Low">{uiLabels.urgency.Low}</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.category}</label>
-                <select
-                  value={filters.category}
-                  onChange={e => setFilters({ ...filters, category: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  <option value="all">{uiLabels.filters.all}</option>
-                  {tenantConfig?.config?.categories?.map((c: string) => <option key={c} value={c}>{translateCategory(c)}</option>)}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.location}</label>
-                <select
-                  value={filters.location}
-                  onChange={e => setFilters({ ...filters, location: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  <option value="all">{uiLabels.filters.all}</option>
-                  {(tenantConfig?.config?.locations || tenantConfig?.config?.floors || [])?.map((l: string) => <option key={l} value={l}>{l.startsWith('-') || !isNaN(Number(l)) ? `\u200E${l}` : l}</option>)}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.subLocation}</label>
-                <select
-                  value={filters.subLocation}
-                  onChange={e => setFilters({ ...filters, subLocation: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  <option value="all">{uiLabels.filters.all}</option>
-                  {(tenantConfig?.config?.subLocations || tenantConfig?.config?.resources || [])?.map((sl: string) => <option key={sl} value={sl}>{sl.startsWith('-') || !isNaN(Number(sl)) ? `\u200E${sl}` : sl}</option>)}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.source}</label>
-                <select
-                  value={filters.source}
-                  onChange={e => setFilters({ ...filters, source: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  <option value="all">{uiLabels.filters.all}</option>
-                  <option value="ai_camera">{isEn ? 'AI Camera' : 'מצלמת AI'}</option>
-                  <option value="manual">{isEn ? 'Manual' : 'ידני'}</option>
-                  <option value="quicktap">{isEn ? 'QuickTap' : 'דיווח מהיר ⚡'}</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
-                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{isEn ? 'Channel' : 'ערוץ דיווח'}</label>
-                <select
-                  value={filters.channel}
-                  onChange={e => setFilters({ ...filters, channel: e.target.value })}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer"
-                >
-                  <option value="all">{uiLabels.filters.all}</option>
-                  <option value="web">{isEn ? 'Web App 📱' : 'ווב דייר 📱'}</option>
-                  <option value="whatsapp">{isEn ? 'WhatsApp 🤖' : 'וואטסאפ 🤖'}</option>
-                </select>
-              </div>
-
+        <section className="bg-slate-50/50 p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm backdrop-blur-sm space-y-3">
+          <div className="flex flex-wrap items-end gap-3 w-full">
+            {/* 1. Time Range */}
+            <div className="flex flex-col gap-1.5 min-w-[120px] flex-1 sm:flex-initial">
+              <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.time}</label>
+              <select
+                value={filters.timeRange}
+                onChange={e => setFilters({ ...filters, timeRange: e.target.value })}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[38px]"
+              >
+                {Object.entries(uiLabels.filters.ranges).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+              </select>
             </div>
 
-            <div className="flex-1 w-full lg:w-auto flex flex-col gap-1.5">
+            {/* 2. Status Dropdown */}
+            <div className="flex flex-col gap-1.5 min-w-[120px] flex-1 sm:flex-initial relative">
+              <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.status}</label>
+              <button
+                onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer flex items-center justify-between gap-2 min-h-[38px]"
+              >
+                <span className="truncate">
+                  {filters.statuses.length === 3
+                    ? uiLabels.filters.all
+                    : filters.statuses.map(s => statusOptions.find(opt => opt.id === s)?.label).join(', ')}
+                </span>
+                <ChevronDown size={14} className={`transition-transform ${isStatusFilterOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isStatusFilterOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setIsStatusFilterOpen(false)}
+                  />
+                  <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl z-20 py-2 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
+                    {statusOptions.map(option => (
+                      <label
+                        key={option.id}
+                        className="flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filters.statuses.includes(option.id)}
+                          onChange={(e) => {
+                            const newStatuses = e.target.checked
+                              ? [...filters.statuses, option.id]
+                              : filters.statuses.filter(s => s !== option.id);
+                            if (newStatuses.length > 0) {
+                              setFilters({ ...filters, statuses: newStatuses });
+                            }
+                          }}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs font-bold text-slate-700">{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 3. Category */}
+            <div className="flex flex-col gap-1.5 min-w-[120px] flex-1 sm:flex-initial">
+              <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.category}</label>
+              <select
+                value={filters.category}
+                onChange={e => setFilters({ ...filters, category: e.target.value })}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[38px]"
+              >
+                <option value="all">{uiLabels.filters.all}</option>
+                {tenantConfig?.config?.categories?.map((c: string) => <option key={c} value={c}>{translateCategory(c)}</option>)}
+              </select>
+            </div>
+
+            {/* 4. Search + Export CSV + Clear + Toggle More Filters */}
+            <div className="flex-1 min-w-[240px] flex flex-col gap-1.5 w-full sm:w-auto">
               <label className="text-xs font-bold text-slate-500 px-1">{uiLabels.filters.search}</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <div className="relative flex-1">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
@@ -1511,7 +1476,7 @@ export default function AdminDashboard() {
                     placeholder={uiLabels.filters.search}
                     value={filters.search}
                     onChange={e => setFilters({ ...filters, search: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-10 py-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-inner"
+                    className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-10 py-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-inner h-[38px]"
                   />
                   {filters.search && (
                     <button
@@ -1522,10 +1487,11 @@ export default function AdminDashboard() {
                     </button>
                   )}
                 </div>
+
                 <button
                   onClick={handleExportCSV}
-                  className="h-[38px] w-[38px] flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-md group border border-blue-500 shrink-0"
-                  title="ייצא מסנן"
+                  className="h-[38px] w-[38px] flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl transition-all shadow-md group border border-blue-500 shrink-0 cursor-pointer"
+                  title={isEn ? "Export CSV" : "ייצא לאקסל"}
                 >
                   <Download size={18} />
                 </button>
@@ -1533,15 +1499,105 @@ export default function AdminDashboard() {
                 {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
-                    className="h-[38px] w-[38px] flex items-center justify-center bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-all border border-slate-200 shadow-sm group shrink-0"
+                    className="h-[38px] w-[38px] flex items-center justify-center bg-white hover:bg-red-50 active:scale-95 text-slate-400 hover:text-red-500 rounded-xl transition-all border border-slate-200 shadow-sm group shrink-0 cursor-pointer"
                     title={uiLabels.filters.clear}
                   >
                     <X size={18} className="group-hover:rotate-90 transition-transform" />
                   </button>
                 )}
+
+                <button
+                  onClick={() => setShowMoreFilters(!showMoreFilters)}
+                  className={`h-[38px] px-3 flex items-center justify-center gap-1.5 rounded-xl transition-all border text-xs font-bold shrink-0 cursor-pointer active:scale-95 ${
+                    showMoreFilters || activeSecondaryFilterCount > 0
+                      ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                  title={isEn ? "Additional Filters" : "מסננים נוספים"}
+                >
+                  <SlidersHorizontal size={15} />
+                  <span className="hidden sm:inline">
+                    {isEn ? "More Filters" : "מסננים נוספים"}
+                  </span>
+                  {activeSecondaryFilterCount > 0 && (
+                    <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black ms-0.5">
+                      {activeSecondaryFilterCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </div>
+
+          {/* Second Row: Additional Filters */}
+          {(showMoreFilters || activeSecondaryFilterCount > 0) && (
+            <div className="pt-3 border-t border-slate-200/70 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.severity}</label>
+                <select
+                  value={filters.severity}
+                  onChange={e => setFilters({ ...filters, severity: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[36px]"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  <option value="High">{uiLabels.urgency.High}</option>
+                  <option value="Moderate">{uiLabels.urgency.Moderate}</option>
+                  <option value="Low">{uiLabels.urgency.Low}</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.location}</label>
+                <select
+                  value={filters.location}
+                  onChange={e => setFilters({ ...filters, location: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[36px]"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  {(tenantConfig?.config?.locations || tenantConfig?.config?.floors || [])?.map((l: string) => <option key={l} value={l}>{l.startsWith('-') || !isNaN(Number(l)) ? `\u200E${l}` : l}</option>)}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.subLocation}</label>
+                <select
+                  value={filters.subLocation}
+                  onChange={e => setFilters({ ...filters, subLocation: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[36px]"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  {(tenantConfig?.config?.subLocations || tenantConfig?.config?.resources || [])?.map((sl: string) => <option key={sl} value={sl}>{sl.startsWith('-') || !isNaN(Number(sl)) ? `\u200E${sl}` : sl}</option>)}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.source}</label>
+                <select
+                  value={filters.source}
+                  onChange={e => setFilters({ ...filters, source: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[36px]"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  <option value="ai_camera">{isEn ? 'AI Camera' : 'מצלמת AI'}</option>
+                  <option value="manual">{isEn ? 'Manual' : 'ידני'}</option>
+                  <option value="quicktap">{isEn ? 'QuickTap' : 'דיווח מהיר ⚡'}</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{isEn ? 'Channel' : 'ערוץ דיווח'}</label>
+                <select
+                  value={filters.channel}
+                  onChange={e => setFilters({ ...filters, channel: e.target.value })}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[36px]"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  <option value="web">{isEn ? 'Web App 📱' : 'ווב דייר 📱'}</option>
+                  <option value="whatsapp">{isEn ? 'WhatsApp 🤖' : 'וואטסאפ 🤖'}</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           {filters.timeRange === 'custom' && (
             <div className="mt-4 pt-4 border-t border-slate-200 flex items-center gap-4 animate-in slide-in-from-top-2">

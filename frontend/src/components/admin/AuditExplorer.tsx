@@ -78,7 +78,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
 
     const actions = [
         'TICKET_CREATED', 'TICKET_STATUS_UPDATE', 'TICKET_URGENCY_UPDATE',
-        'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED',
+        'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED', 'USER_UPDATE',
+        'VENDOR_ADDED', 'VENDOR_UPDATED', 'VENDOR_DELETED',
         'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN',
         'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED',
         'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED',
@@ -371,6 +372,24 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} updated user ${target} in ${tenantName}${changeStr}`
                     : `${actor} עדכן את משתמש הניהול ${target} בבניין ${tenantName}${changeStr}`;
+            }
+            case 'VENDOR_ADDED': {
+                const vName = log.details?.fullName || log.details?.vendorId || '';
+                return isEn
+                    ? `${actor} added service vendor ${vName} to ${tenantName}`
+                    : `${actor} הוסיף/ה איש שירות חדש: ${vName} עבור ${tenantName}`;
+            }
+            case 'VENDOR_UPDATED': {
+                const vName = log.details?.fullName || log.details?.vendorId || '';
+                return isEn
+                    ? `${actor} updated service vendor ${vName} in ${tenantName}`
+                    : `${actor} עדכן/ה את איש השירות ${vName} עבור ${tenantName}`;
+            }
+            case 'VENDOR_DELETED': {
+                const vName = log.details?.fullName || log.details?.vendorId || '';
+                return isEn
+                    ? `${actor} removed service vendor ${vName} from ${tenantName}`
+                    : `${actor} הסיר/ה את איש השירות ${vName} עבור ${tenantName}`;
             }
             case 'LOGIN':
                 return isEn ? `${actor} logged in` : `${actor} התחבר למערכת`;
