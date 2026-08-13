@@ -22,6 +22,8 @@ interface AdminNavbarProps {
   isSuper?: boolean;
   isEn?: boolean;
   onOpenHelp?: () => void;
+  dashboardCount?: number;
+  backlogCount?: number;
 }
 
 export function AdminNavbar({
@@ -31,7 +33,9 @@ export function AdminNavbar({
   myTenants = [],
   isSuper = false,
   isEn = false,
-  onOpenHelp
+  onOpenHelp,
+  dashboardCount,
+  backlogCount
 }: AdminNavbarProps) {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -49,18 +53,26 @@ export function AdminNavbar({
     navigate(`/admin/${newTenantId}/${currentPage}`);
   };
 
-  const navItems = [
+  const navItems: {
+    id: 'dashboard' | 'backlog' | 'settings';
+    label: string;
+    path: string;
+    icon: typeof LayoutDashboard;
+    count?: number;
+  }[] = [
     {
       id: 'dashboard',
       label: isEn ? 'Dashboard' : 'דשבורד',
       path: `/admin/${tenantId}/dashboard`,
       icon: LayoutDashboard,
+      count: dashboardCount,
     },
     {
       id: 'backlog',
       label: isEn ? 'Tasks Backlog' : 'מצבור משימות',
       path: `/admin/${tenantId}/backlog`,
       icon: ListTodo,
+      count: backlogCount,
     },
     {
       id: 'settings',
@@ -133,6 +145,17 @@ export function AdminNavbar({
                 >
                   <Icon size={16} />
                   <span>{item.label}</span>
+                  {typeof item.count === 'number' && (
+                    <span
+                      className={`ms-1.5 px-2 py-0.5 rounded-full text-xs font-extrabold transition-colors ${
+                        isActive
+                          ? 'bg-white/25 text-white'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700/80'
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -243,14 +266,27 @@ export function AdminNavbar({
                     key={item.id}
                     to={item.path}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-base font-bold transition-all ${
+                    className={`flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold transition-all ${
                       isActive
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
                         : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     }`}
                   >
-                    <Icon size={20} />
-                    <span>{item.label}</span>
+                    <div className="flex items-center gap-3">
+                      <Icon size={20} />
+                      <span>{item.label}</span>
+                    </div>
+                    {typeof item.count === 'number' && (
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold ${
+                          isActive
+                            ? 'bg-white/25 text-white'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
+                        }`}
+                      >
+                        {item.count}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

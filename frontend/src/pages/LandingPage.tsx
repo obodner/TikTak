@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  X, 
-  Clock, 
-  Smile, 
-  AlertCircle, 
+import {
+  ArrowLeft,
+  ArrowRight,
+  X,
+  Clock,
+  Smile,
+  AlertCircle,
   Send,
   MapPin,
   Phone,
@@ -120,7 +120,7 @@ export default function LandingPage() {
       setSubmitError(isRtl ? 'אנא מלא את כל השדות' : 'Please fill in all fields');
       return;
     }
-    
+
     // Simple phone validation
     if (!/^0\d{8,9}$/.test(phoneNumber.replace(/\D/g, ''))) {
       setSubmitError(isRtl ? 'מספר טלפון לא תקין' : 'Invalid phone number');
@@ -157,8 +157,8 @@ export default function LandingPage() {
   };
 
   return (
-    <div 
-      className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans selection:bg-blue-600 selection:text-white" 
+    <div
+      className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans selection:bg-blue-600 selection:text-white"
       dir={isRtl ? 'rtl' : 'ltr'}
     >
       {/* 1. NAVIGATION BAR */}
@@ -173,51 +173,45 @@ export default function LandingPage() {
 
           {/* Center Links (Desktop only) */}
           <div className="hidden lg:flex items-center gap-8 font-semibold text-sm text-slate-600">
-            <button 
-              onClick={() => scrollToSection('how-it-works')} 
-              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${
-                activeSection === 'how-it-works' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
-              }`}
+            <button
+              onClick={() => scrollToSection('how-it-works')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'how-it-works' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
             >
               {isRtl ? 'איך זה עובד' : 'How it works'}
             </button>
-            <button 
-              onClick={() => scrollToSection('dashboard')} 
-              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${
-                activeSection === 'dashboard' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
-              }`}
+            <button
+              onClick={() => scrollToSection('dashboard')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'dashboard' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
             >
               {isRtl ? 'ממשק המנהל' : 'Management interface'}
             </button>
-            <button 
-              onClick={() => scrollToSection('features')} 
-              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${
-                activeSection === 'features' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
-              }`}
+            <button
+              onClick={() => scrollToSection('features')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'features' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
             >
               {isRtl ? 'פיצ׳רים' : 'Features'}
             </button>
-            <button 
-              onClick={() => scrollToSection('about')} 
-              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${
-                activeSection === 'about' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
-              }`}
+            <button
+              onClick={() => scrollToSection('about')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'about' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
             >
               {t('landing_nav_about') || (isRtl ? 'הסיפור שלנו' : 'About')}
             </button>
-            <button 
-              onClick={() => scrollToSection('pricing')} 
-              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${
-                activeSection === 'pricing' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
-              }`}
+            <button
+              onClick={() => scrollToSection('pricing')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'pricing' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
             >
               {isRtl ? 'מחירים' : 'Pricing'}
             </button>
-            <button 
-              onClick={() => scrollToSection('faq')} 
-              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${
-                activeSection === 'faq' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
-              }`}
+            <button
+              onClick={() => scrollToSection('faq')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'faq' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
             >
               {t('landing_nav_faq') || (isRtl ? 'שאלות נפוצות' : 'FAQ')}
             </button>
@@ -225,7 +219,7 @@ export default function LandingPage() {
 
           {/* Left CTAs */}
           <div className="flex items-center gap-4 shrink-0">
-            <button 
+            <button
               onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
               className="bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 text-sm font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-blue-600/10 hover:shadow-blue-600/20 active:scale-95 text-center"
             >
@@ -255,13 +249,13 @@ export default function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start pt-2">
-              <button 
+              <button
                 onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
                 className="bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 text-base font-semibold px-8 py-4 rounded-2xl shadow-xl shadow-blue-600/20 active:scale-95 transition-all text-center cursor-pointer"
               >
                 {t('landing_hero_cta_primary') || 'להתחלת פיילוט בחינם'}
               </button>
-              <button 
+              <button
                 onClick={() => scrollToSection('how-it-works')}
                 className="bg-white border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 text-base font-extrabold px-8 py-4 rounded-2xl active:scale-95 transition-all text-center cursor-pointer"
               >
@@ -282,7 +276,7 @@ export default function LandingPage() {
               {/* Inner Screen */}
               {/* Inner Screen */}
               <div className="w-full h-full bg-slate-900 rounded-[40px] overflow-hidden flex flex-col relative border border-slate-900 select-none">
-                
+
                 {/* Step 0: Picture Screen (picture.jpeg) with bottom tap animation */}
                 {chatStep === 0 && (
                   <div className="absolute inset-0 z-30 bg-white">
@@ -337,22 +331,22 @@ export default function LandingPage() {
 
                 {/* Chat Message Window */}
                 <div className="flex-1 p-2.5 flex flex-col gap-2 overflow-y-auto bg-[#ECE5DD]/90 text-[9px] leading-snug font-sans select-none">
-                  
+
                   {chatStep === 3 && (
                     <div className="self-start bg-white text-slate-800 p-2 rounded-xl rounded-tl-none shadow-sm max-w-[90%] border-r-4 border-red-500 animate-in slide-in-from-bottom-2 duration-300">
                       <span className="text-[7px] font-black text-red-600 block mb-1">📢 התקבל בוועד (מנהל)</span>
                       <div className="font-medium">
-                        התקבל דיווח חדש במערכת <strong><em>TikTak</em></strong> עבור וועד מקומי דמו 🚨<br/>
-                        <br/>
-                        <strong>מספר דיווח</strong>: #61<br/>
-                        <strong>קטגוריה</strong>: ביוב ונזילות<br/>
-                        <strong>דחיפות</strong>: גבוהה 🚨<br/>
-                        <strong>תיאור</strong>: ליד המט"ש בדרך ההקפית יש הצפה של ביוב וכל השכונה סובלת מהריח.<br/>
-                        <strong>אזור</strong>: מתקן טיהור שפכים<br/>
-                        <strong>שם המדווח</strong>: ישראל ישראלי<br/>
-                        <br/>
-                        <span className="text-slate-400">---------------</span><br/>
-                        תודה, צוות <strong><em>TikTak</em></strong>!<br/>
+                        התקבל דיווח חדש במערכת <strong><em>TikTak</em></strong> עבור וועד מקומי דמו 🚨<br />
+                        <br />
+                        <strong>מספר דיווח</strong>: #61<br />
+                        <strong>קטגוריה</strong>: ביוב ונזילות<br />
+                        <strong>דחיפות</strong>: גבוהה 🚨<br />
+                        <strong>תיאור</strong>: ליד המט"ש בדרך ההקפית יש הצפה של ביוב וכל השכונה סובלת מהריח.<br />
+                        <strong>אזור</strong>: מתקן טיהור שפכים<br />
+                        <strong>שם המדווח</strong>: ישראל ישראלי<br />
+                        <br />
+                        <span className="text-slate-400">---------------</span><br />
+                        תודה, צוות <strong><em>TikTak</em></strong>!<br />
                         <span className="text-slate-400">---------------</span>
                       </div>
                       <span className="text-[6px] text-slate-400 block text-left mt-0.5">17:52</span>
@@ -365,42 +359,42 @@ export default function LandingPage() {
                       <div className="self-end bg-[#DCF8C6] text-slate-800 p-2 rounded-xl rounded-tr-none shadow-sm max-w-[85%] border-l-4 border-blue-500 animate-in slide-in-from-bottom-2 duration-300">
                         <span className="text-[7px] font-black text-blue-600 block mb-1">💬 נשלח למדווח (דייר)</span>
                         <div className="font-medium">
-                          הסטטוס של הדיווח שלך (#61) בנושא "ביוב ונזילות" <strong>אזור</strong>: מתקן טיהור שפכים נרשם במערכת ועודכן לסטטוס: <strong>חדש</strong>.<br/>
-                          <br/>
+                          הסטטוס של הדיווח שלך (#61) בנושא "ביוב ונזילות" <strong>אזור</strong>: מתקן טיהור שפכים נרשם במערכת ועודכן לסטטוס: <strong>חדש</strong>.<br />
+                          <br />
                           תודה, צוות <em><strong>TikTak</strong></em>!
                         </div>
                         <span className="text-[6px] text-slate-400 block text-right mt-0.5">17:52</span>
                       </div>
 
                       {/* Reporter Message 2: In Progress (Delayed 1.5s) */}
-                      <div 
+                      <div
                         className="self-end bg-[#DCF8C6] text-slate-800 p-2 rounded-xl rounded-tr-none shadow-sm max-w-[85%] border-l-4 border-amber-500 animate-in slide-in-from-bottom-2 duration-300"
                         style={{ animationDelay: '1500ms', animationFillMode: 'backwards' }}
                       >
                         <span className="text-[7px] font-black text-amber-600 block mb-1">💬 עדכון למדווח (כעבור שעה)</span>
                         <div className="font-medium">
-                          <strong>היי, אנחנו על זה!</strong><br/>
-                          <br/>
-                          הדיווח שלך (#61) בנושא "ביוב ונזילות" <strong>אזור</strong>: מתקן טיהור שפכים כרגע בטיפול.<br/>
-                          נעדכן כשיסתיים.<br/>
-                          <br/>
+                          <strong>היי, אנחנו על זה!</strong><br />
+                          <br />
+                          הדיווח שלך (#61) בנושא "ביוב ונזילות" <strong>אזור</strong>: מתקן טיהור שפכים כרגע בטיפול.<br />
+                          נעדכן כשיסתיים.<br />
+                          <br />
                           תודה, צוות <em><strong>TikTak</strong></em>!
                         </div>
                         <span className="text-[6px] text-slate-400 block text-right mt-0.5">18:52</span>
                       </div>
 
                       {/* Reporter Message 3: Resolved (Delayed 3.0s) */}
-                      <div 
+                      <div
                         className="self-end bg-[#DCF8C6] text-slate-800 p-2 rounded-xl rounded-tr-none shadow-sm max-w-[85%] border-l-4 border-green-500 animate-in slide-in-from-bottom-2 duration-300"
                         style={{ animationDelay: '3000ms', animationFillMode: 'backwards' }}
                       >
                         <span className="text-[7px] font-black text-green-600 block mb-1">💬 עדכון למדווח (כעבור יומיים)</span>
                         <div className="font-medium">
-                          <strong>חדשות טובות!</strong><br/>
-                          <br/>
-                          הדיווח שלך (#61) בנושא "ביוב ונזילות" ב- <strong>אזור</strong>: מתקן טיהור שפכים סומן כטופל (סיבת סגירה: טופל (טכנאי הוזמן למקום וטיפל בבעיה)).<br/>
-                          תודה שעזרת לשמור על הבית! ✅<br/>
-                          <br/>
+                          <strong>חדשות טובות!</strong><br />
+                          <br />
+                          הדיווח שלך (#61) בנושא "ביוב ונזילות" ב- <strong>אזור</strong>: מתקן טיהור שפכים סומן כטופל (סיבת סגירה: טופל (טכנאי הוזמן למקום וטיפל בבעיה)).<br />
+                          תודה שעזרת לשמור על הבית! ✅<br />
+                          <br />
                           תודה, צוות <em><strong>TikTak</strong></em>!
                         </div>
                         <span className="text-[6px] text-slate-400 block text-right mt-0.5">יומיים לאחר מכן</span>
@@ -452,7 +446,7 @@ export default function LandingPage() {
 
           {/* Steps Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-4 lg:gap-8 relative">
-            
+
             {/* Step 1 */}
             <div className="flex flex-col items-center text-center group">
               <div className="w-full max-w-[240px] aspect-[9/16] rounded-3xl bg-slate-950 p-2 shadow-lg border-2 border-slate-800 overflow-hidden mb-6 relative hover:scale-[1.02] transition-transform duration-300">
@@ -531,14 +525,14 @@ export default function LandingPage() {
                 <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
                 <span>קבוצת וואטסאפ שכונתית כאוטית</span>
               </div>
-              
+
               <div className="space-y-3 pt-6 text-xs">
                 {/* Complaint 1 */}
                 <div className="bg-white p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[90%] self-end mr-auto text-right">
                   <span className="font-extrabold text-blue-600 block text-[10px]">שכן א׳ - קומה 4</span>
                   <p className="font-medium text-slate-700">האור בלובי שרוף כבר שבוע!!! מישהו מטפל בזה??</p>
                 </div>
-                
+
                 {/* Complaint 2 */}
                 <div className="bg-white p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[90%] self-end mr-auto text-right">
                   <span className="font-extrabold text-purple-600 block text-[10px]">שכנה ב׳ - דירה 12</span>
@@ -581,7 +575,7 @@ export default function LandingPage() {
                 </div>
 
                 {/* Dashboard Screen Image */}
-                <div 
+                <div
                   className="w-full aspect-[16/9] overflow-hidden select-none bg-slate-100 cursor-zoom-in"
                   onClick={() => setIsDashboardLightboxOpen(true)}
                 >
@@ -717,125 +711,370 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center flex flex-col items-center mb-10">
             <span className="bg-blue-100 text-blue-700 text-sm md:text-base px-6 py-2 rounded-full font-black uppercase tracking-wider mb-4">
-              {isRtl ? 'חבילות ומחירים' : 'Pricing & Tiers'}
+              {isRtl ? 'חבילות ומכסות פניות' : 'Pricing & Quotas'}
             </span>
-            <h2 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tight">
-              {isRtl ? 'מסלול שמתאים בדיוק לגוף שלכם' : 'A plan that fits your community'}
+            <h2 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tight mb-3">
+              {isRtl ? 'תמחור הוגן ושקוף לפי שימוש בפועל' : 'Fair, Usage-Based Pricing'}
             </h2>
+            <p className="text-slate-600 text-lg md:text-xl font-bold max-w-3xl">
+              {isRtl
+                ? 'ללא חיוב שרירותי לפי דירות. משלמים רק על נפח פניות התחזוקה האמיתי בבניין שלכם.'
+                : 'No arbitrary per-unit fees. Pay strictly for your building’s actual maintenance volume.'}
+            </p>
           </div>
 
           {/* Toggle Switcher */}
           <div className="flex flex-col items-center justify-center gap-3 mb-10">
-            <div className="flex items-center gap-4 bg-slate-100 p-2 rounded-2xl border border-slate-200/60 shadow-inner">
+            <div className="flex items-center gap-3 bg-slate-100 p-2 rounded-2xl border border-slate-200/80 shadow-inner">
               <button
                 type="button"
                 onClick={() => setIsAnnual(false)}
-                className={`px-6 py-3 rounded-xl text-base md:text-lg font-black transition-all cursor-pointer ${
-                  !isAnnual 
-                    ? 'bg-white text-blue-600 shadow-md shadow-blue-600/10' 
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                className={`px-6 py-3 rounded-xl text-base md:text-lg font-black transition-all cursor-pointer ${!isAnnual
+                  ? 'bg-white text-blue-600 shadow-md shadow-blue-600/10'
+                  : 'text-slate-500 hover:text-slate-800'
+                  }`}
               >
                 {isRtl ? 'מחיר חודשי' : 'Monthly Price'}
               </button>
               <button
                 type="button"
                 onClick={() => setIsAnnual(true)}
-                className={`px-6 py-3 rounded-xl text-base md:text-lg font-black transition-all cursor-pointer ${
-                  isAnnual 
-                    ? 'bg-white text-blue-600 shadow-md shadow-blue-600/10' 
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                className={`px-6 py-3 rounded-xl text-base md:text-lg font-black transition-all cursor-pointer ${isAnnual
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
-                {isRtl ? 'מחיר שנתי (20% הנחה)' : 'Annual Price (20% Off)'}
+                {isRtl ? 'מחיר שנתי (חודשיים במתנה!)' : 'Annual Price (2 Months Free!)'}
               </button>
             </div>
             <p className="text-sm text-slate-500 font-bold text-center">
-              {isRtl 
-                ? 'שימו לב: המחיר השנתי כולל הנחה של 20% ממחיר המחירון' 
-                : 'Note: The annual price includes a 20% discount off the list price'}
+              {isAnnual
+                ? (isRtl
+                  ? 'מנוי שנתי: משלמים על 10 חודשים בלבד ומקבלים 12 חודשי שירות מלאים'
+                  : 'Annual subscription: Pay for 10 months and receive 12 full months of service')
+                : (isRtl
+                  ? 'מנוי חודשי גמיש ללא התחייבות - ניתן לשדרוג או שינוי בכל עת'
+                  : 'Flexible monthly subscription with no long-term lock-in')}
             </p>
           </div>
 
-          {/* Pricing Table */}
-          <div className="max-w-md mx-auto overflow-hidden bg-white border-[3px] border-blue-900 rounded-2xl shadow-[4px_4px_0px_0px_#1e3a8a]">
+          {/* Desktop & Tablet Pricing Table */}
+          <div className="hidden md:block overflow-hidden bg-white border-[3px] border-blue-900 rounded-3xl shadow-[6px_6px_0px_0px_#1e3a8a] mb-12">
             <table className="w-full border-collapse text-right" dir={isRtl ? 'rtl' : 'ltr'}>
               <thead>
                 <tr className="bg-blue-900 text-white">
                   <th className={`px-6 py-4.5 text-base md:text-lg font-black ${isRtl ? 'text-right border-l-[2px] border-blue-800' : 'text-left border-r-[2px] border-blue-800'}`}>
-                    {isRtl ? 'מסלול' : 'Tier'}
+                    {isRtl ? 'מסלול מורשה' : 'Tier License'}
+                  </th>
+                  <th className={`px-6 py-4.5 text-base md:text-lg font-black ${isRtl ? 'text-right border-l-[2px] border-blue-800' : 'text-left border-r-[2px] border-blue-800'}`}>
+                    {isAnnual ? (isRtl ? 'מחיר שנתי' : 'Annual Price') : (isRtl ? 'מחיר חודשי' : 'Monthly Price')}
+                  </th>
+                  <th className={`px-6 py-4.5 text-base md:text-lg font-black ${isRtl ? 'text-right border-l-[2px] border-blue-800' : 'text-left border-r-[2px] border-blue-800'}`}>
+                    {isRtl ? 'מכסת פניות' : 'Included Tickets'}
+                  </th>
+                  <th className={`px-6 py-4.5 text-base md:text-lg font-black ${isRtl ? 'text-right border-l-[2px] border-blue-800' : 'text-left border-r-[2px] border-blue-800'}`}>
+                    {isRtl ? 'מחיר אפקטיבי' : 'Effective Rate'}
                   </th>
                   <th className={`px-6 py-4.5 text-base md:text-lg font-black ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isAnnual 
-                      ? (isRtl ? 'מחיר שנתי' : 'Annual Price') 
-                      : (isRtl ? 'מחיר חודשי' : 'Monthly Price')}
+                    {isRtl ? 'חריגה (פנייה נוספת)' : 'Overage Fee (Extra)'}
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y-[2px] divide-blue-900 font-bold text-slate-800">
-                <tr className="hover:bg-slate-50/80 transition-colors">
-                  <td className={`px-6 py-4 text-base font-extrabold text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? 'עד 50 יח"ד' : 'Up to 50 units'}
+                {/* Micro Tier */}
+                <tr className="hover:bg-slate-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? 'Micro / סטרטר' : 'Micro / Starter'}
                   </td>
-                  <td className={`px-6 py-4 text-base ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isAnnual ? '₪1790 \\ שנה' : '₪179 \\ חודש'}
+                  <td className={`px-6 py-4.5 text-base font-extrabold ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isAnnual ? '₪990 / שנה' : '₪99 / חודש'}
                   </td>
-                </tr>
-                <tr className="hover:bg-slate-50/80 transition-colors">
-                  <td className={`px-6 py-4 text-base font-extrabold text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? '51-100 יח"ד' : '51-100 units'}
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? '15 פניות / חודש' : '15 tickets / mo'}
                   </td>
-                  <td className={`px-6 py-4 text-base ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isAnnual ? '₪2790 \\ שנה' : '₪279 \\ חודש'}
+                  <td className={`px-6 py-4.5 text-base ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    ₪6.60
                   </td>
-                </tr>
-                <tr className="hover:bg-slate-50/80 transition-colors">
-                  <td className={`px-6 py-4 text-base font-extrabold text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? '101-200 יח"ד' : '101-200 units'}
-                  </td>
-                  <td className={`px-6 py-4 text-base ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isAnnual ? '₪4490 \\ שנה' : '₪449 \\ חודש'}
+                  <td className={`px-6 py-4.5 text-base text-amber-700 font-extrabold ${isRtl ? 'text-right' : 'text-left'}`}>
+                    {isRtl ? '₪12.00 / פנייה' : '₪12.00 / ticket'}
                   </td>
                 </tr>
-                <tr className="hover:bg-slate-50/80 transition-colors">
-                  <td className={`px-6 py-4 text-base font-extrabold text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? '201-350 יח"ד' : '201-350 units'}
+
+                {/* Basic Tier */}
+                <tr className="hover:bg-slate-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? 'Basic / בסיסי' : 'Basic'}
                   </td>
-                  <td className={`px-6 py-4 text-base ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isAnnual ? '₪6490 \\ שנה' : '₪649 \\ חודש'}
+                  <td className={`px-6 py-4.5 text-base font-extrabold ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isAnnual ? '₪1,990 / שנה' : '₪199 / חודש'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? '35 פניות / חודש' : '35 tickets / mo'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    ₪5.68
+                  </td>
+                  <td className={`px-6 py-4.5 text-base text-amber-700 font-extrabold ${isRtl ? 'text-right' : 'text-left'}`}>
+                    {isRtl ? '₪10.00 / פנייה' : '₪10.00 / ticket'}
                   </td>
                 </tr>
-                <tr className="hover:bg-slate-50/80 transition-colors">
-                  <td className={`px-6 py-4 text-base font-extrabold text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? '351-500 יח"ד' : '351-500 units'}
+
+                {/* Standard Tier (Popular Highlight) */}
+                <tr className="bg-blue-50/70 hover:bg-blue-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 flex items-center gap-2 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    <span>{isRtl ? 'Standard / סטנדרט' : 'Standard'}</span>
+                    <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-extrabold">
+                      {isRtl ? 'פופולרי 🔥' : 'Popular 🔥'}
+                    </span>
                   </td>
-                  <td className={`px-6 py-4 text-base ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isAnnual ? '₪8990 \\ שנה' : '₪899 \\ חודש'}
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-900 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isAnnual ? '₪3,990 / שנה' : '₪399 / חודש'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? '80 פניות / חודש' : '80 tickets / mo'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    ₪4.98
+                  </td>
+                  <td className={`px-6 py-4.5 text-base text-amber-700 font-extrabold ${isRtl ? 'text-right' : 'text-left'}`}>
+                    {isRtl ? '₪8.00 / פנייה' : '₪8.00 / ticket'}
                   </td>
                 </tr>
-                <tr className="hover:bg-slate-50/80 transition-colors">
-                  <td className={`px-6 py-4 text-base font-extrabold text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? '500+ יח"ד' : '500+ units'}
+
+                {/* Growth Tier */}
+                <tr className="hover:bg-slate-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? 'Growth / צמיחה' : 'Growth'}
                   </td>
-                  <td className={`px-6 py-4 text-base text-slate-500 ${isRtl ? 'text-right' : 'text-left'}`}>
-                    {isRtl ? 'תמחור מותאם אישית' : 'Custom pricing'}
+                  <td className={`px-6 py-4.5 text-base font-extrabold ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isAnnual ? '₪6,990 / שנה' : '₪699 / חודש'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? '160 פניות / חודש' : '160 tickets / mo'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    ₪4.36
+                  </td>
+                  <td className={`px-6 py-4.5 text-base text-amber-700 font-extrabold ${isRtl ? 'text-right' : 'text-left'}`}>
+                    {isRtl ? '₪7.00 / פנייה' : '₪7.00 / ticket'}
+                  </td>
+                </tr>
+
+                {/* Enterprise Tier */}
+                <tr className="hover:bg-slate-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? 'Enterprise / ארגוני' : 'Enterprise'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base font-extrabold ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isAnnual ? '₪11,990 / שנה' : '₪1,199 / חודש'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? '300 פניות / חודש' : '300 tickets / mo'}
+                  </td>
+                  <td className={`px-6 py-4.5 text-base ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    ₪3.99
+                  </td>
+                  <td className={`px-6 py-4.5 text-base text-amber-700 font-extrabold ${isRtl ? 'text-right' : 'text-left'}`}>
+                    {isRtl ? '₪5.50 / פנייה' : '₪5.50 / ticket'}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          {/* Table Footnote */}
-          <div className="max-w-md mx-auto mt-3 text-slate-500 text-xs font-bold px-1 text-start" dir={isRtl ? 'rtl' : 'ltr'}>
-            {isRtl ? '* יח"ד = יחידות דיור' : '* Units = Housing Units'}
+          {/* Mobile Pricing Cards View (Visible only on mobile) */}
+          <div className="block md:hidden space-y-6 mb-12">
+            {[
+              {
+                id: 'micro',
+                nameHe: 'Micro / סטרטר',
+                nameEn: 'Micro / Starter',
+                mFee: '₪99',
+                aFee: '₪990',
+                quota: '15',
+                effective: '₪6.60',
+                overage: '₪12.00',
+                popular: false,
+              },
+              {
+                id: 'basic',
+                nameHe: 'Basic / בסיסי',
+                nameEn: 'Basic',
+                mFee: '₪199',
+                aFee: '₪1,990',
+                quota: '35',
+                effective: '₪5.68',
+                overage: '₪10.00',
+                popular: false,
+              },
+              {
+                id: 'standard',
+                nameHe: 'Standard / סטנדרט',
+                nameEn: 'Standard',
+                mFee: '₪399',
+                aFee: '₪3,990',
+                quota: '80',
+                effective: '₪4.98',
+                overage: '₪8.00',
+                popular: true,
+              },
+              {
+                id: 'growth',
+                nameHe: 'Growth / צמיחה',
+                nameEn: 'Growth',
+                mFee: '₪699',
+                aFee: '₪6,990',
+                quota: '160',
+                effective: '₪4.36',
+                overage: '₪7.00',
+                popular: false,
+              },
+              {
+                id: 'enterprise',
+                nameHe: 'Enterprise / ארגוני',
+                nameEn: 'Enterprise',
+                mFee: '₪1,199',
+                aFee: '₪11,990',
+                quota: '300',
+                effective: '₪3.99',
+                overage: '₪5.50',
+                popular: false,
+              },
+            ].map((t) => (
+              <div
+                key={t.id}
+                className={`bg-white rounded-3xl p-6 border-[3px] shadow-lg ${t.popular
+                  ? 'border-blue-600 ring-2 ring-blue-600/30'
+                  : 'border-slate-800'
+                  }`}
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-black text-slate-900">
+                    {isRtl ? t.nameHe : t.nameEn}
+                  </h3>
+                  {t.popular && (
+                    <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-black">
+                      {isRtl ? 'הכי פופולרי 🔥' : 'Most Popular 🔥'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-200/80">
+                  <div className="text-3xl font-black text-blue-900">
+                    {isAnnual ? `${t.aFee} / שנה` : `${t.mFee} / חודש`}
+                  </div>
+                </div>
+
+                <div className="space-y-3 font-bold text-sm text-slate-700 mb-6">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                    <span className="text-slate-500">{isRtl ? 'מכסת פניות חודשית:' : 'Monthly Quota:'}</span>
+                    <span className="text-blue-700 font-extrabold text-base">{t.quota} {isRtl ? 'פניות' : 'tickets'}</span>
+                  </div>
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                    <span className="text-slate-500">{isRtl ? 'מחיר אפקטיבי לפנייה:' : 'Effective Rate / Ticket:'}</span>
+                    <span>{t.effective}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">{isRtl ? 'מחיר פניית חריגה:' : 'Overage Fee:'}</span>
+                    <span className="text-amber-700 font-extrabold">{t.overage} {isRtl ? 'לפנייה' : '/ ticket'}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
+                  className={`w-full py-3.5 rounded-2xl font-black transition-all text-center cursor-pointer ${t.popular
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
+                    }`}
+                >
+                  {isRtl ? 'להתחלת פיילוט בחינם' : 'Start Free Pilot'}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* 3 Safeguards & Buffer Cards (from PRD) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12" dir={isRtl ? 'rtl' : 'ltr'}>
+            {/* Card 1: 5-Ticket Buffer */}
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-blue-100 text-blue-700 rounded-2xl flex items-center justify-center text-2xl mb-4 font-black">
+                🛡️
+              </div>
+              <h4 className="text-xl font-black text-slate-900 mb-2">
+                {isRtl ? 'חוצץ הגנה חם: 5 פניות במתנה' : '5-Ticket Safety Buffer'}
+              </h4>
+              <p className="text-slate-600 text-sm font-bold leading-relaxed">
+                {isRtl
+                  ? 'חורגים מעט במכסה? 5 הפניות הראשונות מעבר למכסה הן ללא כל חיוב (₪0 חריגה)! חיוב חריגה רטרואקטיבי יחול רק בהגעה לפנייה ה-6 מעבר למכסה.'
+                  : 'Slight monthly spike? Your first 5 tickets beyond quota are completely free (₪0 grace zone). Overage applies only from ticket 6+ above quota.'}
+              </p>
+            </div>
+
+            {/* Card 2: AI Flood & Non-Billable Safeguard */}
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-green-100 text-green-700 rounded-2xl flex items-center justify-center text-2xl mb-4 font-black">
+                🤖
+              </div>
+              <h4 className="text-xl font-black text-slate-900 mb-2">
+                {isRtl ? 'הגנת כפילויות וסינון AI' : 'Zero-Waste & AI Merging'}
+              </h4>
+              <p className="text-slate-600 text-sm font-bold leading-relaxed">
+                {isRtl
+                  ? 'אין חיובי סרק! דיווחים שסומנו ככפילות, מחוץ לאחריות או בדיקה מנוכים מהמכסה מידית. בנוסף, מנוע AI מזהה וממזג אוטומטית דיווחים כפולים תוך 10 דקות.'
+                  : 'Zero waste! Duplicate, test, or out-of-scope tickets marked by admins are credited back. AI auto-merges duplicate resident reports within 10 mins.'}
+              </p>
+            </div>
+
+            {/* Card 3: 20% Rollover */}
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center text-2xl mb-4 font-black">
+                🔄
+              </div>
+              <h4 className="text-xl font-black text-slate-900 mb-2">
+                {isRtl ? 'צבירת 20% פניות שלא נוצלו' : '20% Rollover Allowance'}
+              </h4>
+              <p className="text-slate-600 text-sm font-bold leading-relaxed">
+                {isRtl
+                  ? 'היה חודש שקט ולא ניצלתם את כל מכסת הפניות? עד 20% מהמכסה שלא נוצלה עוברים איתכם באופן אוטומטי כיתרה לשימוש בחודש העוקב!'
+                  : 'Quiet month with unused tickets? Up to 20% of your unused quota automatically rolls over to protect your budget in the following month!'}
+              </p>
+            </div>
+          </div>
+
+          {/* Enterprise Pool Banner */}
+          <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-3xl p-8 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="bg-blue-500/30 text-blue-200 text-xs px-3 py-1 rounded-full font-black uppercase">
+                  {isRtl ? 'לחברות ניהול ויישובים' : 'For Property Managers & Towns'}
+                </span>
+              </div>
+              <h4 className="text-2xl md:text-3xl font-black tracking-tight mb-2">
+                {isRtl ? 'בנק פניות משותף (Master Quota Pool)' : 'Shared Master Quota Pooling'}
+              </h4>
+              <p className="text-blue-100 text-sm md:text-base font-bold max-w-2xl">
+                {isRtl
+                  ? 'ניהול מרובה בניינים או מתחמים? במסלול Enterprise ניתן לשתף בנק פניות מרכזי בין כל הבניינים בצי, תוך שמירה על הפרדת נתונים מלאה לכל מבנה.'
+                  : 'Managing multiple buildings? Enterprise tier allows configuring a central Master Quota Pool shared across all buildings with full data isolation.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
+              className="bg-white text-blue-900 hover:bg-blue-50 font-black px-8 py-4 rounded-2xl shadow-lg transition-all text-center cursor-pointer whitespace-nowrap active:scale-95"
+            >
+              {isRtl ? 'לשיחת ייעוץ והתאמה' : 'Contact Enterprise Sales'}
+            </button>
           </div>
 
           <div className="mt-12 text-center">
-            <button 
+            <button
               onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-4 rounded-2xl shadow-xl shadow-blue-600/20 active:scale-95 transition-all text-center cursor-pointer inline-flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-black text-lg px-10 py-5 rounded-2xl shadow-xl shadow-blue-600/20 active:scale-95 transition-all text-center cursor-pointer inline-flex items-center gap-2"
             >
-              <span>{isRtl ? 'להתחלת פיילוט בחינם' : 'Start Free Pilot'}</span>
+              <span>{isRtl ? 'להתחלת פיילוט חינם ל-30 יום' : 'Start 30-Day Free Pilot'}</span>
             </button>
           </div>
         </div>
@@ -862,11 +1101,10 @@ export default function LandingPage() {
             ].map((faq, index) => {
               const isOpen = openFaqIndex === index;
               return (
-                <div 
-                  key={index} 
-                  className={`border-b transition-all duration-300 ${
-                    isOpen ? 'border-blue-600' : 'border-slate-100'
-                  } last:border-b-0`}
+                <div
+                  key={index}
+                  className={`border-b transition-all duration-300 ${isOpen ? 'border-blue-600' : 'border-slate-100'
+                    } last:border-b-0`}
                 >
                   <button
                     onClick={() => setOpenFaqIndex(isOpen ? null : index)}
@@ -878,9 +1116,8 @@ export default function LandingPage() {
                     </span>
                   </button>
                   <div
-                    className={`transition-all duration-300 overflow-hidden ${
-                      isOpen ? 'max-h-96 pb-6 opacity-100' : 'max-h-0 opacity-0'
-                    }`}
+                    className={`transition-all duration-300 overflow-hidden ${isOpen ? 'max-h-96 pb-6 opacity-100' : 'max-h-0 opacity-0'
+                      }`}
                   >
                     <p className="text-base text-slate-600 leading-relaxed">
                       {faq.a}
@@ -897,15 +1134,15 @@ export default function LandingPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           {/* Blur Backdrop */}
-          <div 
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
             onClick={() => { if (!isSubmitting) setIsModalOpen(false); }}
           />
 
           {/* Modal Container */}
           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-100">
             {/* Close Button */}
-            <button 
+            <button
               onClick={() => setIsModalOpen(false)}
               disabled={isSubmitting}
               className="absolute top-4 left-4 p-2 rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors z-10 cursor-pointer"
@@ -937,7 +1174,7 @@ export default function LandingPage() {
                     <label className="block text-slate-600 mr-1">{t('landing_modal_name') || 'שם מלא'}</label>
                     <div className="relative">
                       <User size={16} className="absolute right-3.5 top-3.5 text-slate-400" />
-                      <input 
+                      <input
                         type="text"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
@@ -954,21 +1191,21 @@ export default function LandingPage() {
                       {t('landing_modal_type') || 'סוג הגוף המנהל'}
                     </label>
                     <div className="grid grid-cols-3 gap-2">
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setLeadType('building')}
                         className={`py-3 rounded-xl border text-center text-xs font-black transition-all cursor-pointer ${leadType === 'building' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
                       >
                         {isRtl ? 'ועד בית' : 'Committee'}
                       </button>
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setLeadType('company')}
                         className={`py-3 rounded-xl border text-center text-xs font-black transition-all cursor-pointer ${leadType === 'company' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
                       >
                         {isRtl ? 'חברת ניהול' : 'Company'}
                       </button>
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setLeadType('settlement')}
                         className={`py-3 rounded-xl border text-center text-xs font-black transition-all cursor-pointer ${leadType === 'settlement' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
@@ -985,7 +1222,7 @@ export default function LandingPage() {
                     </label>
                     <div className="relative">
                       <MapPin size={16} className="absolute right-3.5 top-3.5 text-slate-400" />
-                      <input 
+                      <input
                         type="text"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
@@ -1003,7 +1240,7 @@ export default function LandingPage() {
                     </label>
                     <div className="relative">
                       <Phone size={16} className="absolute right-3.5 top-3.5 text-slate-400" />
-                      <input 
+                      <input
                         type="tel"
                         value={phoneNumber}
                         onChange={(e) => setPhoneNumber(e.target.value.replace(/[^\d-]/g, ''))}
@@ -1015,7 +1252,7 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                <button 
+                <button
                   type="submit"
                   disabled={isSubmitting}
                   className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-600/10 active:scale-95 transition-all text-center cursor-pointer disabled:opacity-50"
@@ -1036,7 +1273,7 @@ export default function LandingPage() {
                     {t('landing_modal_success') || 'ההרשמה נקלטה בהצלחה! נציג שלנו יחזור אליך בהקדם לתחילת הפיילוט.'}
                   </p>
                 </div>
-                <button 
+                <button
                   onClick={() => setIsModalOpen(false)}
                   className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold py-3.5 rounded-2xl active:scale-95 transition-all cursor-pointer"
                 >
@@ -1051,28 +1288,27 @@ export default function LandingPage() {
       {/* 10. DASHBOARD LIGHTBOX MODAL */}
       {isDashboardLightboxOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 animate-in fade-in duration-200">
-          <div 
-            className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm cursor-zoom-out" 
+          <div
+            className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm cursor-zoom-out"
             onClick={() => setIsDashboardLightboxOpen(false)}
           />
           <div className="relative max-w-6xl w-full max-h-[90vh] bg-slate-900 rounded-2xl shadow-2xl overflow-auto border border-slate-800 animate-in zoom-in-95 duration-300">
             {/* Close Button */}
-            <button 
+            <button
               onClick={() => setIsDashboardLightboxOpen(false)}
               className="absolute top-4 left-4 p-2 rounded-full bg-slate-950/60 text-slate-300 hover:text-white hover:bg-slate-900 transition-colors z-20 cursor-pointer shadow-lg"
             >
               <X size={20} />
             </button>
             <div className={`p-4 ${isDashboardZoomed ? 'block text-center min-w-max' : 'flex items-center justify-center min-h-[80vh]'}`}>
-              <img 
-                src="/admin_dashboard_preview.png" 
-                alt="TikTak Admin Dashboard Full Size" 
+              <img
+                src="/admin_dashboard_preview.png"
+                alt="TikTak Admin Dashboard Full Size"
                 onClick={() => setIsDashboardZoomed(!isDashboardZoomed)}
-                className={`transition-all duration-300 select-none ${
-                  isDashboardZoomed 
-                    ? 'max-w-none w-[1800px] h-auto cursor-zoom-out mx-auto block' 
-                    : 'w-full h-auto max-h-[80vh] object-contain cursor-zoom-in block'
-                }`} 
+                className={`transition-all duration-300 select-none ${isDashboardZoomed
+                  ? 'max-w-none w-[1800px] h-auto cursor-zoom-out mx-auto block'
+                  : 'w-full h-auto max-h-[80vh] object-contain cursor-zoom-in block'
+                  }`}
               />
             </div>
           </div>
@@ -1082,7 +1318,7 @@ export default function LandingPage() {
       {/* 9. FOOTER */}
       <footer className="bg-slate-900 text-slate-400 py-8 border-t border-slate-950 font-semibold text-sm">
         <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-          
+
           {/* Logo & Slogan */}
           <div className="flex flex-col items-center md:items-start space-y-3">
             <img src="/logo_transparent.png" alt="TikTak" className="h-16 w-auto object-contain brightness-0 invert" />
@@ -1093,8 +1329,8 @@ export default function LandingPage() {
 
           {/* Support Email & Legal */}
           <div className="flex flex-col items-center md:items-end space-y-2">
-            <a 
-              href="mailto:tiktak.report@gmail.com" 
+            <a
+              href="mailto:tiktak.report@gmail.com"
               className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 hover:underline transition-colors"
             >
               <span>tiktak.report@gmail.com</span>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, Outlet, Navigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
 import { AdminNavbar } from './AdminNavbar';
@@ -12,6 +12,8 @@ export interface AdminLayoutContext {
   isSuper: boolean;
   isEn: boolean;
   openHelp: () => void;
+  dashboardCount?: number;
+  backlogCount?: number;
 }
 
 export function AdminLayout() {
@@ -24,6 +26,8 @@ export function AdminLayout() {
   const [isSuper, setIsSuper] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [dashboardCount, setDashboardCount] = useState<number | undefined>(undefined);
+  const [backlogCount, setBacklogCount] = useState<number | undefined>(undefined);
 
   // Determine current active tab from pathname
   const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' => {
@@ -73,6 +77,33 @@ export function AdminLayout() {
     loadLayoutData();
   }, [user, tenantId]);
 
+  // Real-time listener for ticket counters
+  useEffect(() => {
+    if (!user || !tenantId) return;
+
+    const ticketsRef = collection(db, "tenants", tenantId, "tickets");
+    const unsubscribe = onSnapshot(ticketsRef, (snapshot) => {
+      let openCount = 0;
+      let backlogTicketCount = 0;
+
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        if (data.status === 'open') {
+          openCount++;
+        } else if (data.status === 'backlog') {
+          backlogTicketCount++;
+        }
+      });
+
+      setDashboardCount(openCount);
+      setBacklogCount(backlogTicketCount);
+    }, (err) => {
+      console.error("Error listening to tickets for counts:", err);
+    });
+
+    return () => unsubscribe();
+  }, [user, tenantId]);
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-medium">
@@ -97,6 +128,8 @@ export function AdminLayout() {
         isSuper={isSuper}
         isEn={isEn}
         onOpenHelp={() => setIsHelpOpen(true)}
+        dashboardCount={dashboardCount}
+        backlogCount={backlogCount}
       />
 
       {/* Page Body Content */}
@@ -105,7 +138,9 @@ export function AdminLayout() {
         myTenants,
         isSuper,
         isEn,
-        openHelp: () => setIsHelpOpen(true)
+        openHelp: () => setIsHelpOpen(true),
+        dashboardCount,
+        backlogCount
       } satisfies AdminLayoutContext} />
 
       {/* Global Admin Help Modal */}
