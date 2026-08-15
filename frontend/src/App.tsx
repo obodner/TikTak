@@ -7,6 +7,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import TenantSettings from './pages/admin/TenantSettings';
 import TasksBacklog from './pages/admin/TasksBacklog';
 import SuperAdminDashboard from './pages/admin/SuperAdminDashboard';
+import EnterpriseFleetDashboard from './pages/admin/EnterpriseFleetDashboard';
 
 import { AdminLayout } from './components/admin/AdminLayout';
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
@@ -61,6 +62,7 @@ export default function App() {
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="settings" element={<TenantSettings />} />
                 <Route path="backlog" element={<TasksBacklog />} />
+                <Route path="fleet" element={<EnterpriseFleetDashboard />} />
             </Route>
 
             {/* Fallback */}

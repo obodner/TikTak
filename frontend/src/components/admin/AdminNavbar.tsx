@@ -11,14 +11,16 @@ import {
   HelpCircle, 
   Menu, 
   X, 
-  ChevronDown 
+  ChevronDown,
+  Building2
 } from 'lucide-react';
 
 interface AdminNavbarProps {
   tenantId: string;
   tenantName?: string;
-  currentPage: 'dashboard' | 'backlog' | 'settings';
+  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet';
   myTenants?: { id: string; name?: string }[];
+  isFleet?: boolean;
   isSuper?: boolean;
   isEn?: boolean;
   onOpenHelp?: () => void;
@@ -31,6 +33,7 @@ export function AdminNavbar({
   tenantName,
   currentPage,
   myTenants = [],
+  isFleet = false,
   isSuper = false,
   isEn = false,
   onOpenHelp,
@@ -54,7 +57,7 @@ export function AdminNavbar({
   };
 
   const navItems: {
-    id: 'dashboard' | 'backlog' | 'settings';
+    id: 'dashboard' | 'backlog' | 'settings' | 'fleet';
     label: string;
     path: string;
     icon: typeof LayoutDashboard;
@@ -81,6 +84,15 @@ export function AdminNavbar({
       icon: Settings,
     },
   ];
+
+  if (isFleet) {
+    navItems.push({
+      id: 'fleet',
+      label: isEn ? 'Fleet Overlook' : 'דשבורד צי',
+      path: `/admin/${tenantId}/fleet`,
+      icon: Building2,
+    });
+  }
 
   return (
     <>

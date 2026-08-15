@@ -9,7 +9,7 @@ description: Build and deploy to Firebase
 1. Build the frontend application
    This is critical to ensure TypeScript compilation and bundling of latest changes.
 ```bash
-cd tiktak-app/frontend
+cd tiktak/frontend
 npm run build
 ```
 

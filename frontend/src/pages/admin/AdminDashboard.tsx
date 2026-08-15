@@ -14,6 +14,7 @@ import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image a
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
+import { QuotaProgressWidget } from '../../components/admin/QuotaProgressWidget';
 import { he } from 'date-fns/locale';
 
 const InlineAudioPlayer = ({ src, isEn }: { src: string; isEn?: boolean }) => {
@@ -1319,6 +1320,9 @@ export default function AdminDashboard() {
             {error}
           </div>
         )}
+
+        {/* Live Quota Meter Widget */}
+        <QuotaProgressWidget tenantData={tenantConfig} />
 
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100 shadow-sm flex flex-col justify-center">

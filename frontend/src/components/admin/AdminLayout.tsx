@@ -30,10 +30,11 @@ export function AdminLayout() {
   const [backlogCount, setBacklogCount] = useState<number | undefined>(undefined);
 
   // Determine current active tab from pathname
-  const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' => {
+  const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' | 'fleet' => {
     const path = location.pathname;
     if (path.endsWith('/settings')) return 'settings';
     if (path.endsWith('/backlog')) return 'backlog';
+    if (path.endsWith('/fleet')) return 'fleet';
     return 'dashboard';
   };
 
@@ -125,6 +126,7 @@ export function AdminLayout() {
         tenantName={tenantConfig?.name}
         currentPage={currentPage}
         myTenants={myTenants}
+        isFleet={Boolean(tenantConfig?.isPoolMaster || tenantConfig?.usesParentPool)}
         isSuper={isSuper}
         isEn={isEn}
         onOpenHelp={() => setIsHelpOpen(true)}

@@ -38,6 +38,7 @@ const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
 const i18n_1 = require("./utils/i18n");
+const quotaEngine_1 = require("./utils/quotaEngine");
 var slaCron_1 = require("./slaCron");
 Object.defineProperty(exports, "slaCron", { enumerable: true, get: function () { return slaCron_1.slaCron; } });
 const logger = __importStar(require("firebase-functions/logger"));
@@ -75,6 +76,147 @@ async function recordAuditLog(params) {
     }
     catch (err) {
         logger.error("Failed to write audit log", { error: err, logData: cleanData });
+    }
+}
+async function sendQuotaWhatsAppAlertTemplate(params) {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+    if (!token) {
+        logger.warn("WHATSAPP_ACCESS_TOKEN not set, skipping WhatsApp quota alert dispatch.");
+        return;
+    }
+    let cleanPhone = params.phone.replace(/\D/g, "");
+    if (cleanPhone.startsWith("0")) {
+        cleanPhone = "972" + cleanPhone.substring(1);
+    }
+    const tenantTypeLabel = params.tenantType === 'municipality' ? 'יישוב' : 'בניין';
+    const dashboardLink = "https://tiktak2026.web.app/admin";
+    const payload = {
+        messaging_product: "whatsapp",
+        to: cleanPhone,
+        type: "template",
+        template: {
+            name: params.templateName,
+            language: { code: "he" },
+            components: [
+                {
+                    type: "body",
+                    parameters: [
+                        { type: "text", text: params.adminName || "מנהל" },
+                        { type: "text", text: params.tenantName },
+                        { type: "text", text: params.tier.toUpperCase() },
+                        { type: "text", text: params.netUsed.toString() },
+                        { type: "text", text: params.effectiveQuota.toString() },
+                        { type: "text", text: dashboardLink },
+                        { type: "text", text: tenantTypeLabel }
+                    ]
+                }
+            ]
+        }
+    };
+    try {
+        const response = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+            logger.error(`Failed to send ${params.templateName} to ${cleanPhone}:`, resData);
+        }
+        else {
+            logger.info(`Successfully sent ${params.templateName} to ${cleanPhone}`, { messageId: resData.messages?.[0]?.id });
+        }
+    }
+    catch (err) {
+        logger.error(`Error sending ${params.templateName} to ${cleanPhone}:`, err);
+    }
+}
+async function checkAndDispatchQuotaAlerts(tenantId, tenantData) {
+    try {
+        const stats = (0, quotaEngine_1.getTenantQuotaStats)(tenantData);
+        const sub = tenantData.subscription || {};
+        const nowIso = new Date().toISOString();
+        if (stats.usagePercentage >= 80 && !sub.warned80PercentAt) {
+            logger.info(`Tenant ${tenantId} reached 80% quota usage (${stats.netUsedTickets}/${stats.effectiveQuota})`);
+            await db.collection("tenants").doc(tenantId).set({
+                subscription: {
+                    warned80PercentAt: nowIso
+                }
+            }, { merge: true });
+            await recordAuditLog({
+                tenantId,
+                action: 'QUOTA_ALERT_DISPATCHED',
+                level: 'WARN',
+                actor: { uid: 'system', name: 'TikTak Quota Engine', type: 'admin' },
+                details: {
+                    threshold: '80%',
+                    netUsedTickets: stats.netUsedTickets,
+                    effectiveQuota: stats.effectiveQuota,
+                    tier: stats.tier
+                }
+            });
+            const adminUsersSnap = await db.collection("tenants").doc(tenantId).collection("adminUsers").get();
+            for (const userDoc of adminUsersSnap.docs) {
+                const uData = userDoc.data();
+                if (uData.mobile && uData.mobile.trim()) {
+                    const adminName = `${uData.firstName || ""} ${uData.lastName || ""}`.trim() || uData.name || "מנהל";
+                    await sendQuotaWhatsAppAlertTemplate({
+                        phone: uData.mobile.trim(),
+                        adminName,
+                        tenantName: tenantData.name || tenantId,
+                        tier: stats.tier,
+                        netUsed: stats.netUsedTickets,
+                        effectiveQuota: stats.effectiveQuota,
+                        tenantType: tenantData.type || 'building',
+                        templateName: 'ticket_quota_alert_80'
+                    });
+                }
+            }
+        }
+        if (stats.usagePercentage >= 100 && !sub.warned100PercentAt) {
+            logger.info(`Tenant ${tenantId} reached 100% quota usage (${stats.netUsedTickets}/${stats.effectiveQuota})`);
+            await db.collection("tenants").doc(tenantId).set({
+                subscription: {
+                    warned100PercentAt: nowIso
+                }
+            }, { merge: true });
+            await recordAuditLog({
+                tenantId,
+                action: 'QUOTA_ALERT_DISPATCHED',
+                level: 'WARN',
+                actor: { uid: 'system', name: 'TikTak Quota Engine', type: 'admin' },
+                details: {
+                    threshold: '100%',
+                    netUsedTickets: stats.netUsedTickets,
+                    effectiveQuota: stats.effectiveQuota,
+                    tier: stats.tier
+                }
+            });
+            const adminUsersSnap = await db.collection("tenants").doc(tenantId).collection("adminUsers").get();
+            for (const userDoc of adminUsersSnap.docs) {
+                const uData = userDoc.data();
+                if (uData.mobile && uData.mobile.trim()) {
+                    const adminName = `${uData.firstName || ""} ${uData.lastName || ""}`.trim() || uData.name || "מנהל";
+                    await sendQuotaWhatsAppAlertTemplate({
+                        phone: uData.mobile.trim(),
+                        adminName,
+                        tenantName: tenantData.name || tenantId,
+                        tier: stats.tier,
+                        netUsed: stats.netUsedTickets,
+                        effectiveQuota: stats.effectiveQuota,
+                        tenantType: tenantData.type || 'building',
+                        templateName: 'ticket_quota_alert_100'
+                    });
+                }
+            }
+        }
+    }
+    catch (alertErr) {
+        logger.error(`Error in checkAndDispatchQuotaAlerts for ${tenantId}`, alertErr);
     }
 }
 exports.health = (0, https_1.onRequest)({ cors: true }, (request, response) => {
@@ -505,8 +647,16 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
         const isRealImage = imageId && typeof imageId === 'string' && !imageId.startsWith('hidden-');
         const finalImageId = isRealImage ? imageId : null;
         const tenantDoc = await db.collection("tenants").doc(tenantId).get();
-        const tenantType = tenantDoc.data()?.type || 'building';
+        const tenantData = tenantDoc.data() || {};
+        const tenantType = tenantData.type || 'building';
         const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
+        if (tenantData.isActive === false || tenantData.subscription?.status === 'frozen' || tenantData.subscription?.status === 'cancelled') {
+            res.status(403).send({
+                error: "Account Frozen",
+                message: `חשבון ${contactTarget} מוקפא זמנית. אנא פנה ל${contactTarget} או לשירות לקוחות TikTak להפעלת החשבון.`
+            });
+            return;
+        }
         const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
         if (!reporterDoc.exists) {
             res.status(403).send({
@@ -576,6 +726,20 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
             }
             catch (err) {
                 logger.error("Failed to increment global tickets counter", { error: err.message });
+            }
+            try {
+                await db.collection("tenants").doc(tenantId).set({
+                    subscription: {
+                        currentCycleTicketCount: admin.firestore.FieldValue.increment(1)
+                    }
+                }, { merge: true });
+                const freshTenantSnap = await db.collection("tenants").doc(tenantId).get();
+                if (freshTenantSnap.exists) {
+                    await checkAndDispatchQuotaAlerts(tenantId, freshTenantSnap.data());
+                }
+            }
+            catch (subErr) {
+                logger.error("Failed to increment tenant subscription ticket counter in createTicket", { tenantId, error: subErr.message });
             }
             if (req.body.audioBase64) {
                 const bucket = admin.storage().bucket();
@@ -1376,8 +1540,60 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants
         }
         await event.data?.after.ref.update(update);
         logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });
+        const oldReason = before.closureReason;
+        const newReason = after.closureReason;
+        const isExclusionNow = newStatus === 'dismissed' || newReason === 'duplicate' || newReason === 'out_of_scope';
+        const wasExclusionBefore = oldStatus === 'dismissed' || oldReason === 'duplicate' || oldReason === 'out_of_scope';
+        if (isExclusionNow && !wasExclusionBefore) {
+            try {
+                await db.collection("tenants").doc(tenantId).set({
+                    subscription: {
+                        currentCycleExclusions: admin.firestore.FieldValue.increment(1)
+                    }
+                }, { merge: true });
+                await recordAuditLog({
+                    tenantId,
+                    action: 'QUOTA_NON_BILLABLE_FLAGGED',
+                    level: 'INFO',
+                    actor: { uid: after.updatedBy || 'admin', name: 'Admin', type: 'admin' },
+                    details: {
+                        ticketId,
+                        ticketNumber: after.ticketNumber,
+                        reason: newReason || newStatus
+                    }
+                });
+                logger.info(`Incremented currentCycleExclusions for tenant ${tenantId}`);
+            }
+            catch (exErr) {
+                logger.error("Failed to increment currentCycleExclusions", exErr);
+            }
+        }
+        else if (!isExclusionNow && wasExclusionBefore) {
+            try {
+                await db.collection("tenants").doc(tenantId).set({
+                    subscription: {
+                        currentCycleExclusions: admin.firestore.FieldValue.increment(-1)
+                    }
+                }, { merge: true });
+                logger.info(`Decremented currentCycleExclusions for tenant ${tenantId}`);
+            }
+            catch (exErr) {
+                logger.error("Failed to decrement currentCycleExclusions", exErr);
+            }
+        }
         if (after.reporterPhone) {
-            if (newStatus === 'in-progress') {
+            if (newStatus === 'backlog') {
+                await sendResidentWhatsAppNotification({
+                    phone: after.reporterPhone,
+                    templateName: "ticket_status_backlog",
+                    ticketNumber: after.ticketNumber,
+                    category: after.category,
+                    location: after.location,
+                    subLocation: after.subLocation,
+                    tenantId
+                });
+            }
+            else if (newStatus === 'in-progress') {
                 await sendResidentWhatsAppNotification({
                     phone: after.reporterPhone,
                     templateName: "ticket_in_progress",
@@ -2526,6 +2742,12 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                         const tenantDoc = await tenantRef.get();
                                         const tenantData = tenantDoc.data() || {};
                                         const tenantName = tenantData.name || session.tenantId;
+                                        if (tenantData.isActive === false || tenantData.subscription?.status === 'frozen' || tenantData.subscription?.status === 'cancelled') {
+                                            const contactTarget = tenantData.type === 'municipality' ? 'המשרד' : 'ועד הבית';
+                                            await sendWhatsAppText(from, `חשבון הבניין/יישוב מוקפא זמנית. אנא פנה ל${contactTarget} או לשירות לקוחות TikTak.`, phoneNumberId, token);
+                                            session.state = 'START';
+                                            break;
+                                        }
                                         const rDoc = await tenantRef.collection("reporters").doc(session.phoneNumber).get();
                                         if (!rDoc.exists) {
                                             await sendWhatsAppText(from, "אימות נכשל. הטלפון שלך הוסר מרשימת המדווחים.", phoneNumberId, token);
@@ -2572,6 +2794,20 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                         }
                                         catch (statErr) {
                                             logger.error("Stats increment failed in whatsappbot", statErr);
+                                        }
+                                        try {
+                                            await db.collection("tenants").doc(session.tenantId).set({
+                                                subscription: {
+                                                    currentCycleTicketCount: admin.firestore.FieldValue.increment(1)
+                                                }
+                                            }, { merge: true });
+                                            const freshTenantSnap = await db.collection("tenants").doc(session.tenantId).get();
+                                            if (freshTenantSnap.exists) {
+                                                await checkAndDispatchQuotaAlerts(session.tenantId, freshTenantSnap.data());
+                                            }
+                                        }
+                                        catch (subErr) {
+                                            logger.error("Subscription ticket increment failed in whatsappbot", { tenantId: session.tenantId, error: subErr.message });
                                         }
                                         await recordAuditLog({
                                             tenantId: session.tenantId,

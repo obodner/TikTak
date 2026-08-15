@@ -38,9 +38,10 @@ const scheduler_1 = require("firebase-functions/v2/scheduler");
 const logger = __importStar(require("firebase-functions/logger"));
 const firestore_1 = require("firebase-admin/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
+const quotaEngine_1 = require("./utils/quotaEngine");
 exports.slaCron = (0, scheduler_1.onSchedule)("5 0,12 * * *", async (event) => {
     const db = (0, firestore_1.getFirestore)();
-    logger.info("SLA Cron Job started");
+    logger.info("SLA & Quota Reset Cron Job started");
     try {
         const tenantsSnap = await db.collection("tenants").get();
         const now = new Date();
@@ -48,6 +49,35 @@ exports.slaCron = (0, scheduler_1.onSchedule)("5 0,12 * * *", async (event) => {
         for (const tenantDoc of tenantsSnap.docs) {
             const tenantData = tenantDoc.data();
             const tenantId = tenantDoc.id;
+            if (tenantData.isActive !== false && tenantData.subscription?.status !== 'frozen' && tenantData.subscription?.status !== 'cancelled' && tenantData.subscription?.cycleEndDate) {
+                const cycleEnd = new Date(tenantData.subscription.cycleEndDate);
+                if (now >= cycleEnd) {
+                    try {
+                        const summaryRecord = (0, quotaEngine_1.buildBillingCycleSummary)(tenantId, tenantData);
+                        const cycleDocId = summaryRecord.cycleStartDate.split("T")[0];
+                        await tenantDoc.ref.collection("billing_cycles").doc(cycleDocId).set(summaryRecord);
+                        const expireAt = new Date();
+                        expireAt.setFullYear(expireAt.getFullYear() + 7);
+                        await db.collection("audit_logs").add({
+                            tenantId,
+                            action: 'BILLING_CYCLE_CLOSED',
+                            level: 'INFO',
+                            actor: { uid: 'system', name: 'TikTak Billing Engine', type: 'admin' },
+                            details: summaryRecord,
+                            metadata: { tenantId, platform: 'backend' },
+                            createdAt: now.toISOString(),
+                            expireAt: firestore_1.Timestamp.fromDate(expireAt),
+                            appId: 'tiktak'
+                        });
+                        const resetSubscription = (0, quotaEngine_1.calculateCycleReset)(tenantData);
+                        await tenantDoc.ref.update({ subscription: resetSubscription });
+                        logger.info(`Closed billing cycle and reset subscription for tenant ${tenantId}`, { summaryRecord, resetSubscription });
+                    }
+                    catch (resetErr) {
+                        logger.error(`Failed to reset billing cycle for tenant ${tenantId}`, resetErr);
+                    }
+                }
+            }
             if (!tenantData.slaConfig?.enabled)
                 continue;
             const country = tenantData.country || "IL";
@@ -91,10 +121,10 @@ exports.slaCron = (0, scheduler_1.onSchedule)("5 0,12 * * *", async (event) => {
                 logger.info(`Updated ${batchCount} tickets for tenant ${tenantId}`);
             }
         }
-        logger.info("SLA Cron Job completed successfully");
+        logger.info("SLA & Quota Reset Cron Job completed successfully");
     }
     catch (err) {
-        logger.error("SLA Cron Job failed", { error: err });
+        logger.error("SLA & Quota Reset Cron Job failed", { error: err });
     }
 });
 //# sourceMappingURL=slaCron.js.map
