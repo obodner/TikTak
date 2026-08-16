@@ -19,6 +19,8 @@
         "select_category": "בחר קטגוריה...",
         "select_generic": "בחר...",
         "select_placeholder": "בחר {{label}}...",
+        "search_placeholder": "חיפוש...",
+        "no_results": "לא נמצאו תוצאות",
         "validation_tooltip": "יש לבחור קומה ומיקום לפני הדיווח",
         "header_15_sec": "דווחו על תקלה ב-15 שניות",
         "reporting_page_of": "דף הדיווח של",

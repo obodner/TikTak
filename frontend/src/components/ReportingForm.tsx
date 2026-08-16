@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, CheckCircle2, AlertCircle, X, ChevronDown } from 'lucide-react';
+import { Send, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { VoiceRecorder } from './VoiceRecorder';
+import { SearchableSelect } from './SearchableSelect';
 
 interface TicketData {
   summary: string;
@@ -177,56 +178,45 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
         <div className="space-y-4 pt-4 border-t border-slate-50">
           <div className="grid grid-cols-2 gap-3">
             {showLocation && (
-              <div className="relative">
+              <div>
                 <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">{locationLabel}</label>
-                <select
+                <SearchableSelect
+                  label={locationLabel}
                   value={initialData.location || ''}
-                  onChange={(e) => onUpdate({ location: e.target.value })}
-                  className={`w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 appearance-none font-bold text-sm outline-none text-right ${
-                    !initialData.location ? 'text-slate-400' : 'text-blue-900'
-                  }`}
+                  onChange={(val) => onUpdate({ location: val })}
+                  options={config.locations}
+                  placeholder={t('select_placeholder', { label: locationLabel })}
+                  className="bg-slate-50 border-none text-blue-900"
                   dir="rtl"
-                >
-                  <option value="">{t('select_placeholder', { label: locationLabel })}</option>
-                  {config.locations.map(f => <option key={f} value={f}>{f.startsWith('-') || !isNaN(Number(f)) ? `\u200E${f}` : f}</option>)}
-                </select>
-                <ChevronDown size={14} className="absolute left-3 top-[34px] text-slate-400 pointer-events-none" />
+                />
               </div>
             )}
 
-            <div className={`relative ${!showLocation ? 'col-span-2' : ''}`}>
+            <div className={!showLocation ? 'col-span-2' : ''}>
               <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">{subLocationLabel}</label>
-              <select
+              <SearchableSelect
+                label={subLocationLabel}
                 value={initialData.subLocation || ''}
-                onChange={(e) => onUpdate({ subLocation: e.target.value })}
-                className={`w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 appearance-none font-bold text-sm outline-none text-right ${
-                  !initialData.subLocation ? 'text-slate-400' : 'text-blue-900'
-                }`}
+                onChange={(val) => onUpdate({ subLocation: val })}
+                options={config.subLocations}
+                placeholder={t('select_placeholder', { label: subLocationLabel })}
+                className="bg-slate-50 border-none text-blue-900"
                 dir="rtl"
-              >
-                <option value="">{t('select_placeholder', { label: subLocationLabel })}</option>
-                {config.subLocations.map(r => <option key={r} value={r}>{r.startsWith('-') || !isNaN(Number(r)) ? `\u200E${r}` : r}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute left-3 top-[34px] text-slate-400 pointer-events-none" />
+              />
             </div>
           </div>
 
-          <div className="relative">
+          <div>
             <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">{t('category_label') || 'קטגוריה'}</label>
-            <select
-              value={initialData.category}
-              onChange={(e) => onUpdate({ category: e.target.value })}
-              className={`w-full bg-blue-50/50 border-none rounded-xl px-3 py-2.5 appearance-none font-bold text-sm outline-none text-right ${
-                initialData.category === '' ? 'text-slate-400' : 'text-blue-700'
-              }`}
+            <SearchableSelect
+              label={t('category_label') || 'קטגוריה'}
+              value={initialData.category || ''}
+              onChange={(val) => onUpdate({ category: val })}
+              options={config.categories}
+              placeholder={t('select_category') || 'בחר קטגוריה...'}
+              className="bg-blue-50/50 border-none text-blue-700"
               dir="rtl"
-            >
-              {initialData.category === '' && (
-                <option value="" disabled>{t('select_category') || 'בחר קטגוריה...'}</option>
-              )}
-              {config.categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <ChevronDown size={14} className="absolute left-3 top-[34px] text-blue-400 pointer-events-none" />
+            />
           </div>
 
           <div className="relative">

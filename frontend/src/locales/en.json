@@ -19,6 +19,8 @@
         "select_category": "Select Category...",
         "select_generic": "Select...",
         "select_placeholder": "Select {{label}}...",
+        "search_placeholder": "Search...",
+        "no_results": "No matching results",
         "validation_tooltip": "Please select Floor and Resource first",
         "snap_trigger_title": "Snap a Photo",
         "snap_trigger_subtext": "Take a photo and AI will do the rest!",
