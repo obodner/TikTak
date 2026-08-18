@@ -243,5 +243,8 @@
         "slaHealth": "בריאות SLA",
         "switchBuilding": "עבור לדשבורד הבניין",
         "urgentAlerts": "התראות דחופות בכלל הצי"
+    },
+    "Auth": {
+        "sessionExpired": "פג תוקף ההתחברות. נא להתחבר מחדש."
     }
 }

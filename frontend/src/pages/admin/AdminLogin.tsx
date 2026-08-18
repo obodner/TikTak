@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { auth, db } from '../../lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { logAction, resetAuditSession } from '../../utils/auditLogger';
 
 export default function AdminLogin() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,6 +25,14 @@ export default function AdminLogin() {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('reason') === 'expired') {
+      setError(t('Auth.sessionExpired', 'פג תוקף ההתחברות. נא להתחבר מחדש.'));
+    }
+  }, [location.search, t]);
 
   useEffect(() => {
     if (lockoutUntil) {

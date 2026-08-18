@@ -241,5 +241,8 @@
         "slaHealth": "SLA Health",
         "switchBuilding": "Switch to Building Board",
         "urgentAlerts": "Fleet-Wide Urgent Alerts"
+    },
+    "Auth": {
+        "sessionExpired": "Your session has expired. Please log in again."
     }
 }

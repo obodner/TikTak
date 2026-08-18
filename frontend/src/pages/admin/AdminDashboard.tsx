@@ -10,7 +10,7 @@ import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModa
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -246,6 +246,12 @@ export default function AdminDashboard() {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [savedVendors, setSavedVendors] = useState<any[]>([]);
 
+  // Smart Hybrid Refresh State
+  const [pendingTickets, setPendingTickets] = useState<Ticket[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+
   // Filter State
   const [filters, setFilters] = useState({
     timeRange: 'all',
@@ -388,6 +394,7 @@ export default function AdminDashboard() {
       const snapshot = await getDocs(q);
       const parsed: Ticket[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
       setTickets(parsed);
+      setLastRefreshedAt(new Date());
 
       // Fetch vendors list for tooltip lookup
       try {
@@ -401,8 +408,6 @@ export default function AdminDashboard() {
       if (user.uid) {
         let uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
 
-        // Fallback: If not found in current tenant (common for Super Admins switching context),
-        // find ANY tenant where this user is an admin and fetch their profile from there.
         if (!uDoc.exists()) {
           try {
             const adminQuery = query(
@@ -435,9 +440,100 @@ export default function AdminDashboard() {
     }
   };
 
+  // User activity tracker for Idle detection (45 seconds threshold)
+  useEffect(() => {
+    const updateActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+    window.addEventListener('mousemove', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    window.addEventListener('touchstart', updateActivity);
+    window.addEventListener('scroll', updateActivity, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('touchstart', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+    };
+  }, []);
+
+  // Silent background fetch with Smart Hybrid logic
+  const fetchTicketsSilent = async (isManual = false) => {
+    if (!user || !tenantId) return;
+    if (isManual) setIsRefreshing(true);
+
+    try {
+      const q = query(
+        collection(db, "tenants", tenantId as string, "tickets"),
+        orderBy("createdAt", "desc")
+      );
+      const snapshot = await getDocs(q);
+      const fetched: Ticket[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
+      setLastRefreshedAt(new Date());
+
+      setTickets(prev => {
+        const prevCompact = prev.map(t => `${t.id}:${t.status}:${t.urgency}:${t.adminComments?.length || 0}`).join('|');
+        const fetchedCompact = fetched.map(t => `${t.id}:${t.status}:${t.urgency}:${t.adminComments?.length || 0}`).join('|');
+
+        if (prevCompact === fetchedCompact) {
+          if (isManual) setPendingTickets([]);
+          return prev;
+        }
+
+        const isUserActive = (Date.now() - lastActivityRef.current) < 45000;
+        const isEditingModal = Boolean(commentTicketId || closureTicketId || forwardTicket || updatingId);
+
+        // If manual refresh OR (user is idle AND no edit modal open), apply immediately
+        if (isManual || (!isUserActive && !isEditingModal)) {
+          setPendingTickets([]);
+          return fetched;
+        } else {
+          // Admin is actively working or modal is open -> hold in pendingTickets and show notification badge
+          setPendingTickets(fetched);
+          return prev;
+        }
+      });
+    } catch (err) {
+      console.error("Silent background refresh error:", err);
+    } finally {
+      if (isManual) setIsRefreshing(false);
+    }
+  };
+
+  const handleApplyPendingTickets = () => {
+    if (pendingTickets.length > 0) {
+      setTickets(pendingTickets);
+      setPendingTickets([]);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [user, tenantId]);
+
+  // Polling Interval (every 5 minutes) with Tab Visibility Guard
+  useEffect(() => {
+    if (!user || !tenantId) return;
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchTicketsSilent(false);
+      }
+    }, 300000); // 5 minutes
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchTicketsSilent(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, tenantId, commentTicketId, closureTicketId, forwardTicket, updatingId]);
 
   // 3. Filtering Logic
   const filteredTickets = useMemo(() => {
@@ -1313,7 +1409,24 @@ export default function AdminDashboard() {
   const hasActiveFilters = filters.search || filters.timeRange !== 'all' || filters.category !== 'all' || filters.location !== 'all' || filters.subLocation !== 'all' || filters.severity !== 'all' || filters.statuses.length < 3;
 
   return (
-    <div className="min-h-screen bg-white" dir={isEn ? 'ltr' : 'rtl'}>
+    <div className="min-h-screen bg-white relative" dir={isEn ? 'ltr' : 'rtl'}>
+      {/* Floating Toast Notification Badge for Pending Data */}
+      {pendingTickets.length > 0 && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-bounce shadow-2xl">
+          <button
+            onClick={handleApplyPendingTickets}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-5 py-2.5 rounded-full border border-blue-400 flex items-center gap-2.5 transition-all cursor-pointer text-sm shadow-xl"
+          >
+            <Bell size={18} className="animate-pulse text-amber-300" />
+            <span>
+              {isEn 
+                ? 'New tickets or updates available! Click to update view' 
+                : 'התקבלו פניות או עדכונים חדשים! לחץ כאן לרענון המבט'}
+            </span>
+          </button>
+        </div>
+      )}
+
       <main className="max-w-7xl mx-auto p-6 flex flex-col gap-8">
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 font-medium">
@@ -1491,6 +1604,23 @@ export default function AdminDashboard() {
                     </button>
                   )}
                 </div>
+
+                <button
+                  onClick={() => fetchTicketsSilent(true)}
+                  disabled={isRefreshing}
+                  className="h-[38px] px-3 flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all border border-slate-200 shadow-sm shrink-0 cursor-pointer active:scale-95 disabled:opacity-50"
+                  title={lastRefreshedAt 
+                    ? (isEn ? `Refresh Data (Last updated: ${format(lastRefreshedAt, 'HH:mm')})` : `רענן נתונים (עודכן לאחרונה: ${format(lastRefreshedAt, 'HH:mm')})`)
+                    : (isEn ? "Refresh Data" : "רענן נתונים")
+                  }
+                >
+                  <RefreshCw size={15} className={isRefreshing ? "animate-spin text-blue-600" : "text-slate-500"} />
+                  <span className="hidden sm:inline text-xs">
+                    {isRefreshing 
+                      ? (isEn ? 'Refreshing...' : 'מרענן...') 
+                      : (isEn ? 'Refresh' : 'רענן')}
+                  </span>
+                </button>
 
                 <button
                   onClick={handleExportCSV}
