@@ -28,19 +28,23 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
     isStoppingRef.current = false;
     
     try {
-      console.log("[AudioCapture] Initializing stream...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       // If user released before stream was ready
       if (isStoppingRef.current) {
-        console.log("[AudioCapture] Stop requested during init. Aborting.");
         stream.getTracks().forEach(track => track.stop());
         isStartingRef.current = false;
         return;
       }
 
-      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac'];
-      const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm';
+      const mimeTypes = [
+        'audio/mp4',
+        'audio/aac',
+        'audio/ogg;codecs=opus',
+        'audio/webm;codecs=opus',
+        'audio/webm'
+      ];
+      const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/mp4';
       
       const mediaRecorder = new MediaRecorder(stream, { 
         mimeType,
@@ -58,11 +62,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        console.log(`[AudioCapture] Finalized blob size: ${Math.round(audioBlob.size / 1024)}KB, type: ${mimeType}`);
-        
-        if (audioBlob.size < 100) {
-          console.warn("[AudioCapture] Blob too small. Likely silent or failed.");
-        }
         
         if (audioBlob.size > 0) {
           const url = URL.createObjectURL(audioBlob);
@@ -82,7 +81,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
       };
 
       mediaRecorder.start();
-      console.log("[AudioCapture] Recording started.");
       setIsRecording(true);
       setDuration(0);
 
@@ -105,14 +103,12 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplet
   };
 
   const stopRecording = () => {
-    console.log("[AudioCapture] Stop requested.");
     isStoppingRef.current = true;
     
     // Give a tiny window for audio data to flush if it just started
     setTimeout(() => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
-        console.log("[AudioCapture] MediaRecorder stopped.");
       }
       if (timerRef.current) {
         clearInterval(timerRef.current);

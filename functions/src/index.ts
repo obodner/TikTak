@@ -778,10 +778,8 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
 
     // Use a Transaction to increment the counter and create the ticket atomically
     const tenantRef = db.collection("tenants").doc(tenantId);
-    // If we have a real image, use its ID as the document ID for deduplication. 
-    // Otherwise, let Firestore generate a random ID.
     const ticketsCol = db.collection("tenants").doc(tenantId).collection("tickets");
-    const ticketRef = isRealImage ? ticketsCol.doc(imageId) : ticketsCol.doc(randomUUID());
+    const ticketRef = ticketsCol.doc(randomUUID());
     const ticketId = ticketRef.id;
 
     let ticketNumber = 0;
@@ -856,11 +854,18 @@ export const createTicket = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_T
         const bucket = admin.storage().bucket();
         const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
         const mimeType = detectAudioMimeType(audioBuffer);
-        logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes, detected MIME: ${mimeType}`);
+        const extMap: Record<string, string> = {
+          'audio/mp4': 'mp4',
+          'audio/aac': 'aac',
+          'audio/ogg': 'ogg',
+          'audio/wav': 'wav',
+          'audio/webm': 'webm'
+        };
+        const ext = extMap[mimeType] || 'mp4';
+        logger.info(`Processing audio for ${tenantId}. Buffer size: ${audioBuffer.length} bytes, detected MIME: ${mimeType}, ext: .${ext}`);
 
-        // Save only as .webm in GCS (with the correct detected mimeType) to keep storage clean
-        const audioFileWebm = bucket.file(`tenants/${tenantId}/${ticketId}.webm`);
-        await audioFileWebm.save(audioBuffer, {
+        const audioFile = bucket.file(`tenants/${tenantId}/${ticketId}.${ext}`);
+        await audioFile.save(audioBuffer, {
           metadata: { contentType: mimeType }
         });
 
@@ -1418,14 +1423,15 @@ export const getAudio = onRequest({ cors: true }, async (req, res) => {
   try {
     const bucket = admin.storage().bucket();
 
-    // First, try the standard .webm extension (optimized for new & legacy files)
-    let file = bucket.file(`tenants/${tenantId}/${audioId}.webm`);
-    let [exists] = await file.exists();
+    // Search for supported extensions (.mp4, .m4a, .aac, .ogg, .webm, or extensionless)
+    const possibleExts = ['.mp4', '.m4a', '.aac', '.ogg', '.webm', ''];
+    let file: any = null;
+    let exists = false;
 
-    // Fall back to extensionless file (for compatibility with temporary build files)
-    if (!exists) {
-      file = bucket.file(`tenants/${tenantId}/${audioId}`);
+    for (const ext of possibleExts) {
+      file = bucket.file(`tenants/${tenantId}/${audioId}${ext}`);
       [exists] = await file.exists();
+      if (exists) break;
     }
 
     if (!exists) {
@@ -1433,12 +1439,24 @@ export const getAudio = onRequest({ cors: true }, async (req, res) => {
       return;
     }
 
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: '01-01-2100'
-    });
+    const extMatch = file.name.match(/\.([a-z0-9]+)$/i);
+    const fileExt = extMatch ? extMatch[1].toLowerCase() : 'mp4';
+    const mimeMap: Record<string, string> = {
+      'mp4': 'audio/mp4',
+      'm4a': 'audio/mp4',
+      'aac': 'audio/aac',
+      'ogg': 'audio/ogg',
+      'webm': 'audio/webm'
+    };
+    const responseContentType = mimeMap[fileExt] || 'audio/mp4';
 
-    res.redirect(302, url);
+    const [buffer] = await file.download();
+    res.status(200).set({
+      'Content-Type': responseContentType,
+      'Content-Length': String(buffer.length),
+      'Content-Disposition': `inline; filename="${audioId}.${fileExt}"`,
+      'Cache-Control': 'public, max-age=31536000'
+    }).send(buffer);
   } catch (err) {
     res.status(500).send("Server error generating audio link");
   }
@@ -1808,11 +1826,12 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
     await event.data?.after.ref.update(update);
     logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });
 
-    // Track non-billable ticket exclusions (duplicates, out-of-scope, dismissed)
+    // Track non-billable ticket exclusions (duplicates, out-of-scope, dismissed, rejected, irrelevant, outside)
     const oldReason = before.closureReason;
     const newReason = after.closureReason;
-    const isExclusionNow = newStatus === 'dismissed' || newReason === 'duplicate' || newReason === 'out_of_scope';
-    const wasExclusionBefore = oldStatus === 'dismissed' || oldReason === 'duplicate' || oldReason === 'out_of_scope';
+    const EXCLUSION_REASONS = ['duplicate', 'out_of_scope', 'outside', 'rejected', 'irrelevant'];
+    const isExclusionNow = newStatus === 'dismissed' || EXCLUSION_REASONS.includes(newReason);
+    const wasExclusionBefore = oldStatus === 'dismissed' || EXCLUSION_REASONS.includes(oldReason);
 
     if (isExclusionNow && !wasExclusionBefore) {
       try {
@@ -2173,6 +2192,27 @@ async function sendWhatsAppText(to: string, text: string, phoneNumberId: string,
   return sendWhatsAppMessage(to, {
     type: "text",
     text: { preview_url: false, body: text }
+  }, phoneNumberId, token);
+}
+
+async function sendWhatsAppImage(to: string, imageUrl: string, phoneNumberId: string, token: string) {
+  return sendWhatsAppMessage(to, {
+    type: "image",
+    image: { link: imageUrl }
+  }, phoneNumberId, token);
+}
+
+async function sendWhatsAppAudio(to: string, audioUrl: string, phoneNumberId: string, token: string) {
+  return sendWhatsAppMessage(to, {
+    type: "audio",
+    audio: { link: audioUrl }
+  }, phoneNumberId, token);
+}
+
+async function sendWhatsAppDocument(to: string, documentUrl: string, fileName: string, phoneNumberId: string, token: string) {
+  return sendWhatsAppMessage(to, {
+    type: "document",
+    document: { link: documentUrl, filename: fileName }
   }, phoneNumberId, token);
 }
 
@@ -3561,43 +3601,125 @@ export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP
       cleanPhone = "972" + cleanPhone.substring(1);
     }
 
-    // 3. Clean message parameter for Meta API (Meta template variables CANNOT contain raw \n or \r)
+    // 3. Format message representations
+    const multiLineMessage = messageText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, ' ').trim();
     const cleanMessageForMeta = messageText.replace(/[\r\n\t]+/g, ' • ').replace(/\s{2,}/g, ' ').trim();
 
-    logger.info(`Forwarding ticket #${ticketData.ticketNumber || ticketId} to vendor ${cleanPhone} via Meta API template 'vendor_ticket_dispatch'...`);
+    const vendorButtons = [
+      { id: "VENDOR_ACK", title: "קיבלתי את ההודעה" },
+      { id: "VENDOR_DONE", title: "בוצע" }
+    ];
 
-    // 4. Send Meta Template vendor_ticket_dispatch
+    logger.info(`Forwarding ticket #${ticketData.ticketNumber || ticketId} to vendor ${cleanPhone}...`);
+
     let apiResult: any = null;
+
+    // 4a. Primary: Single interactive message with newlines AND reply buttons
     try {
-      apiResult = await sendWhatsAppTemplate(
-        cleanPhone,
-        "vendor_ticket_dispatch",
-        "he",
-        [cleanMessageForMeta],
-        phoneNumberId,
-        token
-      );
-    } catch (templateErr: any) {
-      logger.error(`Template vendor_ticket_dispatch failed for ticket #${ticketData.ticketNumber}:`, templateErr);
+      apiResult = await sendWhatsAppButtons(cleanPhone, multiLineMessage, vendorButtons, phoneNumberId, token);
+      logger.info(`Successfully dispatched single interactive vendor message to ${cleanPhone}`);
+    } catch (interactiveErr: any) {
+      logger.warn(`Interactive button dispatch failed for vendor ${cleanPhone}, attempting template fallback...`, interactiveErr);
 
-      const errStr = typeof templateErr === 'string'
-        ? templateErr
-        : (templateErr.message || JSON.stringify(templateErr));
+      // 4b. Fallback: Meta Template vendor_ticket_dispatch (for out-of-window contacts requiring approved template)
+      try {
+        apiResult = await sendWhatsAppTemplate(
+          cleanPhone,
+          "vendor_ticket_dispatch",
+          "he",
+          [cleanMessageForMeta],
+          phoneNumberId,
+          token
+        );
+      } catch (templateErr: any) {
+        logger.error(`Template vendor_ticket_dispatch failed for ticket #${ticketData.ticketNumber}:`, templateErr);
 
-      let userFriendlyMsg = "שליחת הודעת WhatsApp נכשלה מול Meta API.";
+        const errStr = typeof templateErr === 'string'
+          ? templateErr
+          : (templateErr.message || JSON.stringify(templateErr));
 
-      if (errStr.includes("132001") || errStr.includes("does not exist")) {
-        userFriendlyMsg = "תבנית ה-WhatsApp (vendor_ticket_dispatch) עדיין לא אושרה או שאינה קיימת בחשבון Meta WhatsApp Manager בשפה העברית. אנא וודא שהתבנית נוצרה ואושרה ב-Meta.";
-      } else if (errStr.includes("131026") || errStr.includes("Undeliverable")) {
-        userFriendlyMsg = "מספר הטלפון של הספק אינו זמין בוואטסאפ או שלא ניתן לקבל הודעות במספר זה.";
-      } else if (errStr.includes("131009")) {
-        userFriendlyMsg = "חורג מפורמט הפרמטרים המורשה בתבנית Meta.";
-      } else if (errStr.includes("OAuthException") || errStr.includes("190")) {
-        userFriendlyMsg = "פג תוקפו של אסימון הגישה (Access Token) ל-Meta WhatsApp API. יש לחדש את ה-Token בהגדרות השרת.";
+        let userFriendlyMsg = "שליחת הודעת WhatsApp נכשלה מול Meta API.";
+
+        if (errStr.includes("132001") || errStr.includes("does not exist")) {
+          userFriendlyMsg = "תבנית ה-WhatsApp (vendor_ticket_dispatch) עדיין לא אושרה או שאינה קיימת בחשבון Meta WhatsApp Manager בשפה העברית. אנא וודא שהתבנית נוצרה ואושרה ב-Meta.";
+        } else if (errStr.includes("131026") || errStr.includes("Undeliverable")) {
+          userFriendlyMsg = "מספר הטלפון של הספק אינו זמין בוואטסאפ או שלא ניתן לקבל הודעות במספר זה.";
+        } else if (errStr.includes("131009") || errStr.includes("132018") || errStr.includes("new-line")) {
+          userFriendlyMsg = "שגיאה בפרמטרים של תבנית WhatsApp. הפרמטר נשלח בפורמט מותאם.";
+        } else if (errStr.includes('"code":190') || (errStr.includes("OAuthException") && errStr.includes("190"))) {
+          userFriendlyMsg = "פג תוקפו של אסימון הגישה (Access Token) ל-Meta WhatsApp API. יש לחדש את ה-Token בהגדרות השרת.";
+        }
+
+        res.status(400).send({ error: userFriendlyMsg });
+        return;
+      }
+    }
+
+    // 4c. Dispatch attached media files (image & audio) as native WhatsApp media messages
+    const tenantIdStr = tenantId || ticketData.building_id || ticketData.buildingId || ticketData.tenantId || '';
+
+    if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
+      const imageUrl = `https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId}`;
+      try {
+        await sendWhatsAppImage(cleanPhone, imageUrl, phoneNumberId, token);
+        logger.info(`Dispatched ticket image attachment to vendor ${cleanPhone}: ${imageUrl}`);
+      } catch (imgErr) {
+        logger.error(`Failed to dispatch image attachment to vendor ${cleanPhone}:`, imgErr);
+      }
+    }
+
+    const resolvedAudioId = ticketData.audioId || ticketData.audioUrl || ticketData.audio;
+
+    if (resolvedAudioId && typeof resolvedAudioId === 'string' && resolvedAudioId.length > 5 && resolvedAudioId !== 'null') {
+      const audioCleanId = resolvedAudioId.replace(/\.[^/.]+$/, "");
+      const bucket = admin.storage().bucket();
+      const possibleExts = ['.mp4', '.m4a', '.aac', '.ogg', '.webm'];
+      let foundExt = 'mp4';
+      let audioFile: any = null;
+
+      for (const ext of possibleExts) {
+        const f = bucket.file(`tenants/${tenantIdStr}/${audioCleanId}${ext}`);
+        const [ex] = await f.exists();
+        if (ex) {
+          audioFile = f;
+          foundExt = ext.replace('.', '');
+          break;
+        }
       }
 
-      res.status(400).send({ error: userFriendlyMsg });
-      return;
+      if (!audioFile) {
+        audioFile = bucket.file(`tenants/${tenantIdStr}/${audioCleanId}`);
+      }
+
+      const mimeMap: Record<string, string> = {
+        'mp4': 'audio/mp4',
+        'm4a': 'audio/mp4',
+        'aac': 'audio/aac',
+        'ogg': 'audio/ogg',
+        'webm': 'audio/webm'
+      };
+      const audioContentType = mimeMap[foundExt] || 'audio/mp4';
+
+      let signedAudioUrl = '';
+      try {
+        const [url] = await audioFile.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+          responseContentType: audioContentType
+        });
+        signedAudioUrl = url;
+      } catch (signErr) {
+        logger.warn(`Failed to generate signed URL for audio ${audioCleanId}`, signErr);
+      }
+
+      const audioPublicUrl = `https://tiktak2026.web.app/aud/${tenantIdStr}/${audioCleanId}.${foundExt}`;
+
+      try {
+        await sendWhatsAppDocument(cleanPhone, audioPublicUrl, `הקלטה_קולית.${foundExt}`, phoneNumberId, token);
+        logger.info(`Dispatched ticket audio document attachment to vendor ${cleanPhone}: ${audioPublicUrl}`);
+      } catch (docErr) {
+        logger.error(`Failed to dispatch audio document attachment to vendor ${cleanPhone}:`, docErr);
+      }
     }
 
     const newCount = currentCount + 1;

@@ -11,8 +11,10 @@ import {
   MapPin,
   Phone,
   User,
-  ExternalLink,
-  Info
+  Info,
+  Globe,
+  Smartphone,
+  Mail
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -34,7 +36,7 @@ export default function LandingPage() {
   // Scroll Spy Hook
   useEffect(() => {
     const handleScroll = () => {
-      const sections = ['how-it-works', 'dashboard', 'features', 'about', 'pricing', 'faq'];
+      const sections = ['how-it-works', 'channels', 'dashboard', 'features', 'about', 'pricing', 'faq'];
       const scrollPosition = window.scrollY + 120; // offset for nav bar height
 
       for (const sectionId of sections) {
@@ -172,13 +174,20 @@ export default function LandingPage() {
           </div>
 
           {/* Center Links (Desktop only) */}
-          <div className="hidden lg:flex items-center gap-8 font-semibold text-sm text-slate-600">
+          <div className="hidden lg:flex items-center gap-6 font-semibold text-sm text-slate-600">
             <button
               onClick={() => scrollToSection('how-it-works')}
               className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'how-it-works' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
                 }`}
             >
               {isRtl ? 'איך זה עובד' : 'How it works'}
+            </button>
+            <button
+              onClick={() => scrollToSection('channels')}
+              className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'channels' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
+                }`}
+            >
+              {t('landing_nav_channels', isRtl ? 'ערוצי דיווח' : 'Reporting Channels')}
             </button>
             <button
               onClick={() => scrollToSection('dashboard')}
@@ -199,7 +208,7 @@ export default function LandingPage() {
               className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'about' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
                 }`}
             >
-              {t('landing_nav_about') || (isRtl ? 'הסיפור שלנו' : 'About')}
+              {t('landing_nav_about', isRtl ? 'הסיפור שלנו' : 'About')}
             </button>
             <button
               onClick={() => scrollToSection('pricing')}
@@ -213,17 +222,25 @@ export default function LandingPage() {
               className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'faq' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
                 }`}
             >
-              {t('landing_nav_faq') || (isRtl ? 'שאלות נפוצות' : 'FAQ')}
+              {t('landing_nav_faq', isRtl ? 'שאלות נפוצות' : 'FAQ')}
             </button>
           </div>
 
-          {/* Left CTAs */}
-          <div className="flex items-center gap-4 shrink-0">
+          {/* Left CTAs & Language Switcher */}
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => i18n.changeLanguage(isRtl ? 'en' : 'he')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-700 hover:bg-slate-100 hover:border-slate-300 active:scale-95 transition-all cursor-pointer select-none"
+              title={isRtl ? 'Switch to English' : 'עבור לעברית'}
+            >
+              <Globe size={15} className="text-blue-600" />
+              <span>{isRtl ? 'EN' : 'עברית'}</span>
+            </button>
             <button
               onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
               className="bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 text-sm font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-blue-600/10 hover:shadow-blue-600/20 active:scale-95 text-center"
             >
-              {t('landing_nav_cta') || 'להתחלת פיילוט'}
+              {t('landing_nav_cta', 'להתחלת פיילוט')}
             </button>
           </div>
         </div>
@@ -503,6 +520,76 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* 3.5 MULTI-CHANNEL REPORTING INTERFACES */}
+      <section id="channels" className="py-20 bg-gradient-to-b from-slate-50 via-blue-50/20 to-white border-b border-slate-100">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center flex flex-col items-center mb-16">
+            <span className="bg-blue-100 text-blue-700 text-sm md:text-base px-6 py-2 rounded-full font-black uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Smartphone size={18} />
+              {t('landing_channels_badge', isRtl ? 'ערוצי דיווח נגישים' : 'Multi-Channel Reporting')}
+            </span>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
+              {t('landing_channels_headline', isRtl ? 'מכל מקום, בכל דרך – 100% נגישות לתושבים' : 'Anywhere, Any Way – 100% Accessible Reporting')}
+            </h2>
+            <p className="text-lg md:text-xl text-slate-500 font-semibold mt-4 max-w-2xl">
+              {t('landing_channels_subtext', isRtl ? 'שכבת דיווח רב-ערוצית ללא חסמי כניסה, ללא אפליקציות וללא הרשמה' : 'Tailored reporting interfaces for every resident, zero barriers, zero app installations')}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Web SPA Card */}
+            <div className="bg-white border-2 border-slate-100 hover:border-blue-500/40 rounded-3xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
+              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl shadow-inner">
+                    🌐
+                  </div>
+                  <span className="bg-blue-50 text-blue-700 text-xs font-black px-3 py-1 rounded-full border border-blue-200">
+                    {t('landing_channel_web_badge', isRtl ? 'ללא התקנה' : 'Zero Download')}
+                  </span>
+                </div>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {t('landing_channel_web_title', isRtl ? '🌐 ממשק ווב מהיר (Web)' : '🌐 Instant Mobile Web (Web SPA)')}
+                </h3>
+                <p className="text-slate-600 font-medium text-sm leading-relaxed">
+                  {t('landing_channel_web_desc', isRtl ? 'סריקת קוד QR פותחת טופס דיווח מהיר בדפדפן הנייד. זיהוי תמונה אוטומטי ב-AI ושליחה ב-15 שניות.' : 'Scanning a QR code opens an instant mobile web form. AI auto-analyzes photos, detects issues, and submits in 15 seconds.')}
+                </p>
+              </div>
+              <div className="pt-6 border-t border-slate-100 mt-6 flex items-center text-blue-600 font-bold text-xs gap-1 group-hover:gap-2 transition-all">
+                <span>{isRtl ? 'דיווח ישיר בדפדפן הנייד' : 'Instant mobile browser reporting'}</span>
+                {isRtl ? <ArrowLeft size={14} /> : <ArrowRight size={14} />}
+              </div>
+            </div>
+
+            {/* WhatsApp Chatbot Card */}
+            <div className="bg-white border-2 border-slate-100 hover:border-emerald-500/40 rounded-3xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
+              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl shadow-inner">
+                    💬
+                  </div>
+                  <span className="bg-emerald-50 text-emerald-700 text-xs font-black px-3 py-1 rounded-full border border-emerald-200">
+                    {t('landing_channel_whatsapp_badge', isRtl ? 'אינטראקטיבי' : 'Interactive AI')}
+                  </span>
+                </div>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {t('landing_channel_whatsapp_title', isRtl ? '💬 צ׳אטבוט חכם בוואטסאפ' : '💬 Smart WhatsApp AI Chatbot')}
+                </h3>
+                <p className="text-slate-600 font-medium text-sm leading-relaxed">
+                  {t('landing_channel_whatsapp_desc', isRtl ? 'דיווח ישיר בשיחת וואטסאפ טבעית. שולחים תמונה, טקסט או הקלטת קול — המערכת פותחת קריאה ומחזירה עדכונים בזמן אמת.' : 'Report issues directly via WhatsApp conversation. Send photos, text, or voice messages—our AI chatbot opens tickets and sends automated real-time status updates.')}
+                </p>
+              </div>
+              <div className="pt-6 border-t border-slate-100 mt-6 flex items-center text-emerald-600 font-bold text-xs gap-1 group-hover:gap-2 transition-all">
+                <span>{isRtl ? 'עדכוני סטטוס אוטומטיים בצ׳אט' : 'Automated status updates in chat'}</span>
+                {isRtl ? <ArrowLeft size={14} /> : <ArrowRight size={14} />}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 4. MANAGER DASHBOARD SECTION (The Pain-Solver) */}
       <section id="dashboard" className="pt-16 pb-24 md:pt-20 bg-slate-50/50">
         <div className="max-w-6xl mx-auto px-6">
@@ -597,6 +684,10 @@ export default function LandingPage() {
                   <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
                   <span>{t('landing_mgr_bullet3') || 'ערוץ תקשורת ישיר ועדכוני סטטוס אוטומטיים מול התושב המדווח'}</span>
                 </li>
+                <li className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                  <span>{t('landing_mgr_bullet4') || (isRtl ? 'לוח בקלוג משימות (Tasks Backlog) למעקב ומיון משימות נדחות לפי דחיפות וחשיבות' : 'Tasks Backlog board for triaging and tracking deferred tasks by urgency & priority')}</span>
+                </li>
               </ul>
             </div>
           </div>
@@ -622,36 +713,75 @@ export default function LandingPage() {
                 ⚡
               </div>
               <h3 className="text-2xl md:text-3xl font-black text-slate-950">
-                {t('landing_feature_quicktap_title') || '⚡ QuickTap'}
+                {t('landing_feature_quicktap_title') || (isRtl ? '⚡ דיווחים מהירים בנגיעה' : '⚡ QuickTap Reporting')}
               </h3>
               <p className="text-base text-slate-600 font-medium leading-relaxed">
-                {t('landing_feature_quicktap_desc') || 'דיווח בלחיצה אחת. דיווחים מוגדרים מראש לבעיות חוזרות ונשנות. שתי לחיצות והפנייה בדרך.'}
+                {t('landing_feature_quicktap_desc') || (isRtl ? 'דיווח בנגיעה אחת. תבניות מוגדרות מראש לבעיות נפוצות בבניין. שתי לחיצות והדיווח בדרך לטיפול.' : 'One-touch reporting. Pre-configured templates for recurring issues. Two taps and it\'s sent.')}
               </p>
             </div>
 
             {/* Feature 2 */}
             <div className="bg-slate-50 border border-slate-100 rounded-3xl p-8 hover:-translate-y-1 transition-all duration-300 flex flex-col items-start text-right space-y-4">
               <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
-                🎯
+                📋
               </div>
               <h3 className="text-2xl md:text-3xl font-black text-slate-950">
-                {t('landing_feature_sla_title') || '🎯 SLA Engine'}
+                {t('landing_feature_backlog_title') || (isRtl ? '📋 ניהול משימות ובקלוג (Backlog)' : '📋 Task Backlog & Triage')}
               </h3>
-              <p className="text-sm text-slate-500 font-semibold leading-relaxed">
-                {t('landing_feature_sla_desc') || 'שום דיווח לא נופל. התראות אוטומטיות לוועד ולדייר. צבעים ייעודיים בדשבורד לפי זמני טיפול.'}
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                {t('landing_feature_backlog_desc') || (isRtl ? 'לוח בקלוג חכם לוועד ולחברות הניהול. מיון וגרירת תקלות לפי מטריצת דחיפות וחשיבות למעקב וטיפול מלא.' : 'Smart task management for building committees & property managers. Triage and drag-and-drop tickets into priority columns.')}
               </p>
             </div>
 
             {/* Feature 3 */}
             <div className="bg-slate-50 border border-slate-100 rounded-3xl p-8 hover:-translate-y-1 transition-all duration-300 flex flex-col items-start text-right space-y-4">
               <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                📱
+              </div>
+              <h3 className="text-2xl md:text-3xl font-black text-slate-950">
+                {t('landing_feature_interfaces_title') || (isRtl ? '📱 ריבוי ערוצי דיווח' : '📱 Multi-Channel Reporting')}
+              </h3>
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                {t('landing_feature_interfaces_desc') || (isRtl ? 'תמיכה מלאה בדיווח נגיש דרך הדפדפן (Web) ודיווח ישיר דרך צ׳אטבוט וואטסאפ חכם לכל דייר ותושב.' : 'Full multi-channel support: accessible Web SPA and smart WhatsApp AI chatbot for every resident.')}
+              </p>
+            </div>
+
+            {/* Feature 4 */}
+            <div className="bg-slate-50 border border-slate-100 rounded-3xl p-8 hover:-translate-y-1 transition-all duration-300 flex flex-col items-start text-right space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                🎯
+              </div>
+              <h3 className="text-2xl md:text-3xl font-black text-slate-950">
+                {t('landing_feature_sla_title') || (isRtl ? '🎯 מנוע זמני טיפול (SLA)' : '🎯 SLA Engine & Alerts')}
+              </h3>
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                {t('landing_feature_sla_desc') || (isRtl ? 'שום דיווח לא נופל בין הכסאות. התראות אוטומטיות לוועד ולדייר, וצבעי אזהרה בלוח הניהול לפי זמני הטיפול.' : 'No report gets lost. Automated alerts for committees and residents with custom dashboard color status states.')}
+              </p>
+            </div>
+
+            {/* Feature 5 */}
+            <div className="bg-slate-50 border border-slate-100 rounded-3xl p-8 hover:-translate-y-1 transition-all duration-300 flex flex-col items-start text-right space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
                 🧠
               </div>
               <h3 className="text-2xl md:text-3xl font-black text-slate-950">
-                {t('landing_feature_ai_title') || '🧠 AI Smart'}
+                {t('landing_feature_ai_title') || (isRtl ? '🧠 זיהוי תקלות אוטומטי (AI)' : '🧠 Automated Issue Recognition')}
               </h3>
-              <p className="text-sm text-slate-500 font-semibold leading-relaxed">
-                {t('landing_feature_ai_desc') || 'זיהוי אוטומטי חכם. מצלמים את המפגע והמערכת מזהה ומפענחת לבד את סוג התקלה.'}
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                {t('landing_feature_ai_desc') || (isRtl ? 'זיהוי תמונה חכם. צילום של המפגע מפענחת ומסווגת אוטומטית את סוג התקלה ורמת הדחיפות שלה.' : 'Smart photo detection. Snapping a photo automatically identifies the category and urgency of the maintenance issue.')}
+              </p>
+            </div>
+
+            {/* Feature 6 */}
+            <div className="bg-slate-50 border border-slate-100 rounded-3xl p-8 hover:-translate-y-1 transition-all duration-300 flex flex-col items-start text-right space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                🔒
+              </div>
+              <h3 className="text-2xl md:text-3xl font-black text-slate-950">
+                {t('landing_feature_isolation_title') || (isRtl ? '🔒 הפרדת נתונים מוחלטת' : '🔒 Tenant Data Isolation')}
+              </h3>
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                {t('landing_feature_isolation_desc') || (isRtl ? 'בידוד נתונים מלא לכל בניין וישות מנהלת, יומני מעקב ואבטחה מפורטים, ועמידה בתקני אבטחה מחמירים.' : 'Strict data isolation per building tenant, detailed security audit logs, and enterprise-grade privacy protection.')}
               </p>
             </div>
           </div>
@@ -1331,10 +1461,10 @@ export default function LandingPage() {
           <div className="flex flex-col items-center md:items-end space-y-2">
             <a
               href="mailto:tiktak.report@gmail.com"
-              className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+              className="flex items-center gap-2 text-blue-400 hover:text-blue-300 hover:underline transition-colors text-sm font-semibold"
             >
-              <span>tiktak.report@gmail.com</span>
-              <ExternalLink size={14} />
+              <Mail size={16} />
+              <span>{t('landing_footer_contact', isRtl ? 'צור קשר' : 'Contact Us')}</span>
             </a>
             <span className="text-[11px] text-slate-600 block">
               &copy; {new Date().getFullYear()} TikTak Inc. {isRtl ? 'כל הזכויות שמורות.' : 'All rights reserved.'}

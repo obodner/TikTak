@@ -6,9 +6,10 @@ import { CreditCard, AlertTriangle, Clock, CheckCircle2, RotateCcw, AlertCircle,
 
 interface QuotaProgressWidgetProps {
   tenantData: any;
+  onExclusionsClick?: () => void;
 }
 
-export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenantData }) => {
+export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenantData, onExclusionsClick }) => {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language === 'en';
 
@@ -132,16 +133,26 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
 
       {/* Footer Stats Row */}
       <div className="flex flex-wrap items-center justify-between text-xs gap-2 pt-1">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="font-semibold text-slate-700">
-            {t('Quota.netUsed', 'ניצול בפועל')}: <strong className="text-slate-900">{netUsedTickets}</strong> / {effectiveQuota} ({usagePercentage}%)
+            {t('Quota.netUsed', 'ניצול בפועל (לחיוב)')}: <strong className="text-slate-900">{netUsedTickets}</strong> / {effectiveQuota} ({usagePercentage}%)
+            {totalCreated > 0 && (
+              <span className="ms-1 text-[11px] text-slate-500 font-normal">
+                ({isEn ? `from ${totalCreated} created - ${exclusions} excluded` : `מתוך ${totalCreated} נוצרו - ${exclusions} קיזוזים`})
+              </span>
+            )}
           </span>
 
           {exclusions > 0 && (
-            <span className="flex items-center gap-1 text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
-              <RotateCcw className="w-3 h-3 text-slate-400" />
-              {exclusions} {t('Quota.exclusions', 'פניות שקוזזו')}
-            </span>
+            <button
+              type="button"
+              onClick={onExclusionsClick}
+              className="flex items-center gap-1.5 text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 px-2.5 py-1 rounded-md border border-slate-200 hover:border-blue-200 transition-all cursor-pointer group"
+              title={isEn ? "Click to view excluded/deducted tickets (duplicates or dismissed)" : "לחץ לצפייה בפניות שקוזזו מהמכסה (כפילות או ביטול)"}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-600 transition-colors" />
+              <span className="font-semibold">{exclusions} {t('Quota.exclusions', 'פניות שקוזזו')}</span>
+            </button>
           )}
         </div>
 

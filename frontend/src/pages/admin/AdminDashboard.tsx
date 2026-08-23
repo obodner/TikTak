@@ -63,6 +63,7 @@ const InlineAudioPlayer = ({ src, isEn }: { src: string; isEn?: boolean }) => {
       <audio
         ref={audioRef}
         src={src}
+        preload="none"
         onEnded={() => setIsPlaying(false)}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
@@ -261,6 +262,7 @@ export default function AdminDashboard() {
     subLocation: 'all',
     category: 'all',
     severity: 'all',
+    closureReason: 'all',
     search: '',
     statuses: ['new', 'in-progress', 'closed'],
     source: 'all',
@@ -463,6 +465,12 @@ export default function AdminDashboard() {
     if (isManual) setIsRefreshing(true);
 
     try {
+      // Re-fetch tenant document to update subscription quota and exclusions in real time
+      const tSnap = await getDoc(doc(db, "tenants", tenantId as string));
+      if (tSnap.exists()) {
+        setTenantConfig(tSnap.data());
+      }
+
       const q = query(
         collection(db, "tenants", tenantId as string, "tickets"),
         orderBy("createdAt", "desc")
@@ -535,6 +543,75 @@ export default function AdminDashboard() {
     };
   }, [user, tenantId, commentTicketId, closureTicketId, forwardTicket, updatingId]);
 
+  const parseTicketDate = (val: any): Date => {
+    if (!val) return new Date(0);
+    if (val instanceof Date) return val;
+    if (typeof val === 'string') {
+      const parsed = parseISO(val);
+      if (!isNaN(parsed.getTime())) return parsed;
+      const fallback = new Date(val);
+      return isNaN(fallback.getTime()) ? new Date(0) : fallback;
+    }
+    if (typeof val === 'object') {
+      if (typeof val.toDate === 'function') return val.toDate();
+      if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+      if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
+    }
+    return new Date(0);
+  };
+
+  const parseInputDate = (str: string): Date | null => {
+    if (!str) return null;
+    const isoParsed = parseISO(str);
+    if (!isNaN(isoParsed.getTime())) return isoParsed;
+
+    const parts = str.split(/[/.-]/);
+    if (parts.length === 3) {
+      if (parts[2].length === 4) {
+        const month = parseInt(parts[0], 10) - 1;
+        const day = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+        const d = new Date(year, month, day);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    const fallback = new Date(str);
+    return isNaN(fallback.getTime()) ? null : fallback;
+  };
+
+  // Live self-healing quota configuration synchronized with actual loaded tickets
+  const liveTenantConfig = useMemo(() => {
+    if (!tenantConfig) return null;
+    const sub = tenantConfig.subscription;
+    if (!sub?.cycleStartDate || !sub?.cycleEndDate) return tenantConfig;
+
+    const cycleStart = parseTicketDate(sub.cycleStartDate);
+    const cycleEnd = parseTicketDate(sub.cycleEndDate);
+    const EXCLUSION_REASONS = ['duplicate', 'out_of_scope', 'outside', 'rejected', 'irrelevant'];
+
+    let liveCreated = 0;
+    let liveExclusions = 0;
+
+    tickets.forEach(t => {
+      const d = parseTicketDate(t.createdAt);
+      if (d >= cycleStart && d <= cycleEnd) {
+        liveCreated++;
+        if (t.status === 'dismissed' || Boolean(t.closureReason && EXCLUSION_REASONS.includes(t.closureReason))) {
+          liveExclusions++;
+        }
+      }
+    });
+
+    return {
+      ...tenantConfig,
+      subscription: {
+        ...sub,
+        currentCycleTicketCount: liveCreated,
+        currentCycleExclusions: liveExclusions
+      }
+    };
+  }, [tenantConfig, tickets]);
+
   // 3. Filtering Logic
   const filteredTickets = useMemo(() => {
     return tickets.filter(t => {
@@ -548,13 +625,17 @@ export default function AdminDashboard() {
       if (filters.severity !== 'all' && t.urgency !== filters.severity) return false;
 
       // c. Time
-      const ticketDate = parseISO(t.createdAt);
+      const ticketDate = parseTicketDate(t.createdAt);
       if (filters.timeRange !== 'all') {
         if (filters.timeRange === 'custom') {
           if (filters.startDate && filters.endDate) {
-            const start = startOfDay(parseISO(filters.startDate));
-            const end = endOfDay(parseISO(filters.endDate));
-            if (!isWithinInterval(ticketDate, { start, end })) return false;
+            const startDateObj = parseInputDate(filters.startDate);
+            const endDateObj = parseInputDate(filters.endDate);
+            if (startDateObj && endDateObj) {
+              const start = startOfDay(startDateObj);
+              const end = endOfDay(endDateObj);
+              if (!isWithinInterval(ticketDate, { start, end })) return false;
+            }
           }
         } else {
           const monthsBack = parseInt(filters.timeRange);
@@ -582,6 +663,21 @@ export default function AdminDashboard() {
       if (filters.channel !== 'all') {
         const channel = (t.source === 'whatsapp' || t.source === 'web') ? t.source : 'web';
         if (channel !== filters.channel) return false;
+      }
+
+      // g. Closure Reason / Quota Exclusion
+      if (filters.closureReason !== 'all') {
+        if (filters.closureReason === 'exclusions') {
+          const isExclusion = t.status === 'dismissed' ||
+            t.closureReason === 'duplicate' ||
+            t.closureReason === 'out_of_scope' ||
+            t.closureReason === 'outside' ||
+            t.closureReason === 'rejected' ||
+            t.closureReason === 'irrelevant';
+          if (!isExclusion) return false;
+        } else {
+          if (t.closureReason !== filters.closureReason) return false;
+        }
       }
 
       return true;
@@ -1013,6 +1109,7 @@ export default function AdminDashboard() {
       subLocation: 'all',
       category: 'all',
       severity: 'all',
+      closureReason: 'all',
       search: '',
       statuses: ['new', 'in-progress', 'closed'],
       source: 'all',
@@ -1127,15 +1224,15 @@ export default function AdminDashboard() {
                             holidays
                           )))
                           : 'none'
-                      )} p-4 rounded-2xl shadow-sm border transition-all relative group ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
+                      )} p-4 rounded-2xl shadow-sm border transition-all relative group overflow-hidden w-full max-w-full ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
                         }`}
                       onClick={() => {
                         if (snapshot.isDragging) return;
                       }}
                     >
                       {/* Top Row: #/Urgency (Right) and Date/Time (Left) */}
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 w-full min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full">
                           <div
                             {...provided.dragHandleProps}
                             className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 shrink-0"
@@ -1181,8 +1278,15 @@ export default function AdminDashboard() {
                           </select>
                           
                         </div>
-                        <div className="text-xs text-slate-400 font-bold text-left shrink-0">
-                          {new Date(t.createdAt).toLocaleTimeString(isHe ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} {new Date(t.createdAt).toLocaleDateString(isHe ? 'he-IL' : 'en-US')}
+                        <div className="text-[11px] text-slate-400 font-bold whitespace-nowrap min-w-0 max-w-full truncate text-left" dir="ltr">
+                          {(() => {
+                            try {
+                              const d = typeof t.createdAt === 'string' ? parseISO(t.createdAt) : new Date(t.createdAt);
+                              return isNaN(d.getTime()) ? String(t.createdAt || '') : format(d, 'dd.MM.yyyy HH:mm');
+                            } catch (e) {
+                              return String(t.createdAt || '');
+                            }
+                          })()}
                         </div>
                       </div>
 
@@ -1321,7 +1425,11 @@ export default function AdminDashboard() {
                         )}
 
                         {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
-                          <InlineAudioPlayer src={`/aud/${tenantId}/${t.audioId}`} isEn={isEn} />
+                          (() => {
+                            const rawAudioId = String(t.audioId);
+                            const cleanAudioId = rawAudioId.split('/').pop()?.replace(/\.[^/.]+$/, '') || rawAudioId;
+                            return <InlineAudioPlayer src={`/aud/${tenantId}/${cleanAudioId}`} isEn={isEn} />;
+                          })()
                         )}
 
                         {/* Forward to Vendor Action Button */}
@@ -1435,7 +1543,24 @@ export default function AdminDashboard() {
         )}
 
         {/* Live Quota Meter Widget */}
-        <QuotaProgressWidget tenantData={tenantConfig} />
+        <QuotaProgressWidget
+          tenantData={liveTenantConfig || tenantConfig}
+          onExclusionsClick={() => {
+            const cycleStart = tenantConfig?.subscription?.cycleStartDate;
+            const cycleDate = cycleStart ? parseTicketDate(cycleStart) : null;
+            const startDateStr = cycleDate && !isNaN(cycleDate.getTime()) ? format(cycleDate, 'yyyy-MM-dd') : '';
+            const endDateStr = format(new Date(), 'yyyy-MM-dd');
+
+            setFilters(prev => ({
+              ...prev,
+              timeRange: startDateStr ? 'custom' : 'all',
+              startDate: startDateStr,
+              endDate: endDateStr,
+              closureReason: 'exclusions',
+              statuses: ['new', 'in-progress', 'closed']
+            }));
+          }}
+        />
 
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100 shadow-sm flex flex-col justify-center">
@@ -1579,6 +1704,27 @@ export default function AdminDashboard() {
               >
                 <option value="all">{uiLabels.filters.all}</option>
                 {tenantConfig?.config?.categories?.map((c: string) => <option key={c} value={c}>{translateCategory(c)}</option>)}
+              </select>
+            </div>
+
+            {/* 4. Closure Reason / Exclusions */}
+            <div className="flex flex-col gap-1.5 min-w-[140px] flex-1 sm:flex-initial">
+              <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">
+                {isEn ? "Closure Reason" : "סיבת סגירה / קיזוז"}
+              </label>
+              <select
+                value={filters.closureReason}
+                onChange={e => setFilters({ ...filters, closureReason: e.target.value })}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[38px]"
+              >
+                <option value="all">{uiLabels.filters.all}</option>
+                <option value="exclusions">🔄 {isEn ? "Quota Exclusions" : "פניות שקוזזו מהמכסה"}</option>
+                <option value="fixed">{isEn ? "Fixed" : "טופל"}</option>
+                <option value="duplicate">{isEn ? "Duplicate" : "כפילות"}</option>
+                <option value="irrelevant">{isEn ? "Irrelevant" : "לא רלוונטי"}</option>
+                <option value="vendor">{isEn ? "Vendor Dispatched" : "בטיפול ספק"}</option>
+                <option value="outside">{isEn ? "Outside Scope" : "מחוץ לאחריות"}</option>
+                <option value="rejected">{isEn ? "Rejected" : "נדחה"}</option>
               </select>
             </div>
 
