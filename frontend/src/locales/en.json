@@ -12,6 +12,7 @@
         "send": "Report to Vaad",
         "success": "Report sent successfully!",
         "error": "Something went wrong. Please try again.",
+        "ai_fallback_notice": "Could not analyze image automatically. Please enter a description manually.",
         "invalid_issue": "No maintenance issue detected. Please try snapping a clearer photo.",
         "try_again": "Try Again",
         "floor": "Floor",

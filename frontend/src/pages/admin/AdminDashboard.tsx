@@ -45,8 +45,8 @@ const InlineAudioPlayer = ({ src, isEn }: { src: string; isEn?: boolean }) => {
       <button
         onClick={togglePlay}
         className={`p-1.5 rounded-lg transition-all flex items-center justify-center
-          ${isPlaying 
-            ? 'bg-blue-100 text-blue-600' 
+          ${isPlaying
+            ? 'bg-blue-100 text-blue-600'
             : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'
           }`}
         title={isPlaying ? (isEn ? "Pause Audio" : "השהה הקלטה") : (isEn ? "Play Audio" : "נגן הקלטה")}
@@ -190,19 +190,19 @@ export default function AdminDashboard() {
 
       setTickets(prev => prev.map(t =>
         t.id === forwardTicket.id
-          ? { 
-              ...t, 
-              vendorForwardCount: newCount, 
-              lastVendorForwardAt: new Date().toISOString(),
-              vendors: updatedVendors
-            }
+          ? {
+            ...t,
+            vendorForwardCount: newCount,
+            lastVendorForwardAt: new Date().toISOString(),
+            vendors: updatedVendors
+          }
           : t
       ));
 
       showAlert(
         isEn ? 'Ticket Forwarded' : 'פנייה הועברה לספק',
-        isEn 
-          ? `Template message sent to vendor (${vendorName || vendorPhone})!` 
+        isEn
+          ? `Template message sent to vendor (${vendorName || vendorPhone})!`
           : `הודעה נשלחה בהצלחה לספק (${vendorName || vendorPhone})!`,
         'info'
       );
@@ -873,7 +873,7 @@ export default function AdminDashboard() {
   const handleSendWhatsAppComment = async (ticket: any, comment: any) => {
     if (!tenantId || !ticket) return;
     const authorName = adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (isEn ? 'Admin' : 'מנהל');
-    
+
     try {
       const response = await fetch('https://sendwhatsappcommentnotification-xzfu3ennuq-uc.a.run.app', {
         method: 'POST',
@@ -944,7 +944,7 @@ export default function AdminDashboard() {
     const ticketId = ticket.id;
     const authorName = adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (isEn ? 'Admin' : 'מנהל');
     const commentId = Math.random().toString(36).substr(2, 9);
-    
+
     const newComment = {
       id: commentId,
       text,
@@ -1276,7 +1276,7 @@ export default function AdminDashboard() {
                               <option value="backlog">{isEn ? '📥 Move to Backlog' : '📥 העבר לבקלוג'}</option>
                             )}
                           </select>
-                          
+
                         </div>
                         <div className="text-[11px] text-slate-400 font-bold whitespace-nowrap min-w-0 max-w-full truncate text-left" dir="ltr">
                           {(() => {
@@ -1301,7 +1301,7 @@ export default function AdminDashboard() {
                             ? (isEn ? '🤖 Bot' : '🤖 בוט')
                             : (isEn ? '📱 Web' : '📱 ווב')}
                         </span>
-                        
+
                         {(t.reportingMethod === 'quicktap' || t.source === 'quicktap') && (
                           <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "QuickTap" : "דיווח מהיר"}>
                             ⚡ {isEn ? "QuickTap" : "דיווח מהיר ⚡"}
@@ -1364,8 +1364,8 @@ export default function AdminDashboard() {
                                   {isEn ? "Vaad Feedback:" : "משוב דייר על הטיפול:"}
                                 </span>
                                 <span className={`px-2 py-0.5 rounded-full font-bold ${t.vaadRating === 'good' ? 'bg-green-100 text-green-700' :
-                                    t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
-                                      'bg-red-100 text-red-700'
+                                  t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
+                                    'bg-red-100 text-red-700'
                                   }`}>
                                   {(() => {
                                     if (t.vaadRating === 'good') return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
@@ -1395,8 +1395,8 @@ export default function AdminDashboard() {
                         </button>
 
                         {t.meToo && t.meToo > 0 ? (
-                          <div 
-                            className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default" 
+                          <div
+                            className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default"
                             title={(() => {
                               const prefix = isEn ? "Joined the report:" : "הצטרפו לדיווח:";
                               if (!t.meTooReporters || t.meTooReporters.length === 0) {
@@ -1444,21 +1444,20 @@ export default function AdminDashboard() {
                                   if (!isMaxReached) setForwardTicket(t);
                                 }}
                                 disabled={isMaxReached}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg shadow-sm transition-all ms-auto select-none shrink-0 ${
-                                  isMaxReached
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg shadow-sm transition-all ms-auto select-none shrink-0 ${isMaxReached
                                     ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                                     : 'text-white bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 cursor-pointer'
-                                }`}
+                                  }`}
                                 title={(() => {
                                   const baseTitle = isMaxReached
                                     ? (isEn ? "Maximum 3 vendor forwards reached for this ticket" : "הגעת למכסת 3 העברות לספק עבור פנייה זו")
                                     : (isEn ? `Forward ticket to vendor via WhatsApp (${3 - fwdCount} left)` : `העבר פרטי פנייה לספק בוואטסאפ (נותרו ${3 - fwdCount})`);
-                                  
+
                                   const vList: any[] = Array.isArray(t.vendors) ? t.vendors : [];
                                   if (vList.length > 0) {
                                     const vLines = vList.map(v => {
                                       const cleanVPhone = (v.phone || '').replace(/[-\s]/g, '');
-                                      const matchedVendor = savedVendors.find(sv => 
+                                      const matchedVendor = savedVendors.find(sv =>
                                         (sv.fullName && v.name && sv.fullName.trim() === v.name.trim()) ||
                                         (sv.phone && (sv.phone.replace(/[-\s]/g, '') === cleanVPhone || cleanVPhone.endsWith(sv.phone.replace(/[-\s]/g, ''))))
                                       );
@@ -1527,8 +1526,8 @@ export default function AdminDashboard() {
           >
             <Bell size={18} className="animate-pulse text-amber-300" />
             <span>
-              {isEn 
-                ? 'New tickets or updates available! Click to update view' 
+              {isEn
+                ? 'New tickets or updates available! Click to update view'
                 : 'התקבלו פניות או עדכונים חדשים! לחץ כאן לרענון המבט'}
             </span>
           </button>
@@ -1755,15 +1754,15 @@ export default function AdminDashboard() {
                   onClick={() => fetchTicketsSilent(true)}
                   disabled={isRefreshing}
                   className="h-[38px] px-3 flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all border border-slate-200 shadow-sm shrink-0 cursor-pointer active:scale-95 disabled:opacity-50"
-                  title={lastRefreshedAt 
+                  title={lastRefreshedAt
                     ? (isEn ? `Refresh Data (Last updated: ${format(lastRefreshedAt, 'HH:mm')})` : `רענן נתונים (עודכן לאחרונה: ${format(lastRefreshedAt, 'HH:mm')})`)
                     : (isEn ? "Refresh Data" : "רענן נתונים")
                   }
                 >
                   <RefreshCw size={15} className={isRefreshing ? "animate-spin text-blue-600" : "text-slate-500"} />
                   <span className="hidden sm:inline text-xs">
-                    {isRefreshing 
-                      ? (isEn ? 'Refreshing...' : 'מרענן...') 
+                    {isRefreshing
+                      ? (isEn ? 'Refreshing...' : 'מרענן...')
                       : (isEn ? 'Refresh' : 'רענן')}
                   </span>
                 </button>
@@ -1788,11 +1787,10 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => setShowMoreFilters(!showMoreFilters)}
-                  className={`h-[38px] px-3 flex items-center justify-center gap-1.5 rounded-xl transition-all border text-xs font-bold shrink-0 cursor-pointer active:scale-95 ${
-                    showMoreFilters || activeSecondaryFilterCount > 0
+                  className={`h-[38px] px-3 flex items-center justify-center gap-1.5 rounded-xl transition-all border text-xs font-bold shrink-0 cursor-pointer active:scale-95 ${showMoreFilters || activeSecondaryFilterCount > 0
                       ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
                       : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
+                    }`}
                   title={isEn ? "Additional Filters" : "מסננים נוספים"}
                 >
                   <SlidersHorizontal size={15} />

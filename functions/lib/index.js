@@ -279,21 +279,43 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
       Respond ONLY with the RAW JSON object.
     `;
         logger.info("Sending request to Gemini...", { prompt, model: "gemini-2.5-flash" });
-        const result = await model.generateContent([
-            prompt,
-            {
-                inlineData: {
-                    data: base64Image,
-                    mimeType: mimeType || "image/jpeg",
+        let finalData = {};
+        let isAiFallback = false;
+        try {
+            const result = await model.generateContent([
+                prompt,
+                {
+                    inlineData: {
+                        data: base64Image,
+                        mimeType: mimeType || "image/jpeg",
+                    },
                 },
-            },
-        ]);
-        const responseText = result.response.text();
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        const cleanJson = jsonMatch ? jsonMatch[0] : responseText;
+            ]);
+            const responseText = result.response.text();
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            const cleanJson = jsonMatch ? jsonMatch[0] : responseText;
+            finalData = JSON.parse(cleanJson || "{}");
+        }
+        catch (aiErr) {
+            logger.warn("Gemini AI API call failed, falling back to manual ticket parameters", {
+                message: aiErr.message,
+                stack: aiErr.stack
+            });
+            isAiFallback = true;
+            const categoriesList = tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"];
+            const defaultCategory = categoriesList[0] || "תחזוקה";
+            finalData = {
+                is_valid_issue: true,
+                summary: "",
+                category: defaultCategory,
+                urgency: "Low"
+            };
+        }
         await uploadPromise;
-        const finalData = JSON.parse(cleanJson || "{}");
         finalData.imageId = imageId;
+        if (isAiFallback) {
+            finalData.ai_fallback = true;
+        }
         if (!finalData.urgency && finalData.severity) {
             finalData.urgency = finalData.severity;
         }
@@ -305,12 +327,13 @@ exports.analyzeImage = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_AP
         logger.info("Final ticket payload prepared", {
             tenantId: safeTenantId,
             type,
-            category: finalData.category
+            category: finalData.category,
+            ai_fallback: isAiFallback
         });
         res.send(finalData);
     }
     catch (error) {
-        logger.error("AI Analysis failed", {
+        logger.error("AI Analysis failed completely", {
             message: error.message,
             stack: error.stack,
             errorDetails: error
@@ -635,7 +658,7 @@ function detectAudioMimeType(buffer) {
 }
 exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
     try {
-        const { tenantId, imageId, summary, category, urgency, location, subLocation, ticketType, reporterPhone, source } = req.body;
+        const { tenantId, imageId, base64Image, mimeType, summary, category, urgency, location, subLocation, ticketType, reporterPhone, source } = req.body;
         if (!tenantId) {
             res.status(400).send({ error: "Missing tenantId" });
             return;
@@ -645,7 +668,23 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
             return;
         }
         const isRealImage = imageId && typeof imageId === 'string' && !imageId.startsWith('hidden-');
-        const finalImageId = isRealImage ? imageId : null;
+        let finalImageId = isRealImage ? imageId : null;
+        if (!finalImageId && base64Image) {
+            try {
+                const fallbackImageId = (0, crypto_1.randomUUID)();
+                const safeTenantId = tenantId || 'default-tenant';
+                const bucket = storage.bucket();
+                const file = bucket.file(`tenants/${safeTenantId}/${fallbackImageId}.jpg`);
+                const imageBuffer = Buffer.from(base64Image, 'base64');
+                await file.save(imageBuffer, {
+                    metadata: { contentType: mimeType || 'image/jpeg' }
+                });
+                finalImageId = fallbackImageId;
+            }
+            catch (uploadErr) {
+                logger.error("Failed to upload fallback base64Image in createTicket", { uploadErr });
+            }
+        }
         const tenantDoc = await db.collection("tenants").doc(tenantId).get();
         const tenantData = tenantDoc.data() || {};
         const tenantType = tenantData.type || 'building';

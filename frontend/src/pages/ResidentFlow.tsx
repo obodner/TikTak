@@ -92,6 +92,9 @@ export default function ResidentFlow() {
     const [isRatingSubmitted, setIsRatingSubmitted] = useState(false);
     const [reporterPhone, setReporterPhone] = useState<string>('');
     const [phoneInput, setPhoneInput] = useState<string>('');
+    const [pendingBase64Image, setPendingBase64Image] = useState<string | null>(null);
+    const [pendingMimeType, setPendingMimeType] = useState<string | null>(null);
+    const [showAiFallbackNotice, setShowAiFallbackNotice] = useState<boolean>(false);
 
     useEffect(() => {
         const saved = localStorage.getItem('tiktak_reporter_phone');
@@ -187,6 +190,7 @@ export default function ResidentFlow() {
 
     const handleCapture = async (file: File) => {
         setState('analyzing');
+        setShowAiFallbackNotice(false);
 
         try {
             const compressed = await compressImage(file);
@@ -198,6 +202,8 @@ export default function ResidentFlow() {
             });
             const dataUrl = await base64Promise;
             const base64Image = dataUrl.split(',')[1];
+            setPendingBase64Image(base64Image);
+            setPendingMimeType(compressed.type);
 
             setAuthError(''); // Clear previous error
 
@@ -221,32 +227,51 @@ export default function ResidentFlow() {
             }
 
             // Step 1: Analyze & Upload Image (No DB write yet)
-            const response = await fetch('/api/analyzeImage', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    base64Image,
-                    mimeType: compressed.type,
-                    tenantId,
-                    location: selectedLocation || location,
-                    subLocation: selectedSubLocation || subLocation
-                })
-            });
+            let data: any = null;
+            let responseOk = false;
 
-            if (!response.ok) throw new Error('Analysis failed');
+            try {
+                const response = await fetch('/api/analyzeImage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        base64Image,
+                        mimeType: compressed.type,
+                        tenantId,
+                        location: selectedLocation || location,
+                        subLocation: selectedSubLocation || subLocation
+                    })
+                });
 
-            const data = await response.json();
+                if (response.ok) {
+                    responseOk = true;
+                    data = await response.json();
+                }
+            } catch (netErr) {
+                console.warn('Network request to analyzeImage failed:', netErr);
+            }
 
-            if (data.is_valid_issue === false) {
+            // If backend returned invalid issue explicitly (e.g. blank photo)
+            if (responseOk && data && data.is_valid_issue === false) {
                 setState('invalid');
                 return;
             }
 
+            // Check if AI fallback occurred or server/network failed
+            const isFallback = !responseOk || !data || data.ai_fallback === true;
+
+            if (isFallback) {
+                setShowAiFallbackNotice(true);
+                setTimeout(() => setShowAiFallbackNotice(false), 2000);
+            }
+
+            const defaultCategory = config.categories?.[0] || 'תחזוקה';
+
             setTicketData({
-                summary: data.summary || "Summary unavailable",
-                category: data.category || "Maintenance",
-                urgency: data.urgency || "Moderate",
-                imageId: data.imageId,
+                summary: (data && data.summary) ? data.summary : '',
+                category: (data && data.category) ? data.category : defaultCategory,
+                urgency: (data && data.urgency) ? data.urgency : 'Low',
+                imageId: (data && data.imageId) ? data.imageId : undefined,
                 location: selectedLocation || undefined,
                 subLocation: selectedSubLocation || undefined,
                 ticketType: 'visible'
@@ -254,8 +279,19 @@ export default function ResidentFlow() {
 
             setState('editing');
         } catch (err) {
-            console.error(err);
-            setState('error');
+            console.error('Fatal error during image capture:', err);
+            setShowAiFallbackNotice(true);
+            setTimeout(() => setShowAiFallbackNotice(false), 2000);
+            setTicketData({
+                summary: '',
+                category: config.categories?.[0] || 'תחזוקה',
+                urgency: 'Low',
+                imageId: undefined,
+                location: selectedLocation || undefined,
+                subLocation: selectedSubLocation || undefined,
+                ticketType: 'visible'
+            });
+            setState('editing');
         }
     };
 
@@ -292,7 +328,9 @@ export default function ResidentFlow() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tenantId,
-                    imageId: ticketData.imageId,
+                    imageId: ticketData.imageId || null,
+                    base64Image: !ticketData.imageId ? pendingBase64Image : null,
+                    mimeType: pendingMimeType,
                     summary: finalSummary,
                     category: ticketData.category,
                     urgency: ticketData.urgency,
@@ -572,6 +610,8 @@ export default function ResidentFlow() {
                             status={state === 'rate-limited' ? 'error' : state as any}
                             errorType={state === 'rate-limited' ? 'rate-limit' : undefined}
                             ticketNumber={ticketNumber}
+                            showAiFallbackNotice={showAiFallbackNotice}
+                            onRetry={() => setState('editing')}
                         />
                     </div>
                 )}

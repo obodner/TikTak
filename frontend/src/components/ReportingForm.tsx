@@ -34,6 +34,8 @@ interface ReportingFormProps {
   status: 'editing' | 'sending' | 'success' | 'error';
   errorType?: 'rate-limit';
   ticketNumber?: number | null;
+  showAiFallbackNotice?: boolean;
+  onRetry?: () => void;
 }
 
 export const ReportingForm: React.FC<ReportingFormProps> = ({ 
@@ -43,7 +45,9 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
   config,
   status,
   errorType,
-  ticketNumber
+  ticketNumber,
+  showAiFallbackNotice,
+  onRetry
 }) => {
   const { t } = useTranslation();
   const [summary, setSummary] = useState(initialData.summary);
@@ -122,12 +126,12 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
         <AlertCircle size={80} />
-        <h2 className="text-2xl font-black text-red-600">
+        <h2 className="text-2xl font-black text-red-600 text-center">
           {errorType === 'rate-limit' ? t('rate_limit_error') : t('error')}
         </h2>
         <button 
-          onClick={() => window.location.reload()}
-          className="bg-red-500 text-white px-8 py-4 rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all"
+          onClick={onRetry ? onRetry : handleSubmit}
+          className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all"
         >
           {t('try_again')}
         </button>
@@ -137,6 +141,13 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
 
   return (
     <div className="w-full max-w-sm flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {showAiFallbackNotice && (
+        <div className="bg-amber-500 text-white px-4 py-3 rounded-2xl font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 animate-pulse transition-all duration-300 text-center">
+          <AlertCircle size={18} className="shrink-0" />
+          <span>{t('ai_fallback_notice') || 'לא ניתן היה לנתח את התמונה אוטומטית. אנא הזן תיאור מילולי.'}</span>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100 relative">
         <div className="flex justify-between items-center mb-2">
           <label className="text-sm font-black text-blue-900/40 block">
