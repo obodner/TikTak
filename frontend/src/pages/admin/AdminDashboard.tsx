@@ -175,7 +175,9 @@ export default function AdminDashboard() {
           vendorPhone,
           vendorName,
           messageText,
-          actorName: getAdminDisplayName()
+          actorName: getAdminDisplayName(),
+          actorUid: user?.uid,
+          actorEmail: user?.email
         })
       });
 

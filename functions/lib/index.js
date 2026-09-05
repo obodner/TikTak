@@ -351,8 +351,8 @@ exports.checkAuth = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
         const tenantDoc = await db.collection("tenants").doc(tenantId).get();
         const tenantType = tenantDoc.data()?.type || 'building';
         const contactTarget = tenantType === 'municipality' ? 'למוקד' : 'לוועד הבית';
-        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
-        if (!reporterDoc.exists) {
+        const { authorized } = await findAndValidateReporter(tenantId, reporterPhone);
+        if (!authorized) {
             res.status(403).send({
                 authorized: false,
                 message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור.`
@@ -696,8 +696,8 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
             });
             return;
         }
-        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
-        if (!reporterDoc.exists) {
+        const { authorized, reporterName, cleanPhone } = await findAndValidateReporter(tenantId, reporterPhone);
+        if (!authorized) {
             res.status(403).send({
                 error: "Unauthorized",
                 message: `מספר הטלפון לא מזוהה במערכת. אנא צור קשר עם ${contactTarget} לאישור השתתפות במערכת הדיווחים.`
@@ -742,8 +742,8 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
                         : (source || (isRealImage ? 'ai_camera' : 'manual')),
                     imageId: finalImageId,
                     audioId: req.body.audioBase64 ? ticketId : null,
-                    reporterPhone: reporterPhone || null,
-                    reporterName: reporterDoc.data()?.name || null,
+                    reporterPhone: cleanPhone || reporterPhone || null,
+                    reporterName: reporterName || null,
                     status: 'open',
                     ticketNumber: nextNumber,
                     createdAt: new Date().toISOString(),
@@ -804,8 +804,8 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
                 action: 'TICKET_CREATED',
                 level: 'INFO',
                 actor: {
-                    uid: reporterPhone,
-                    name: reporterDoc.data()?.name || reporterPhone,
+                    uid: cleanPhone || reporterPhone,
+                    name: reporterName || cleanPhone || reporterPhone,
                     type: 'resident'
                 },
                 details: {
@@ -842,14 +842,14 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
                 location,
                 subLocation,
                 urgency,
-                reporterName: reporterDoc.data()?.name || null,
+                reporterName: reporterName || null,
                 imageId: finalImageId,
                 audioId: req.body.audioBase64 ? ticketId : null,
                 admins
             });
             if (reporterPhone) {
                 await sendResidentWhatsAppNotification({
-                    phone: reporterPhone,
+                    phone: cleanPhone || reporterPhone,
                     templateName: "new_ticket_confirmation",
                     ticketNumber,
                     category,
@@ -863,7 +863,7 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
                 ticketId: ticketId,
                 audioId: req.body.audioBase64 ? ticketId : null,
                 ticketNumber,
-                reporterName: reporterDoc.data()?.name || reporterPhone
+                reporterName: reporterName || cleanPhone || reporterPhone
             });
         }
         catch (txError) {
@@ -1029,8 +1029,8 @@ exports.getResidentTickets = (0, https_1.onRequest)({ cors: true }, async (req, 
             res.status(401).send({ error: "Missing reporterPhone" });
             return;
         }
-        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
-        if (!reporterDoc.exists) {
+        const { authorized, cleanPhone } = await findAndValidateReporter(tenantId, reporterPhone);
+        if (!authorized) {
             const tenantDoc = await db.collection("tenants").doc(tenantId).get();
             const tenantType = tenantDoc.data()?.type || 'building';
             const contactTarget = tenantType === 'municipality' ? 'המשרד' : 'ועד הבית';
@@ -1105,8 +1105,8 @@ exports.addResidentComment = (0, https_1.onRequest)({ cors: true }, async (req, 
             res.status(400).send({ error: "Missing reporterPhone" });
             return;
         }
-        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
-        if (!reporterDoc.exists) {
+        const { authorized: commentAuth, reporterName: rName, cleanPhone: cPhone } = await findAndValidateReporter(tenantId, reporterPhone);
+        if (!commentAuth) {
             res.status(403).send({ error: "Unauthorized" });
             return;
         }
@@ -1118,7 +1118,7 @@ exports.addResidentComment = (0, https_1.onRequest)({ cors: true }, async (req, 
         }
         const ticketData = ticketSnap.data() || {};
         const ticketNumber = ticketData.ticketNumber || 0;
-        const reporterName = reporterDoc.data()?.name || "תושב";
+        const reporterName = rName || "תושב";
         const commentObj = {
             text: commentText,
             createdAt: new Date().toISOString(),
@@ -1141,8 +1141,8 @@ exports.addResidentComment = (0, https_1.onRequest)({ cors: true }, async (req, 
             action: 'RESIDENT_COMMENT_ADDED',
             level: 'INFO',
             actor: {
-                uid: reporterPhone,
-                name: reporterDoc.data()?.name || reporterPhone,
+                uid: cPhone || reporterPhone,
+                name: reporterName || cPhone || reporterPhone,
                 type: 'resident'
             },
             details: {
@@ -1166,8 +1166,8 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
             res.status(400).send({ error: "Missing required fields" });
             return;
         }
-        const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(reporterPhone).get();
-        if (!reporterDoc.exists) {
+        const { authorized: meTooAuth, reporterName: meTooReporterName, cleanPhone: meTooCleanPhone } = await findAndValidateReporter(tenantId, reporterPhone);
+        if (!meTooAuth) {
             res.status(403).send({ error: "Unauthorized" });
             return;
         }
@@ -1179,20 +1179,21 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
         }
         const ticketData = ticketSnap.data() || {};
         const ticketNumber = ticketData.ticketNumber || 0;
-        if (ticketData.reporterPhone === reporterPhone) {
+        const effectivePhone = meTooCleanPhone || reporterPhone;
+        if (ticketData.reporterPhone === effectivePhone) {
             res.status(400).send({ error: "Cannot vote for your own ticket" });
             return;
         }
         const meTooReporters = ticketData.meTooReporters || [];
-        const alreadyVoted = meTooReporters.some((r) => r.phone === reporterPhone);
+        const alreadyVoted = meTooReporters.some((r) => r.phone === effectivePhone);
         if (alreadyVoted) {
             res.status(400).send({ error: "You have already voted for this ticket" });
             return;
         }
-        const reporterName = reporterDoc.data()?.name || "תושב";
+        const reporterName = meTooReporterName || "תושב";
         const newVoter = {
             name: reporterName,
-            phone: reporterPhone,
+            phone: effectivePhone,
             votedAt: new Date().toISOString()
         };
         await ticketRef.update({
@@ -1206,8 +1207,8 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
             action: 'RESIDENT_METOO_INCREMENTED',
             level: 'INFO',
             actor: {
-                uid: reporterPhone,
-                name: reporterDoc.data()?.name || reporterPhone,
+                uid: effectivePhone,
+                name: reporterName || effectivePhone,
                 type: 'resident'
             },
             details: {
@@ -1697,6 +1698,67 @@ function normalizePhoneNumber(rawPhone) {
     }
     return clean;
 }
+async function findAndValidateReporter(tenantId, rawPhone) {
+    if (!rawPhone || !tenantId) {
+        return { authorized: false, reporterName: null, cleanPhone: "" };
+    }
+    let cleanPhone = rawPhone.trim();
+    try {
+        cleanPhone = normalizePhoneNumber(rawPhone);
+    }
+    catch {
+        cleanPhone = rawPhone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('972') && cleanPhone.length === 12) {
+            cleanPhone = '0' + cleanPhone.substring(3);
+        }
+    }
+    if (!cleanPhone) {
+        return { authorized: false, reporterName: null, cleanPhone: "" };
+    }
+    const reporterDoc = await db.collection("tenants").doc(tenantId).collection("reporters").doc(cleanPhone).get();
+    if (reporterDoc.exists) {
+        return {
+            authorized: true,
+            reporterName: reporterDoc.data()?.name || null,
+            cleanPhone
+        };
+    }
+    const repSnap = await db.collection("tenants").doc(tenantId).collection("reporters").where("phone", "==", cleanPhone).get();
+    if (!repSnap.empty) {
+        return {
+            authorized: true,
+            reporterName: repSnap.docs[0].data()?.name || null,
+            cleanPhone
+        };
+    }
+    const adminSnap = await db.collection("tenants").doc(tenantId).collection("adminUsers").get();
+    const adminDoc = adminSnap.docs.find(doc => {
+        const mob = doc.data().mobile;
+        if (!mob)
+            return false;
+        let cleanMob = mob.trim();
+        try {
+            cleanMob = normalizePhoneNumber(mob);
+        }
+        catch {
+            cleanMob = mob.replace(/\D/g, '');
+            if (cleanMob.startsWith('972') && cleanMob.length === 12) {
+                cleanMob = '0' + cleanMob.substring(3);
+            }
+        }
+        return cleanMob === cleanPhone;
+    });
+    if (adminDoc) {
+        const aData = adminDoc.data();
+        const name = `${aData.firstName || ''} ${aData.lastName || ''}`.trim() || aData.name || "מנהל";
+        return {
+            authorized: true,
+            reporterName: name,
+            cleanPhone
+        };
+    }
+    return { authorized: false, reporterName: null, cleanPhone };
+}
 function sanitizeInput(input) {
     if (!input)
         return "";
@@ -2094,29 +2156,36 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                             }
                         }
                         let vendorResponseText = null;
+                        let extractedTicketId = null;
                         if (message.type === 'button') {
                             const payload = message.button?.payload || '';
                             const text = message.button?.text || '';
-                            if (text.includes('קיבלתי את ההודעה') || payload.includes('VENDOR_ACK') || payload.includes('קיבלתי')) {
+                            if (text.includes('קיבלתי את ההודעה') || text.includes('קבלתי את ההודעה') || payload.includes('VENDOR_ACK') || payload.includes('קיבלתי') || payload.includes('קבלתי')) {
                                 vendorResponseText = 'קיבלתי את ההודעה';
                             }
                             else if (text.includes('בוצע') || payload.includes('VENDOR_DONE') || payload.includes('בוצע')) {
                                 vendorResponseText = 'בוצע';
                             }
+                            const match = payload.match(/VENDOR_(?:ACK|DONE)_([a-zA-Z0-9_-]+)/);
+                            if (match)
+                                extractedTicketId = match[1];
                         }
                         else if (message.type === 'interactive') {
                             const title = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '';
                             const id = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || '';
-                            if (title.includes('קיבלתי את ההודעה') || id.includes('VENDOR_ACK')) {
+                            if (title.includes('קיבלתי את ההודעה') || title.includes('קבלתי את ההודעה') || id.includes('VENDOR_ACK')) {
                                 vendorResponseText = 'קיבלתי את ההודעה';
                             }
                             else if (title.includes('בוצע') || id.includes('VENDOR_DONE')) {
                                 vendorResponseText = 'בוצע';
                             }
+                            const match = id.match(/VENDOR_(?:ACK|DONE)_([a-zA-Z0-9_-]+)/);
+                            if (match)
+                                extractedTicketId = match[1];
                         }
                         else if (message.type === 'text') {
                             const text = (message.text?.body || '').trim();
-                            if (text === 'קיבלתי את ההודעה' || text === 'קיבלתי') {
+                            if (text === 'קיבלתי את ההודעה' || text === 'קבלתי את ההודעה' || text === 'קיבלתי' || text === 'קבלתי') {
                                 vendorResponseText = 'קיבלתי את ההודעה';
                             }
                             else if (text === 'בוצע') {
@@ -2125,48 +2194,111 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                         }
                         if (vendorResponseText) {
                             try {
-                                logger.info(`Received vendor button click '${vendorResponseText}' from phone ${localPhone} (raw: ${from})`);
+                                logger.info(`Received vendor button click '${vendorResponseText}' from phone ${localPhone} (raw: ${from}), extractedTicketId: ${extractedTicketId || 'none'}`);
                                 const querySnapshot = await db.collectionGroup("tickets").get();
-                                let updatedCount = 0;
+                                const matches = [];
                                 for (const docSnap of querySnapshot.docs) {
                                     const tData = docSnap.data();
                                     const vList = Array.isArray(tData.vendors) ? tData.vendors : [];
                                     const vIndex = vList.findIndex((v) => v.phone === localPhone ||
                                         v.rawPhone === localPhone ||
                                         v.intlPhone === from ||
-                                        (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, '')));
+                                        (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, '')) ||
+                                        (v.intlPhone && v.intlPhone.replace(/\D/g, '') === from.replace(/\D/g, '')));
                                     if (vIndex !== -1) {
-                                        vList[vIndex].status = vendorResponseText;
-                                        vList[vIndex].updatedAt = new Date().toISOString();
-                                        await docSnap.ref.update({
-                                            vendors: vList,
-                                            lastVendorResponseAt: new Date().toISOString()
-                                        });
-                                        const pathParts = docSnap.ref.path.split('/');
-                                        const tenantId = pathParts[1];
-                                        const auditAction = vendorResponseText === 'בוצע' ? 'VENDOR_COMPLETED_TICKET' : 'VENDOR_ACKNOWLEDGED_TICKET';
-                                        await recordAuditLog({
-                                            tenantId,
-                                            action: auditAction,
-                                            level: 'INFO',
-                                            actor: {
-                                                uid: localPhone,
-                                                name: vList[vIndex].name || localPhone,
-                                                type: 'vendor'
-                                            },
-                                            details: {
-                                                ticketId: docSnap.id,
-                                                ticketNumber: tData.ticketNumber,
-                                                vendorPhone: localPhone,
-                                                vendorName: vList[vIndex].name || localPhone,
-                                                responseText: vendorResponseText
-                                            }
-                                        });
-                                        updatedCount++;
+                                        const vItem = vList[vIndex];
+                                        const sentAtMs = vItem.sentAt ? new Date(vItem.sentAt).getTime() : 0;
+                                        matches.push({ docSnap, tData, vIndex, vItem, sentAtMs });
                                     }
                                 }
-                                if (updatedCount > 0) {
-                                    await sendWhatsAppText(from, `תודה! העדכון שלך ("${vendorResponseText}") נקלט בהצלחה במערכת TikTak. 🛠️`, phoneNumberId, token);
+                                let target = null;
+                                if (extractedTicketId) {
+                                    target = matches.find(m => m.docSnap.id === extractedTicketId || String(m.tData.ticketNumber) === extractedTicketId) || null;
+                                }
+                                if (!target && matches.length > 0) {
+                                    const isDone = vendorResponseText === 'בוצע';
+                                    const pendingMatches = matches.filter(m => isDone
+                                        ? m.vItem.status !== 'בוצע'
+                                        : (m.vItem.status !== 'בוצע' && m.vItem.status !== 'קיבלתי את ההודעה' && m.vItem.status !== 'קבלתי את ההודעה'));
+                                    const pool = pendingMatches.length > 0 ? pendingMatches : matches;
+                                    pool.sort((a, b) => b.sentAtMs - a.sentAtMs);
+                                    target = pool[0];
+                                }
+                                if (target) {
+                                    const { docSnap, tData, vIndex, vItem } = target;
+                                    const vList = [...tData.vendors];
+                                    const now = new Date();
+                                    const nowIso = now.toISOString();
+                                    const forwardDate = vItem.sentAt ? new Date(vItem.sentAt) : (tData.lastVendorForwardAt ? new Date(tData.lastVendorForwardAt) : null);
+                                    const responseTimeMs = forwardDate ? Math.max(0, now.getTime() - forwardDate.getTime()) : null;
+                                    const responseTimeSeconds = responseTimeMs !== null ? Math.round(responseTimeMs / 1000) : null;
+                                    const responseTimeMinutes = responseTimeMs !== null ? Math.round(responseTimeMs / (1000 * 60)) : null;
+                                    let executionTimeSeconds = null;
+                                    let executionTimeMinutes = null;
+                                    if (vItem.acknowledgedAt) {
+                                        const ackMs = Math.max(0, now.getTime() - new Date(vItem.acknowledgedAt).getTime());
+                                        executionTimeSeconds = Math.round(ackMs / 1000);
+                                        executionTimeMinutes = Math.round(ackMs / (1000 * 60));
+                                    }
+                                    const isDone = vendorResponseText === 'בוצע';
+                                    if (isDone) {
+                                        vList[vIndex] = {
+                                            ...vItem,
+                                            status: 'בוצע',
+                                            completedAt: nowIso,
+                                            totalResolutionTimeSeconds: responseTimeSeconds,
+                                            totalResolutionTimeMinutes: responseTimeMinutes,
+                                            executionTimeSeconds,
+                                            executionTimeMinutes,
+                                            updatedAt: nowIso
+                                        };
+                                    }
+                                    else {
+                                        vList[vIndex] = {
+                                            ...vItem,
+                                            status: 'קיבלתי את ההודעה',
+                                            acknowledgedAt: nowIso,
+                                            responseTimeSeconds,
+                                            responseTimeMinutes,
+                                            updatedAt: nowIso
+                                        };
+                                    }
+                                    await docSnap.ref.update({
+                                        vendors: vList,
+                                        lastVendorResponseAt: nowIso,
+                                        ...(isDone ? { vendorCompletedAt: nowIso } : { vendorAcknowledgedAt: nowIso })
+                                    });
+                                    const pathParts = docSnap.ref.path.split('/');
+                                    const tenantId = pathParts[1];
+                                    const auditAction = isDone ? 'VENDOR_COMPLETED_TICKET' : 'VENDOR_ACKNOWLEDGED_TICKET';
+                                    await recordAuditLog({
+                                        tenantId,
+                                        action: auditAction,
+                                        level: 'INFO',
+                                        actor: {
+                                            uid: localPhone,
+                                            name: vItem.name || localPhone,
+                                            type: 'vendor'
+                                        },
+                                        details: {
+                                            ticketId: docSnap.id,
+                                            ticketNumber: tData.ticketNumber || '',
+                                            category: tData.category || '',
+                                            vendorPhone: localPhone,
+                                            vendorName: vItem.name || localPhone,
+                                            responseText: vendorResponseText,
+                                            forwardedAt: vItem.sentAt || tData.lastVendorForwardAt || null,
+                                            acknowledgedAt: isDone ? (vItem.acknowledgedAt || null) : nowIso,
+                                            completedAt: isDone ? nowIso : null,
+                                            responseTimeSeconds: !isDone ? responseTimeSeconds : undefined,
+                                            responseTimeMinutes: !isDone ? responseTimeMinutes : undefined,
+                                            totalResolutionTimeSeconds: isDone ? responseTimeSeconds : undefined,
+                                            totalResolutionTimeMinutes: isDone ? responseTimeMinutes : undefined,
+                                            executionTimeSeconds: isDone ? executionTimeSeconds : undefined,
+                                            executionTimeMinutes: isDone ? executionTimeMinutes : undefined
+                                        }
+                                    });
+                                    await sendWhatsAppText(from, `תודה! העדכון שלך ("${vendorResponseText}") עבור פנייה #${tData.ticketNumber || docSnap.id} נקלט בהצלחה במערכת TikTak. 🛠️`, phoneNumberId, token);
                                     res.status(200).send("EVENT_RECEIVED");
                                     return;
                                 }
@@ -2280,19 +2412,37 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                         }
                         switch (session.state) {
                             case 'START': {
-                                const whitelistQuery = await db.collectionGroup("reporters").where("phone", "==", localPhone).get();
+                                let whitelistQuery = await db.collectionGroup("reporters").where("phone", "==", localPhone).get();
+                                let docsToProcess = whitelistQuery.docs;
                                 if (whitelistQuery.empty) {
+                                    const adminQuery = await db.collectionGroup("adminUsers").get();
+                                    docsToProcess = adminQuery.docs.filter(doc => {
+                                        const mob = doc.data().mobile;
+                                        if (!mob)
+                                            return false;
+                                        let cleanMob = mob.trim();
+                                        try {
+                                            cleanMob = normalizePhoneNumber(mob);
+                                        }
+                                        catch {
+                                            cleanMob = mob.replace(/\D/g, '');
+                                        }
+                                        return cleanMob === localPhone;
+                                    });
+                                }
+                                if (docsToProcess.length === 0) {
                                     await sendWhatsAppText(from, (0, i18n_1.t)("not_registered", "he"), phoneNumberId, token);
                                     session.state = 'START';
                                 }
-                                else if (whitelistQuery.size === 1) {
-                                    const rDoc = whitelistQuery.docs[0];
+                                else if (docsToProcess.length === 1) {
+                                    const rDoc = docsToProcess[0];
                                     const tId = rDoc.ref.path.split('/')[1];
                                     const tenantSnap = await db.collection("tenants").doc(tId).get();
                                     const tData = tenantSnap.data() || {};
+                                    const rData = rDoc.data() || {};
                                     session.tenantId = tId;
                                     session.tenantName = tData.name || tId;
-                                    session.reporterName = rDoc.data()?.name || "תושב/דייר";
+                                    session.reporterName = `${rData.firstName || ''} ${rData.lastName || ''}`.trim() || rData.name || "תושב/דייר";
                                     session.state = 'MAIN_MENU';
                                     await sendWhatsAppButtons(from, `שלום! ברוכים הבאים למערכת הדיווחים של *${session.tenantName}*. כיצד נוכל לעזור היום?\n\nבכל שלב, אם תרצה לצאת מהתהליך רשום *צא* או *ביטול*.`, [
                                         { id: "menu_report_image", title: "📸 דיווח עם תמונה" },
@@ -2302,7 +2452,7 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                 }
                                 else {
                                     const candidates = [];
-                                    for (const docRef of whitelistQuery.docs) {
+                                    for (const docRef of docsToProcess) {
                                         const tId = docRef.ref.path.split('/')[1];
                                         const tenantSnap = await db.collection("tenants").doc(tId).get();
                                         candidates.push({ id: tId, name: tenantSnap.data()?.name || tId });
@@ -2868,6 +3018,13 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                             transaction.set(ticketRef, ticketData);
                                             return nextNumber;
                                         });
+                                        logger.info("WhatsApp ticket created successfully", {
+                                            tenantId: session.tenantId,
+                                            ticketNumber,
+                                            ticketId,
+                                            reporterPhone: session.phoneNumber,
+                                            reporterName: rDoc.data()?.name || "תושב/דייר"
+                                        });
                                         try {
                                             await db.collection("global_stats").doc("counters").set({
                                                 totalTicketsCount: admin.firestore.FieldValue.increment(1)
@@ -3142,7 +3299,7 @@ async function promptCategorySelection(session, from, phoneNumberId, token) {
 }
 exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
     try {
-        const { tenantId, ticketId, vendorPhone, vendorName, messageText, actorName } = req.body;
+        const { tenantId, ticketId, vendorPhone, vendorName, messageText, actorName, actorUid, actorEmail } = req.body;
         if (!tenantId || !ticketId || !vendorPhone || !messageText) {
             res.status(400).send({ error: "Missing required parameters (tenantId, ticketId, vendorPhone, messageText)" });
             return;
@@ -3174,25 +3331,68 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
         if (cleanPhone.startsWith("0")) {
             cleanPhone = "972" + cleanPhone.substring(1);
         }
+        const tenantIdStr = tenantId || ticketData.building_id || ticketData.buildingId || ticketData.tenantId || '';
+        const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+        const tenantData = tenantDoc.data() || {};
+        const param1_ticketNum = (ticketData.ticketNumber !== undefined && ticketData.ticketNumber !== null) ? String(ticketData.ticketNumber) : String(ticketId);
+        const param2_sentBy = sanitizeParam(actorName || "מנהל");
+        const param3_building = sanitizeParam(tenantData.name || tenantId);
+        const param4_category = sanitizeParam(ticketData.category || "תחזוקה");
+        let param5_urgency = "בינונית ⚠️";
+        const lowerUrgency = (ticketData.urgency || "").toLowerCase();
+        if (lowerUrgency === "high")
+            param5_urgency = "גבוהה 🚨";
+        else if (lowerUrgency === "low")
+            param5_urgency = "נמוכה ℹ️";
+        const locParts = [];
+        if (ticketData.location && typeof ticketData.location === 'string' && ticketData.location.trim() && ticketData.location.trim() !== 'null') {
+            locParts.push(ticketData.location.trim());
+        }
+        if (ticketData.subLocation && typeof ticketData.subLocation === 'string' && ticketData.subLocation.trim() && ticketData.subLocation.trim() !== 'null') {
+            locParts.push(ticketData.subLocation.trim());
+        }
+        const param6_location = sanitizeParam(locParts.join(" / ") || "לא צוין");
+        const param7_summary = sanitizeParam(ticketData.summary || "אין תיאור");
+        let param8_image = "אין";
+        if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
+            param8_image = `(https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId})`;
+        }
+        const resolvedAudioId = ticketData.audioId || ticketData.audioUrl || ticketData.audio;
+        let param9_audio = "אין";
+        if (resolvedAudioId && typeof resolvedAudioId === 'string' && resolvedAudioId.length > 5 && resolvedAudioId !== 'null') {
+            const audioCleanId = String(resolvedAudioId).replace(/\.[^/.]+$/, "");
+            param9_audio = `(https://tiktak2026.web.app/aud/${tenantIdStr}/${audioCleanId})`;
+        }
+        const templateParams = [
+            param1_ticketNum,
+            param2_sentBy,
+            param3_building,
+            param4_category,
+            param5_urgency,
+            param6_location,
+            param7_summary,
+            param8_image,
+            param9_audio
+        ];
         const multiLineMessage = messageText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, ' ').trim();
-        const cleanMessageForMeta = messageText.replace(/[\r\n\t]+/g, ' • ').replace(/\s{2,}/g, ' ').trim();
         const vendorButtons = [
-            { id: "VENDOR_ACK", title: "קיבלתי את ההודעה" },
-            { id: "VENDOR_DONE", title: "בוצע" }
+            { id: `VENDOR_ACK_${ticketId}`, title: "קיבלתי את ההודעה" },
+            { id: `VENDOR_DONE_${ticketId}`, title: "בוצע" }
         ];
         logger.info(`Forwarding ticket #${ticketData.ticketNumber || ticketId} to vendor ${cleanPhone}...`);
         let apiResult = null;
         try {
-            apiResult = await sendWhatsAppButtons(cleanPhone, multiLineMessage, vendorButtons, phoneNumberId, token);
-            logger.info(`Successfully dispatched single interactive vendor message to ${cleanPhone}`);
+            apiResult = await sendWhatsAppTemplate(cleanPhone, "vendor_ticket_dispatch", "he", templateParams, phoneNumberId, token);
+            logger.info(`Successfully dispatched approved vendor_ticket_dispatch template to ${cleanPhone}`);
         }
-        catch (interactiveErr) {
-            logger.warn(`Interactive button dispatch failed for vendor ${cleanPhone}, attempting template fallback...`, interactiveErr);
+        catch (templateErr) {
+            logger.warn(`Approved template vendor_ticket_dispatch failed for vendor ${cleanPhone}, attempting interactive fallback...`, templateErr);
             try {
-                apiResult = await sendWhatsAppTemplate(cleanPhone, "vendor_ticket_dispatch", "he", [cleanMessageForMeta], phoneNumberId, token);
+                apiResult = await sendWhatsAppButtons(cleanPhone, multiLineMessage, vendorButtons, phoneNumberId, token);
+                logger.info(`Successfully dispatched interactive fallback vendor message to ${cleanPhone}`);
             }
-            catch (templateErr) {
-                logger.error(`Template vendor_ticket_dispatch failed for ticket #${ticketData.ticketNumber}:`, templateErr);
+            catch (interactiveErr) {
+                logger.error(`Both template and interactive vendor messages failed for ticket #${ticketData.ticketNumber}:`, interactiveErr);
                 const errStr = typeof templateErr === 'string'
                     ? templateErr
                     : (templateErr.message || JSON.stringify(templateErr));
@@ -3213,7 +3413,6 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
                 return;
             }
         }
-        const tenantIdStr = tenantId || ticketData.building_id || ticketData.buildingId || ticketData.tenantId || '';
         if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
             const imageUrl = `https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId}`;
             try {
@@ -3224,7 +3423,6 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
                 logger.error(`Failed to dispatch image attachment to vendor ${cleanPhone}:`, imgErr);
             }
         }
-        const resolvedAudioId = ticketData.audioId || ticketData.audioUrl || ticketData.audio;
         if (resolvedAudioId && typeof resolvedAudioId === 'string' && resolvedAudioId.length > 5 && resolvedAudioId !== 'null') {
             const audioCleanId = resolvedAudioId.replace(/\.[^/.]+$/, "");
             const bucket = admin.storage().bucket();
@@ -3289,11 +3487,14 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
             lastVendorForwardAt: new Date().toISOString(),
             vendors: updatedVendors
         });
-        await db.collection("tenants").doc(tenantId).collection("audit_logs").add({
-            timestamp: new Date().toISOString(),
+        await recordAuditLog({
+            tenantId,
             action: "TICKET_FORWARDED_TO_VENDOR",
+            level: "INFO",
             actor: {
+                uid: actorUid || "admin",
                 name: actorName || "מנהל",
+                email: actorEmail || undefined,
                 type: "admin"
             },
             details: {
@@ -3305,7 +3506,8 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
                 formattedPhone: cleanPhone,
                 messageText,
                 forwardCount: newCount,
-                sentViaMetaCloudApi: true
+                sentViaMetaCloudApi: true,
+                forwardedAt: newVendorEntry.sentAt
             }
         });
         res.status(200).send({

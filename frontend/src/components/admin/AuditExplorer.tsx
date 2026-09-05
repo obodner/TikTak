@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, getDocs, where, startAfter, QueryConstraint } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Search, EyeOff, X, Filter, Copy, Check } from 'lucide-react';
+import { Search, EyeOff, X, Filter, Copy, Check, Download, FileSpreadsheet, FileCode, Loader2 } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay } from 'date-fns';
 
 interface AuditLog {
@@ -32,6 +32,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
     const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
     const [showRaw, setShowRaw] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // Filters
     const [filters, setFilters] = useState({
@@ -51,6 +53,180 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         navigator.clipboard.writeText(JSON.stringify(log, null, 2));
         setCopiedId(log.id);
         setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const applyClientFilters = (rawLogs: AuditLog[]) => {
+        let filtered = rawLogs;
+
+        if (filters.tenantId !== 'all') {
+            filtered = filtered.filter(l => (l.tenantId === filters.tenantId || l.metadata?.tenantId === filters.tenantId));
+        }
+
+        if (filters.action !== 'all') {
+            filtered = filtered.filter(l => l.action === filters.action);
+        }
+
+        if (filters.category !== 'all') {
+            filtered = filtered.filter(l => l.details?.category === filters.category);
+        }
+
+        if (filters.urgency !== 'all') {
+            filtered = filtered.filter(l => l.details?.urgency === filters.urgency);
+        }
+
+        if (filters.actorSearch) {
+            const s = filters.actorSearch.toLowerCase();
+            filtered = filtered.filter(l =>
+                l.actor?.email?.toLowerCase().includes(s) ||
+                l.actor?.name?.toLowerCase().includes(s)
+            );
+        }
+
+        if (filters.search) {
+            const s = filters.search.toLowerCase();
+            filtered = filtered.filter(l =>
+                getHumanReadable(l).toLowerCase().includes(s) ||
+                JSON.stringify(l.details || {}).toLowerCase().includes(s) ||
+                l.action.toLowerCase().includes(s) ||
+                (l.actor?.name && l.actor.name.toLowerCase().includes(s)) ||
+                (l.actor?.email && l.actor.email.toLowerCase().includes(s))
+            );
+        }
+
+        if (filters.hasImage !== 'all') {
+            const wantImage = filters.hasImage === 'yes';
+            filtered = filtered.filter(l => !!l.details?.hasImage === wantImage);
+        }
+
+        if (filters.hasAudio !== 'all') {
+            const wantAudio = filters.hasAudio === 'yes';
+            filtered = filtered.filter(l => !!l.details?.hasAudio === wantAudio);
+        }
+
+        return filtered;
+    };
+
+    const fetchAllMatchingLogs = async (): Promise<AuditLog[]> => {
+        setIsExporting(true);
+        try {
+            const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
+
+            let startDate: Date | null = null;
+            if (filters.timeRange === '1m') startDate = subMonths(new Date(), 1);
+            else if (filters.timeRange === '3m') startDate = subMonths(new Date(), 3);
+            else if (filters.timeRange === '6m') startDate = subMonths(new Date(), 6);
+            else if (filters.timeRange === '12m') startDate = subMonths(new Date(), 12);
+            else if (filters.timeRange === 'custom' && filters.customStartDate) {
+                startDate = startOfDay(new Date(filters.customStartDate));
+            }
+
+            if (startDate) {
+                constraints.push(where('createdAt', '>=', startDate.toISOString()));
+            }
+
+            let allRawLogs: AuditLog[] = [];
+            let lastExportDoc: any = null;
+            let hasMore = true;
+
+            while (hasMore) {
+                const batchConstraints: QueryConstraint[] = [...constraints, limit(500)];
+                if (lastExportDoc) {
+                    batchConstraints.push(startAfter(lastExportDoc));
+                }
+
+                const q = query(collection(db, 'audit_logs'), ...batchConstraints);
+                const snap = await getDocs(q);
+
+                if (snap.empty) {
+                    hasMore = false;
+                    break;
+                }
+
+                const batchLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+                allRawLogs = [...allRawLogs, ...batchLogs];
+
+                lastExportDoc = snap.docs[snap.docs.length - 1];
+                if (snap.docs.length < 500) {
+                    hasMore = false;
+                }
+            }
+
+            return applyClientFilters(allRawLogs);
+        } catch (err) {
+            console.error('Failed to fetch all matching logs for export:', err);
+            return applyClientFilters(logs);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const exportToCSV = async () => {
+        const targetLogs = await fetchAllMatchingLogs();
+        if (targetLogs.length === 0) return;
+
+        const headers = [
+            isEn ? 'Log ID' : 'מזהה',
+            isEn ? 'Date' : 'תאריך',
+            isEn ? 'Level' : 'רמה',
+            isEn ? 'Action Code' : 'קוד פעולה',
+            isEn ? 'Action Label' : 'שם פעולה',
+            isEn ? 'Actor' : 'מבצע',
+            isEn ? 'Actor Email' : 'אימייל מבצע',
+            isEn ? 'Building/Tenant' : 'בניין/לקוח',
+            isEn ? 'Description' : 'תיאור מפורט',
+            isEn ? 'Details (JSON)' : 'פרטים (JSON)'
+        ];
+
+        const rows = targetLogs.map(l => {
+            const dateStr = format(parseISO(l.createdAt), 'dd/MM/yyyy HH:mm:ss');
+            const actionLabel = isEn
+                ? (actionLabels[l.action]?.en || l.action)
+                : (actionLabels[l.action]?.he || l.action);
+            const logTenantId = l.tenantId || l.metadata?.tenantId;
+            const tenantName = tenants.find(t => t.id === logTenantId)?.name || logTenantId || '';
+            const humanDesc = getHumanReadable(l);
+            const detailsJson = JSON.stringify(l.details || {}).replace(/"/g, '""');
+
+            return [
+                `"${l.id}"`,
+                `"${dateStr}"`,
+                `"${l.level}"`,
+                `"${l.action}"`,
+                `"${actionLabel.replace(/"/g, '""')}"`,
+                `"${(l.actor?.name || '').replace(/"/g, '""')}"`,
+                `"${(l.actor?.email || '').replace(/"/g, '""')}"`,
+                `"${tenantName.replace(/"/g, '""')}"`,
+                `"${humanDesc.replace(/"/g, '""')}"`,
+                `"${detailsJson}"`
+            ].join(',');
+        });
+
+        // Add UTF-8 BOM \uFEFF for Hebrew Excel compatibility
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `audit_logs_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setShowExportModal(false);
+    };
+
+    const exportToJSON = async () => {
+        const targetLogs = await fetchAllMatchingLogs();
+        if (targetLogs.length === 0) return;
+        const jsonContent = JSON.stringify(targetLogs, null, 2);
+        const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `audit_logs_${format(new Date(), 'yyyy-MM-dd_HHmm')}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setShowExportModal(false);
     };
 
     const categories = ['חשמל', 'ניקיון', 'מעלית', 'אינסטלציה', 'אחר'];
@@ -84,8 +260,61 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED',
         'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED',
         'TICKET_FORWARDED_TO_VENDOR', 'VENDOR_ACKNOWLEDGED_TICKET', 'VENDOR_COMPLETED_TICKET',
-        'TICKET_BACKLOG_MOVED', 'BACKLOG_TICKET_REORDERED'
+        'TICKET_BACKLOG_MOVED', 'BACKLOG_TICKET_REORDERED',
+        'QUOTA_NON_BILLABLE_FLAGGED', 'QUOTA_ALERT_DISPATCHED', 'BILLING_CYCLE_CLOSED'
     ];
+
+    const actionLabels: Record<string, { he: string; en: string }> = {
+        'TICKET_CREATED': { he: 'דיווח ע״י תושב', en: 'Ticket Created' },
+        'TICKET_STATUS_UPDATE': { he: 'עדכון סטטוס פנייה', en: 'Ticket Status Update' },
+        'TICKET_URGENCY_UPDATE': { he: 'עדכון דחיפות פנייה', en: 'Ticket Urgency Update' },
+        'COMMENT_CREATED': { he: 'הוספת הערה ניהולית', en: 'Comment Created' },
+        'COMMENT_DELETED': { he: 'מחיקת הערה', en: 'Comment Deleted' },
+        'WHATSAPP_UPDATE_SENT': { he: 'עדכון וואטסאפ לתושב', en: 'WhatsApp Update Sent' },
+        'USER_ADDED': { he: 'הוספת משתמש ניהול', en: 'User Added' },
+        'USER_DELETED': { he: 'הסרת משתמש ניהול', en: 'User Deleted' },
+        'USER_UPDATE': { he: 'עדכון פרטי מנהל', en: 'User Updated' },
+        'VENDOR_ADDED': { he: 'הוספת איש שירות/ספק', en: 'Vendor Added' },
+        'VENDOR_UPDATED': { he: 'עדכון איש שירות/ספק', en: 'Vendor Updated' },
+        'VENDOR_DELETED': { he: 'הסרת איש שירות/ספק', en: 'Vendor Deleted' },
+        'CONFIGURATION_UPDATE': { he: 'עדכון הגדרות בניין', en: 'Configuration Update' },
+        'QUICKTAP_CONFIG_UPDATE': { he: 'עדכון כפתורי דיווח מהיר', en: 'QuickTap Config Update' },
+        'REPORTER_LIST_UPDATE': { he: 'עדכון רשימת מורשים', en: 'Reporter List Update' },
+        'LOGIN': { he: 'התחברות למערכת', en: 'Login' },
+        'APP_FEEDBACK_SUBMITTED': { he: 'דירוג חוויית דיווח', en: 'App Feedback Submitted' },
+        'APP_FEEDBACK_SUBMMITTED': { he: 'דירוג חוויית דיווח', en: 'App Feedback Submitted' },
+        'SERVICE_FEEDBACK_SUBMITTED': { he: 'דירוג שירות', en: 'Service Feedback Submitted' },
+        'RESIDENT_COMMENT_ADDED': { he: 'הערת תושב', en: 'Resident Comment Added' },
+        'RESIDENT_METOO_INCREMENTED': { he: 'גם לי יש תקלה', en: 'Resident MeToo Clicked' },
+        'TICKET_FORWARDED_TO_VENDOR': { he: 'העברה לספק בוואטסאפ', en: 'Ticket Forwarded to Vendor' },
+        'VENDOR_ACKNOWLEDGED_TICKET': { he: 'אישור קבלה ע״י ספק', en: 'Vendor Acknowledged Ticket' },
+        'VENDOR_COMPLETED_TICKET': { he: 'דיווח ביצוע ע״י ספק', en: 'Vendor Completed Ticket' },
+        'TICKET_BACKLOG_MOVED': { he: 'העברה למצבור משימות', en: 'Ticket Moved to Backlog' },
+        'BACKLOG_TICKET_REORDERED': { he: 'שינוי סדר/עדיפות במצבור', en: 'Backlog Ticket Reordered' },
+        'QUOTA_NON_BILLABLE_FLAGGED': { he: 'זיכוי מכסה (פנייה ללא חיוב)', en: 'Quota Non-Billable Flagged' },
+        'QUOTA_ALERT_DISPATCHED': { he: 'התראת מכסת פניות', en: 'Quota Alert Dispatched' },
+        'BILLING_CYCLE_CLOSED': { he: 'סגירת מחזור חיוב חודשי', en: 'Billing Cycle Closed' },
+    };
+
+    const statusMap: Record<string, { he: string; en: string }> = {
+        'open': { he: 'פתוחה', en: 'Open' },
+        'in_progress': { he: 'בטיפול', en: 'In Progress' },
+        'resolved': { he: 'טופל', en: 'Resolved' },
+        'fixed': { he: 'טופל', en: 'Fixed' },
+        'dismissed': { he: 'נדחתה', en: 'Dismissed' },
+        'rejected': { he: 'נדחה', en: 'Rejected' },
+        'closed': { he: 'סגור', en: 'Closed' },
+        'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
+        'duplicate': { he: 'כפילות', en: 'Duplicate' },
+        'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
+        'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+    };
+
+    function formatStatus(rawStatus: string) {
+        if (!rawStatus) return '';
+        const statusKey = String(rawStatus).toLowerCase();
+        return isEn ? (statusMap[statusKey]?.en || rawStatus) : (statusMap[statusKey]?.he || rawStatus);
+    }
 
     useEffect(() => {
         fetchTenants();
@@ -131,54 +360,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             const snap = await getDocs(q);
 
             const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
-
-            // Client-side filtering for everything else
-            let filtered = rawLogs;
-
-            if (filters.tenantId !== 'all') {
-                filtered = filtered.filter(l => (l.tenantId === filters.tenantId || l.metadata?.tenantId === filters.tenantId));
-            }
-
-            if (filters.action !== 'all') {
-                filtered = filtered.filter(l => l.action === filters.action);
-            }
-
-            if (filters.category !== 'all') {
-                filtered = filtered.filter(l => l.details?.category === filters.category);
-            }
-
-            if (filters.urgency !== 'all') {
-                filtered = filtered.filter(l => l.details?.urgency === filters.urgency);
-            }
-
-            if (filters.actorSearch) {
-                const s = filters.actorSearch.toLowerCase();
-                filtered = filtered.filter(l =>
-                    l.actor.email?.toLowerCase().includes(s) ||
-                    l.actor.name?.toLowerCase().includes(s)
-                );
-            }
-
-            if (filters.search) {
-                const s = filters.search.toLowerCase();
-                filtered = filtered.filter(l =>
-                    getHumanReadable(l).toLowerCase().includes(s) ||
-                    JSON.stringify(l.details).toLowerCase().includes(s) ||
-                    l.action.toLowerCase().includes(s) ||
-                    l.actor.name.toLowerCase().includes(s) ||
-                    (l.actor.email && l.actor.email.toLowerCase().includes(s))
-                );
-            }
-
-            if (filters.hasImage !== 'all') {
-                const wantImage = filters.hasImage === 'yes';
-                filtered = filtered.filter(l => !!l.details?.hasImage === wantImage);
-            }
-
-            if (filters.hasAudio !== 'all') {
-                const wantAudio = filters.hasAudio === 'yes';
-                filtered = filtered.filter(l => !!l.details?.hasAudio === wantAudio);
-            }
+            const filtered = applyClientFilters(rawLogs);
 
             setLogs(prev => isNew ? filtered : [...prev, ...filtered]);
             setLastDoc(snap.docs[snap.docs.length - 1]);
@@ -205,9 +387,10 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
     };
 
     function getHumanReadable(log: AuditLog) {
-        let actor = log.actor.name || 'Unknown';
-        // If actor name is an email, show only the prefix for a cleaner look
-        if (actor.includes('@') && actor.includes('.')) {
+        let actor = log.actor?.name || log.actor?.email || 'Unknown';
+        if (actor.toLowerCase() === 'system' || actor === 'Admin' || actor === 'system') {
+            actor = isEn ? 'System' : 'מערכת';
+        } else if (actor.includes('@') && actor.includes('.')) {
             actor = actor.split('@')[0];
         }
         const logTenantId = log.tenantId || log.metadata?.tenantId;
@@ -220,11 +403,36 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} reported a new ${log.details.category} issue ${createRef} in ${tenantName}${summaryText}`
                     : `${actor} דיווח על תקלה חדשה ${createRef} (${log.details.category}) בבניין ${tenantName}${summaryText}`;
-            case 'TICKET_STATUS_UPDATE':
+            case 'TICKET_STATUS_UPDATE': {
                 const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const formattedNewStatus = formatStatus(log.details.newStatus);
                 return isEn
-                    ? `${actor} updated ticket ${ticketRef} status to ${log.details.newStatus} in ${tenantName}`
-                    : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${log.details.newStatus} בבניין ${tenantName}`;
+                    ? `${actor} updated ticket ${ticketRef} status to ${formattedNewStatus} in ${tenantName}`
+                    : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${formattedNewStatus} בבניין ${tenantName}`;
+            }
+            case 'QUOTA_NON_BILLABLE_FLAGGED': {
+                const qRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
+                    ? `#${log.details.ticketNumber}`
+                    : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const reasonStr = log.details?.reason ? ` (${log.details.reason})` : '';
+                return isEn
+                    ? `Ticket ${qRef} flagged as non-billable quota deduction${reasonStr} in ${tenantName}`
+                    : `זיכוי מכסה: פנייה ${qRef} סומנה כפטורה מחיוב במכסה${reasonStr} בבניין ${tenantName}`;
+            }
+            case 'QUOTA_ALERT_DISPATCHED': {
+                const threshold = log.details?.threshold || '';
+                const netUsed = log.details?.netUsedTickets ?? '';
+                const quota = log.details?.effectiveQuota ?? '';
+                const usageStr = (netUsed !== '' && quota !== '') ? ` (${netUsed}/${quota})` : '';
+                return isEn
+                    ? `Quota alert dispatched (${threshold})${usageStr} for ${tenantName}`
+                    : `התראת ניצול מכסה נשלחה (${threshold})${usageStr} עבור ${tenantName}`;
+            }
+            case 'BILLING_CYCLE_CLOSED': {
+                return isEn
+                    ? `Monthly billing cycle closed for ${tenantName}`
+                    : `סיכום מחזור חיוב חודשי נסגר עבור ${tenantName}`;
+            }
             case 'COMMENT_CREATED':
                 const commTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn
@@ -243,8 +451,12 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     : `${actor} שלח עדכון בוואטסאפ לתושב עבור פנייה ${waTicketRef}${waCommentSnippet}`;
             case 'TICKET_FORWARDED_TO_VENDOR': {
                 const fwdTicketRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-                const vPhone = log.details?.vendorPhone || '';
-                const vNameStr = log.details?.vendorName ? `${log.details.vendorName} (${vPhone})` : vPhone;
+                const vPhone = (log.details?.vendorPhone || '').trim();
+                const vName = (log.details?.vendorName || '').trim();
+                const cleanPhone = vPhone.replace(/\D/g, '');
+                const cleanName = vName.replace(/\D/g, '');
+                const isPhoneSame = !vName || vName === vPhone || (cleanPhone.length > 0 && cleanName === cleanPhone);
+                const vNameStr = isPhoneSame ? (vPhone || vName) : (vPhone ? `${vName} (${vPhone})` : vName);
                 return isEn
                     ? `${actor} forwarded ticket ${fwdTicketRef} to vendor ${vNameStr} via WhatsApp`
                     : `${actor} העביר פנייה ${fwdTicketRef} לספק ${vNameStr} בוואטסאפ`;
@@ -253,19 +465,35 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const ackTicketRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
                     ? `#${log.details.ticketNumber}`
                     : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-                const vName = log.details?.vendorName || log.actor?.name || log.details?.vendorPhone || actor;
+                const rawVName = (log.details?.vendorName || '').trim();
+                const vPhone = (log.details?.vendorPhone || '').trim();
+                const cleanPhone = vPhone.replace(/\D/g, '');
+                const cleanName = rawVName.replace(/\D/g, '');
+                const isPhoneSame = !rawVName || rawVName === vPhone || (cleanPhone.length > 0 && cleanName === cleanPhone);
+                const vName = isPhoneSame ? (vPhone || rawVName || log.actor?.name || actor) : (vPhone ? `${rawVName} (${vPhone})` : rawVName);
+                const timeStr = log.details?.responseTimeMinutes !== undefined && log.details?.responseTimeMinutes !== null
+                    ? (isEn ? ` (Response time: ${log.details.responseTimeMinutes}m)` : ` (זמן תגובה: ${log.details.responseTimeMinutes} דק׳)`)
+                    : '';
                 return isEn
-                    ? `Vendor (${vName}) acknowledged receipt of ticket ${ackTicketRef} via WhatsApp`
-                    : `הספק (${vName}) אישר קבלת פנייה ${ackTicketRef} בוואטסאפ`;
+                    ? `Vendor (${vName}) acknowledged receipt of ticket ${ackTicketRef} via WhatsApp${timeStr}`
+                    : `הספק (${vName}) אישר קבלת פנייה ${ackTicketRef} בוואטסאפ${timeStr}`;
             }
             case 'VENDOR_COMPLETED_TICKET': {
                 const doneTicketRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
                     ? `#${log.details.ticketNumber}`
                     : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-                const vName = log.details?.vendorName || log.actor?.name || log.details?.vendorPhone || actor;
+                const rawVName = (log.details?.vendorName || '').trim();
+                const vPhone = (log.details?.vendorPhone || '').trim();
+                const cleanPhone = vPhone.replace(/\D/g, '');
+                const cleanName = rawVName.replace(/\D/g, '');
+                const isPhoneSame = !rawVName || rawVName === vPhone || (cleanPhone.length > 0 && cleanName === cleanPhone);
+                const vName = isPhoneSame ? (vPhone || rawVName || log.actor?.name || actor) : (vPhone ? `${rawVName} (${vPhone})` : rawVName);
+                const timeStr = log.details?.totalResolutionTimeMinutes !== undefined && log.details?.totalResolutionTimeMinutes !== null
+                    ? (isEn ? ` (Total time: ${log.details.totalResolutionTimeMinutes}m)` : ` (זמן ביצוע כולל: ${log.details.totalResolutionTimeMinutes} דק׳)`)
+                    : '';
                 return isEn
-                    ? `Vendor (${vName}) marked ticket ${doneTicketRef} as completed (Done) via WhatsApp`
-                    : `הספק (${vName}) דיווח על ביצוע (בוצע) עבור פנייה ${doneTicketRef} בוואטסאפ`;
+                    ? `Vendor (${vName}) marked ticket ${doneTicketRef} as completed (Done) via WhatsApp${timeStr}`
+                    : `הספק (${vName}) דיווח על ביצוע (בוצע) עבור פנייה ${doneTicketRef} בוואטסאפ${timeStr}`;
             }
             case 'TICKET_BACKLOG_MOVED': {
                 const bkgRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null) 
@@ -418,8 +646,12 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     ? `Resident clicked Me Too on ticket ${ticketRef} in ${tenantName}`
                     : `תושב סימן 'גם לי יש את התקלה' לפנייה ${ticketRef} בבניין ${tenantName}`;
             }
-            default:
-                return `${actor}: ${log.action}`;
+            default: {
+                const actionLabel = isEn
+                    ? (actionLabels[log.action]?.en || log.action)
+                    : (actionLabels[log.action]?.he || log.action);
+                return `${actor}: ${actionLabel}`;
+            }
         }
     }
 
@@ -483,7 +715,11 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                             onChange={e => setFilters(prev => ({ ...prev, action: e.target.value }))}
                         >
                             <option value="all">{uiLabels.all}</option>
-                            {actions.map(a => <option key={a} value={a}>{a}</option>)}
+                            {actions.map(a => (
+                                <option key={a} value={a}>
+                                    {isEn ? (actionLabels[a]?.en || a) : (actionLabels[a]?.he || a)}
+                                </option>
+                            ))}
                         </select>
                     </div>
 
@@ -587,7 +823,93 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 <p className="text-sm font-bold text-slate-500">
                     {uiLabels.showing} <span className="text-blue-600">{logs.length}</span> {uiLabels.records}
                 </p>
+
+                <button
+                    onClick={() => setShowExportModal(true)}
+                    disabled={logs.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer"
+                >
+                    <Download size={16} />
+                    <span>{isEn ? 'Export Logs' : 'ייצוא רשומות'}</span>
+                </button>
             </div>
+
+            {/* Export Format Modal */}
+            {showExportModal && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-6 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                                    <Download size={20} />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-800">
+                                    {isEn ? 'Export Audit Logs' : 'ייצוא תיעוד פעולות'}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => setShowExportModal(false)}
+                                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-all"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-slate-600 font-medium">
+                            {isEn
+                                ? `Exporting all records matching the current filter options:`
+                                : `ייצוא של כל הרשומות התואמות למסננים שנבחרו:`}
+                        </p>
+
+                        {isExporting ? (
+                            <div className="py-8 flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-slate-200">
+                                <Loader2 size={32} className="text-blue-600 animate-spin" />
+                                <span className="text-sm font-bold text-slate-700">
+                                    {isEn ? 'Fetching all matching logs...' : 'אוסף את כל הרשומות התואמות...'}
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-4">
+                                <button
+                                    onClick={exportToCSV}
+                                    className="flex flex-col items-center justify-center gap-3 p-5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-2xl transition-all group cursor-pointer"
+                                >
+                                    <div className="p-3 bg-emerald-600 text-white rounded-xl shadow-md group-hover:scale-110 transition-transform">
+                                        <FileSpreadsheet size={24} />
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="block font-bold text-sm">קובץ Excel (CSV)</span>
+                                        <span className="text-[11px] text-emerald-600 font-medium">{isEn ? 'For Excel / Sheets' : 'מתאים לאקסל ולגיליונות'}</span>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={exportToJSON}
+                                    className="flex flex-col items-center justify-center gap-3 p-5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 rounded-2xl transition-all group cursor-pointer"
+                                >
+                                    <div className="p-3 bg-blue-600 text-white rounded-xl shadow-md group-hover:scale-110 transition-transform">
+                                        <FileCode size={24} />
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="block font-bold text-sm">קובץ נתונים (JSON)</span>
+                                        <span className="text-[11px] text-blue-600 font-medium">{isEn ? 'Raw JSON format' : 'פורמט מפתחים / מפתח'}</span>
+                                    </div>
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end pt-2">
+                            <button
+                                onClick={() => setShowExportModal(false)}
+                                disabled={isExporting}
+                                className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 disabled:opacity-50 transition-colors"
+                            >
+                                {isEn ? 'Cancel' : 'ביטול'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="divide-y divide-slate-100">
@@ -613,22 +935,31 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                                     <p className="text-sm text-slate-800 font-medium">{getHumanReadable(log)}</p>
 
                                     {showRaw === log.id && (
-                                        <div className="relative group/json mt-3" onClick={(e) => e.stopPropagation()}>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleCopy(log);
-                                                }}
-                                                id={`copy-${log.id}`}
-                                                className={`absolute top-3 left-3 p-2 rounded-lg transition-all border shadow-xl opacity-0 group-hover/json:opacity-100 z-10 ${copiedId === log.id
-                                                        ? 'bg-green-600 text-white border-green-500'
-                                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                                                    }`}
-                                                title="Copy JSON"
+                                        <div className="relative mt-3 rounded-lg overflow-hidden border border-slate-800" onClick={(e) => e.stopPropagation()}>
+                                            <div className="absolute top-2.5 left-2.5 z-20">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleCopy(log);
+                                                    }}
+                                                    id={`copy-${log.id}`}
+                                                    className={`p-1.5 rounded-md transition-all flex items-center justify-center border shadow-md ${copiedId === log.id
+                                                            ? 'bg-green-600 text-white border-green-500'
+                                                            : 'bg-slate-800/95 hover:bg-slate-700 text-slate-200 border-slate-700 backdrop-blur-sm'
+                                                        }`}
+                                                    title={isEn ? 'Copy JSON' : 'העתק JSON'}
+                                                >
+                                                    {copiedId === log.id ? (
+                                                        <Check size={14} className="text-white" />
+                                                    ) : (
+                                                        <Copy size={14} className="text-slate-300" />
+                                                    )}
+                                                </button>
+                                            </div>
+                                            <pre
+                                                className="p-3 pt-11 bg-slate-900 text-green-400 text-[11px] leading-relaxed max-h-96 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all break-words font-mono text-left relative selection:bg-green-900 selection:text-white"
+                                                dir="ltr"
                                             >
-                                                {copiedId === log.id ? <Check size={14} /> : <Copy size={14} />}
-                                            </button>
-                                            <pre className="p-3 bg-slate-900 text-green-400 text-[10px] rounded-lg overflow-x-auto font-mono text-left relative" dir="ltr">
                                                 {JSON.stringify(log, null, 2)}
                                             </pre>
                                         </div>

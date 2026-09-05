@@ -409,11 +409,16 @@ export const buildDefaultVendorMessage = (
   if (ticket.imageId && typeof ticket.imageId === 'string' && ticket.imageId.length > 5 && ticket.imageId !== 'null') {
     const imgUrl = `${window.location.origin}/img/${tenantIdStr}/${ticket.imageId}`;
     parts.push(dict.imageAttachment.replace('{{url}}', imgUrl));
+  } else if (dict.noImageAttachment) {
+    parts.push(dict.noImageAttachment);
   }
 
-  if (ticket.audioId && typeof ticket.audioId === 'string' && ticket.audioId.length > 5 && ticket.audioId !== 'null') {
-    const audUrl = `${window.location.origin}/aud/${tenantIdStr}/${ticket.audioId}`;
+  const resolvedAudioId = ticket.audioId || ticket.audioUrl || ticket.audio;
+  if (resolvedAudioId && typeof resolvedAudioId === 'string' && resolvedAudioId.length > 5 && resolvedAudioId !== 'null') {
+    const audUrl = `${window.location.origin}/aud/${tenantIdStr}/${resolvedAudioId}`;
     parts.push(dict.audioAttachment.replace('{{url}}', audUrl));
+  } else if (dict.noAudioAttachment) {
+    parts.push(dict.noAudioAttachment);
   }
 
   if (Array.isArray(ticket.attachments) && ticket.attachments.length > 0) {
