@@ -346,7 +346,7 @@ export default function AdminDashboard() {
     tab_resolved: isEn ? 'Resolved' : 'טופל',
     quicktap: isEn ? 'QuickTap' : 'דיווח מהיר',
     filters: {
-      search: isHe ? 'חפש בתיאור התקלה...' : 'Search in description...',
+      search: isHe ? 'חיפוש לפי מספר פנייה או תיאור...' : 'Search by ticket # or description...',
       time: isHe ? 'טווח זמן' : 'Time Range',
       severity: isHe ? 'חומרה' : 'Severity',
       category: isHe ? 'קטגוריה' : 'Category',
@@ -617,8 +617,30 @@ export default function AdminDashboard() {
   // 3. Filtering Logic
   const filteredTickets = useMemo(() => {
     return tickets.filter(t => {
-      // a. Search
-      if (filters.search && !t.summary.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      // a. Search (supports ticket number prefix/exact and description text)
+      if (filters.search) {
+        const query = filters.search.trim().toLowerCase();
+        if (query) {
+          if (query.startsWith('#')) {
+            const numPrefix = query.replace(/^#\s*/, '');
+            if (numPrefix) {
+              const ticketNumStr = (t.ticketNumber !== undefined && t.ticketNumber !== null) ? String(t.ticketNumber) : '';
+              if (!ticketNumStr.startsWith(numPrefix)) {
+                return false;
+              }
+            }
+          } else {
+            const matchSummary = t.summary ? t.summary.toLowerCase().includes(query) : false;
+            const isNumeric = /^\d+$/.test(query);
+            const ticketNumStr = (t.ticketNumber !== undefined && t.ticketNumber !== null) ? String(t.ticketNumber) : '';
+            const matchTicketNum = isNumeric && ticketNumStr.startsWith(query);
+
+            if (!matchSummary && !matchTicketNum) {
+              return false;
+            }
+          }
+        }
+      }
 
       // b. Dimensions
       if (filters.category !== 'all' && t.category !== filters.category) return false;
