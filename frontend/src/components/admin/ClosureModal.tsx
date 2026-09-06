@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, CheckCircle2, AlertCircle, Copy, ExternalLink, HelpCircle, Ban, Send } from 'lucide-react';
 
 interface ClosureReason {
@@ -40,22 +40,46 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedReason(null);
+      setNotes('');
+    }
+  }, [isOpen, ticket?.id]);
 
   if (!isOpen || !ticket) return null;
+
+  const isReasonRequired = selectedReason === 'duplicate' || selectedReason === 'outside';
+  const canSubmit = Boolean(selectedReason && (!isReasonRequired || notes.trim().length > 0));
 
   const labels = {
     title: isEn ? 'Close Ticket' : 'סגירת פנייה',
     subtitle: isEn ? 'Select closure reason' : 'בחרו את סיבת הסגירה',
-    placeholder: isEn ? 'Optional notes...' : 'הערות נוספות (אופציונלי)...',
+    notesLabel: isEn ? 'Notes / Details' : 'הערות / פירוט',
+    placeholder: isReasonRequired
+      ? (isEn ? 'Please specify reason (required)...' : 'נא לפרט את סיבת הסגירה (שדה חובה)...')
+      : (isEn ? 'Optional notes...' : 'הערות נוספות (אופציונלי)...'),
+    requiredWarning: isEn ? 'Reason is required for this closure type' : 'חובה להזין פירוט עבור סיבת סגירה זו',
     confirm: isEn ? 'Close Ticket' : 'סגור פנייה',
     cancel: isEn ? 'Cancel' : 'ביטול',
   };
 
+  const handleSelectReason = (reasonId: string) => {
+    setSelectedReason(reasonId);
+    if (reasonId === 'duplicate' || reasonId === 'outside') {
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 50);
+    }
+  };
+
   const handleConfirm = async () => {
-    if (!selectedReason) return;
+    if (!canSubmit) return;
     setLoading(true);
     try {
-      await onConfirm(ticket.id, selectedReason, notes.trim());
+      await onConfirm(ticket.id, selectedReason!, notes.trim());
       setSelectedReason(null);
       setNotes('');
       onClose();
@@ -96,7 +120,7 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
               {REASONS.map((r) => (
                 <button
                   key={r.id}
-                  onClick={() => setSelectedReason(r.id)}
+                  onClick={() => handleSelectReason(r.id)}
                   className={`
                     flex items-center gap-2 px-3 py-3 rounded-xl border-2 transition-all text-sm font-bold
                     ${selectedReason === r.id 
@@ -115,12 +139,33 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
           </div>
 
           <div>
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <label className="text-xs font-bold text-slate-700">
+                {labels.notesLabel}
+                {isReasonRequired && (
+                  <span className="text-red-500 font-bold ms-1 text-[11px]">
+                    * ({isEn ? 'Required' : 'חובה'})
+                  </span>
+                )}
+              </label>
+            </div>
             <textarea
+              ref={textareaRef}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={labels.placeholder}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none min-h-[80px]"
+              className={`w-full bg-slate-50 border rounded-xl p-3 text-sm focus:ring-2 outline-none transition-all resize-none min-h-[90px] ${
+                isReasonRequired && !notes.trim()
+                  ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-100 bg-amber-50/20'
+                  : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
+              }`}
             />
+            {isReasonRequired && !notes.trim() && (
+              <p className="text-[11px] text-amber-600 font-medium px-1 mt-1 flex items-center gap-1">
+                <span>⚠️</span>
+                <span>{labels.requiredWarning}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -134,12 +179,13 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
           </button>
           <button 
             onClick={handleConfirm}
-            disabled={!selectedReason || loading}
+            disabled={!canSubmit || loading}
+            title={!canSubmit && isReasonRequired ? labels.requiredWarning : undefined}
             className={`
-              px-6 py-2 text-xs font-black text-white rounded-lg transition-all shadow-md flex items-center gap-2
-              ${selectedReason 
-                ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' 
-                : 'bg-slate-300 shadow-none cursor-not-allowed'
+              px-6 py-2.5 text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-2
+              ${canSubmit 
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200 cursor-pointer' 
+                : 'bg-slate-200 text-slate-400 shadow-none cursor-not-allowed'
               }
             `}
           >
