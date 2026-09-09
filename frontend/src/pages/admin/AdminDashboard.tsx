@@ -10,7 +10,7 @@ import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModa
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -1536,6 +1536,26 @@ export default function AdminDashboard() {
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50">{isEn ? 'Loading...' : 'טוען...'}</div>;
   if (!user) return <Navigate to="/admin/login" />;
+
+  if (error && (error.includes('Missing or insufficient permissions') || error.includes('permission-denied') || error.includes('permissions') || error.includes('הרשאה'))) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-6" dir={isEn ? 'ltr' : 'rtl'}>
+        <div className="bg-white p-8 rounded-3xl border border-red-200 shadow-xl max-w-md w-full text-center animate-in fade-in zoom-in duration-200">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
+            <ShieldAlert size={36} />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 mb-2">
+            {isEn ? 'Access Denied' : 'אין לך הרשאת גישה למבנה זה'}
+          </h2>
+          <p className="text-sm text-slate-600 mb-2 leading-relaxed">
+            {isEn
+              ? 'You do not have permission to view reports or manage this building.'
+              : 'החשבון שלך אינו מוגדר כמנהל במבנה זה ואינו מורשה לצפות בנתונים.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const hasActiveFilters = filters.search || filters.timeRange !== 'all' || filters.category !== 'all' || filters.location !== 'all' || filters.subLocation !== 'all' || filters.severity !== 'all' || filters.statuses.length < 3;
 

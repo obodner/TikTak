@@ -59,5 +59,17 @@ service cloud.firestore {
     match /sessions/{phoneNumber} {
       allow read, write: if false;
     }
+
+    // Support Inquiries Collection (God-Mode view & management)
+    match /support_inquiries/{inquiryId} {
+      allow read, update: if isSuperAdmin();
+      allow create, delete: if false; // Created by Cloud Function only
+    }
+
+    // Global Configuration (e.g. support notification phone number)
+    match /global_config/{configId} {
+      allow read: if request.auth != null;
+      allow write: if isSuperAdmin();
+    }
   }
 }

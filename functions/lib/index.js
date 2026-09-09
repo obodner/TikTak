@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.forwardTicketToVendor = exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
+exports.submitSupportInquiry = exports.forwardTicketToVendor = exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
@@ -1060,7 +1060,8 @@ exports.getResidentTickets = (0, https_1.onRequest)({ cors: true }, async (req, 
                 audioId: data.audioId,
                 meToo: data.meToo || 0,
                 timeline: data.timeline || [],
-                reporterPhone: data.reporterPhone
+                reporterPhone: data.reporterPhone,
+                meTooReporters: data.meTooReporters || []
             };
         });
         let myTickets = [];
@@ -1071,7 +1072,7 @@ exports.getResidentTickets = (0, https_1.onRequest)({ cors: true }, async (req, 
             myTickets = allTickets
                 .filter(t => t.reporterPhone === reporterPhone && t.createdAt >= twelveMonthsAgoStr)
                 .map(t => {
-                const { reporterPhone: _, ...rest } = t;
+                const { reporterPhone: _, meTooReporters: __, ...rest } = t;
                 return rest;
             });
             myTickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -1080,10 +1081,13 @@ exports.getResidentTickets = (0, https_1.onRequest)({ cors: true }, async (req, 
             .filter(t => ['open', 'in-progress'].includes(t.status))
             .map(t => {
             const isMyTicket = !!(reporterPhone && t.reporterPhone === reporterPhone);
-            const { reporterPhone: _, ...rest } = t;
+            const meTooReporters = t.meTooReporters || [];
+            const hasVotedMeToo = !!(reporterPhone && meTooReporters.some((r) => r.phone === cleanPhone || r.phone === reporterPhone));
+            const { reporterPhone: _, meTooReporters: __, ...rest } = t;
             return {
                 ...rest,
-                isMyTicket
+                isMyTicket,
+                hasVotedMeToo
             };
         });
         openTickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -1184,10 +1188,43 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
             res.status(400).send({ error: "Cannot vote for your own ticket" });
             return;
         }
+        const { action } = req.body;
         const meTooReporters = ticketData.meTooReporters || [];
         const alreadyVoted = meTooReporters.some((r) => r.phone === effectivePhone);
+        const shouldRemove = action === 'remove' || (action !== 'add' && alreadyVoted);
+        if (shouldRemove) {
+            if (!alreadyVoted) {
+                res.status(400).send({ error: "You have not added yourself to this ticket" });
+                return;
+            }
+            const updatedReporters = meTooReporters.filter((r) => r.phone !== effectivePhone);
+            const newCount = Math.max(0, (ticketData.meToo || 1) - 1);
+            await ticketRef.update({
+                meToo: newCount,
+                meTooReporters: updatedReporters,
+                updatedAt: new Date().toISOString()
+            });
+            const auditMsg = `Resident removed Me Too on ticket #${ticketNumber} in building ${tenantId}`;
+            await recordAuditLog({
+                tenantId,
+                action: 'RESIDENT_METOO_REMOVED',
+                level: 'INFO',
+                actor: {
+                    uid: effectivePhone,
+                    name: meTooReporterName || effectivePhone,
+                    type: 'resident'
+                },
+                details: {
+                    ticketId,
+                    ticketNumber,
+                    message: auditMsg
+                }
+            });
+            res.status(200).send({ success: true, action: 'removed', isMeToo: false, meToo: newCount });
+            return;
+        }
         if (alreadyVoted) {
-            res.status(400).send({ error: "You have already voted for this ticket" });
+            res.status(200).send({ success: true, action: 'already_added', isMeToo: true, meToo: ticketData.meToo || 1 });
             return;
         }
         const reporterName = meTooReporterName || "תושב";
@@ -1196,9 +1233,11 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
             phone: effectivePhone,
             votedAt: new Date().toISOString()
         };
+        const newCount = (ticketData.meToo || 0) + 1;
+        const updatedReporters = [...meTooReporters, newVoter];
         await ticketRef.update({
-            meToo: admin.firestore.FieldValue.increment(1),
-            meTooReporters: admin.firestore.FieldValue.arrayUnion(newVoter),
+            meToo: newCount,
+            meTooReporters: updatedReporters,
             updatedAt: new Date().toISOString()
         });
         const auditMsg = `Resident clicked Me Too on ticket #${ticketNumber} in building ${tenantId}`;
@@ -1217,11 +1256,11 @@ exports.incrementMeToo = (0, https_1.onRequest)({ cors: true }, async (req, res)
                 message: auditMsg
             }
         });
-        res.status(200).send({ success: true });
+        res.status(200).send({ success: true, action: 'added', isMeToo: true, meToo: newCount });
     }
     catch (error) {
         logger.error("incrementMeToo failed", { error: error.message });
-        res.status(500).send({ error: "Failed to increment Me Too counter" });
+        res.status(500).send({ error: "Failed to update Me Too counter" });
     }
 });
 exports.getImage = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
@@ -3521,6 +3560,207 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
     catch (err) {
         logger.error("Exception in forwardTicketToVendor Cloud Function:", err);
         res.status(500).send({ error: err.message || "שליחת הפנייה לספק באמצעות Meta API נכשלה" });
+    }
+});
+exports.submitSupportInquiry = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const { tenantId, question, callerUid } = req.body;
+        if (!question || typeof question !== "string" || question.trim().length < 5) {
+            res.status(400).send({ error: "תוכן השאלה/פנייה חייב להכיל לפחות 5 תווים." });
+            return;
+        }
+        let effectiveUid = callerUid || "";
+        let callerEmail = "";
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            try {
+                const idToken = authHeader.split("Bearer ")[1];
+                const decoded = await admin.auth().verifyIdToken(idToken);
+                effectiveUid = decoded.uid;
+                callerEmail = decoded.email || "";
+            }
+            catch (authErr) {
+                logger.warn("Token verification failed, falling back to body callerUid", authErr);
+            }
+        }
+        if (!effectiveUid) {
+            res.status(401).send({ error: "משתמש לא מזוהה. אנא התחבר מחדש למערכת." });
+            return;
+        }
+        const rateLimitRef = db.collection("support_rate_limits").doc(effectiveUid);
+        const rateLimitDoc = await rateLimitRef.get();
+        const now = Date.now();
+        if (rateLimitDoc.exists) {
+            const lastAt = rateLimitDoc.data()?.lastSubmittedAt || 0;
+            const elapsed = now - lastAt;
+            if (elapsed < 60000) {
+                const waitSeconds = Math.ceil((60000 - elapsed) / 1000);
+                res.status(429).send({
+                    error: `ניתן לשלוח פנייה אחת בכל דקה. אנא המתן עוד ${waitSeconds} שניות.`,
+                    retryAfterSeconds: waitSeconds
+                });
+                return;
+            }
+        }
+        let adminName = "מנהל מערכת";
+        let adminPhone = "";
+        let adminEmail = callerEmail;
+        let resolvedTenantName = tenantId || "ללא שיוך";
+        if (tenantId) {
+            try {
+                const tenantSnap = await db.collection("tenants").doc(tenantId).get();
+                if (tenantSnap.exists) {
+                    resolvedTenantName = tenantSnap.data()?.name || tenantId;
+                }
+                const userSnap = await db.collection("tenants").doc(tenantId).collection("adminUsers").doc(effectiveUid).get();
+                if (userSnap.exists) {
+                    const uData = userSnap.data() || {};
+                    const full = `${uData.firstName || ""} ${uData.lastName || ""}`.trim();
+                    if (full)
+                        adminName = full;
+                    if (uData.mobile)
+                        adminPhone = uData.mobile;
+                    if (uData.email)
+                        adminEmail = uData.email;
+                }
+            }
+            catch (profileErr) {
+                logger.warn("Could not read admin profile for inquiry:", profileErr);
+            }
+        }
+        if (!adminPhone) {
+            try {
+                const firebaseUser = await admin.auth().getUser(effectiveUid);
+                if (firebaseUser.phoneNumber)
+                    adminPhone = firebaseUser.phoneNumber;
+                if (!adminEmail && firebaseUser.email)
+                    adminEmail = firebaseUser.email;
+                if (adminName === "מנהל מערכת" && firebaseUser.displayName)
+                    adminName = firebaseUser.displayName;
+            }
+            catch (uErr) {
+            }
+        }
+        const inquiryRef = db.collection("support_inquiries").doc();
+        const cleanQuestion = question.trim();
+        const inquiryData = {
+            id: inquiryRef.id,
+            tenantId: tenantId || "general",
+            tenantName: resolvedTenantName,
+            uid: effectiveUid,
+            adminName,
+            adminPhone,
+            adminEmail,
+            question: cleanQuestion,
+            status: "new",
+            addressedAt: null,
+            addressedBy: null,
+            whatsappDispatched: false,
+            whatsappError: null,
+            createdAt: new Date().toISOString()
+        };
+        await rateLimitRef.set({
+            lastSubmittedAt: now,
+            uid: effectiveUid,
+            lastInquiryId: inquiryRef.id,
+            updatedAt: new Date().toISOString()
+        });
+        try {
+            let supportPhone = process.env.TIKTAK_SUPPORT_PHONE || "";
+            try {
+                const configDoc = await db.collection("global_config").doc("support").get();
+                if (configDoc.exists && configDoc.data()?.whatsappPhone) {
+                    supportPhone = configDoc.data()?.whatsappPhone;
+                }
+            }
+            catch (cfgErr) {
+                logger.warn("Could not fetch global_config/support", cfgErr);
+            }
+            if (supportPhone) {
+                const cleanPhone = supportPhone.replace(/\D/g, "");
+                const token = process.env.WHATSAPP_ACCESS_TOKEN;
+                const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+                if (token && cleanPhone) {
+                    try {
+                        const templateParams = [
+                            resolvedTenantName,
+                            adminName,
+                            adminPhone || "לא צוין",
+                            adminEmail || "לא צוין",
+                            cleanQuestion
+                        ];
+                        await sendWhatsAppTemplate(cleanPhone, "admin_support_inquiry", "he", templateParams, phoneNumberId, token);
+                        inquiryData.whatsappDispatched = true;
+                        logger.info("Sent admin_support_inquiry template to TikTak support", { cleanPhone });
+                    }
+                    catch (templateError) {
+                        logger.warn("Template dispatch failed, falling back to WhatsApp text message:", templateError?.message);
+                        try {
+                            const formattedText = `🛎️ *פניית תמיכה חדשה ממנהל TikTak*\n\n🏢 *בניין:* ${resolvedTenantName}\n👤 *מנהל:* ${adminName}\n📞 *טלפון:* ${adminPhone || "לא צוין"}\n✉️ *דוא"ל:* ${adminEmail || "לא צוין"}\n\n❓ *תוכן הפנייה:*\n${cleanQuestion}`;
+                            await sendWhatsAppText(cleanPhone, formattedText, phoneNumberId, token);
+                            inquiryData.whatsappDispatched = true;
+                            logger.info("Sent fallback text message to TikTak support", { cleanPhone });
+                        }
+                        catch (textError) {
+                            logger.error("Meta WhatsApp dispatch to support failed completely:", textError);
+                            inquiryData.whatsappError = textError?.message || "WhatsApp dispatch failed";
+                        }
+                    }
+                }
+            }
+            else {
+                logger.warn("No support WhatsApp phone number configured in global_config/support or TIKTAK_SUPPORT_PHONE");
+            }
+        }
+        catch (dispatchErr) {
+            logger.error("Exception during WhatsApp dispatch to support:", dispatchErr);
+            inquiryData.whatsappError = dispatchErr?.message || "Error during dispatch";
+        }
+        await inquiryRef.set(inquiryData);
+        if (adminPhone) {
+            let cleanAdminPhone = adminPhone.replace(/\D/g, "");
+            if (cleanAdminPhone.startsWith("05")) {
+                cleanAdminPhone = "972" + cleanAdminPhone.slice(1);
+            }
+            const token = process.env.WHATSAPP_ACCESS_TOKEN;
+            const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+            if (token && cleanAdminPhone) {
+                try {
+                    const autoReplyText = `שלום ${adminName || "מנהל"},\nקיבלנו את פנייתך למוקד TikTak. צוות התמיכה שלנו יחזור אליך תוך יום עסקים אחד. 🤝`;
+                    await sendWhatsAppText(cleanAdminPhone, autoReplyText, phoneNumberId, token);
+                    logger.info("Sent auto-reply confirmation to admin sender", { cleanAdminPhone });
+                }
+                catch (arErr) {
+                    logger.warn("Auto-reply to admin sender failed (may be outside 24h window if no template):", arErr?.message);
+                }
+            }
+        }
+        await recordAuditLog({
+            tenantId: tenantId || "general",
+            action: "SUPPORT_INQUIRY_SUBMITTED",
+            level: "INFO",
+            actor: {
+                uid: effectiveUid,
+                name: adminName,
+                email: adminEmail || undefined,
+                type: "admin"
+            },
+            details: {
+                inquiryId: inquiryRef.id,
+                tenantName: resolvedTenantName,
+                questionLength: cleanQuestion.length,
+                whatsappDispatched: inquiryData.whatsappDispatched
+            }
+        });
+        res.status(200).send({
+            success: true,
+            inquiryId: inquiryRef.id,
+            message: "קיבלנו את פנייתך וצוות התמיכה שלנו יחזור אליך תוך יום עסקים אחד."
+        });
+    }
+    catch (err) {
+        logger.error("submitSupportInquiry error:", err);
+        res.status(500).send({ error: "אירעה שגיאה בעיבוד הפנייה. אנא נסה שוב מאוחר יותר." });
     }
 });
 //# sourceMappingURL=index.js.map

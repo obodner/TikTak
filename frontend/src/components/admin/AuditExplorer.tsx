@@ -261,7 +261,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED',
         'TICKET_FORWARDED_TO_VENDOR', 'VENDOR_ACKNOWLEDGED_TICKET', 'VENDOR_COMPLETED_TICKET',
         'TICKET_BACKLOG_MOVED', 'BACKLOG_TICKET_REORDERED',
-        'QUOTA_NON_BILLABLE_FLAGGED', 'QUOTA_ALERT_DISPATCHED', 'BILLING_CYCLE_CLOSED'
+        'QUOTA_NON_BILLABLE_FLAGGED', 'QUOTA_ALERT_DISPATCHED', 'BILLING_CYCLE_CLOSED',
+        'SUPPORT_INQUIRY_SUBMITTED', 'SUPPORT_INQUIRY_CLOSED', 'SUPPORT_INQUIRY_REOPENED'
     ];
 
     const actionLabels: Record<string, { he: string; en: string }> = {
@@ -285,7 +286,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'APP_FEEDBACK_SUBMMITTED': { he: 'דירוג חוויית דיווח', en: 'App Feedback Submitted' },
         'SERVICE_FEEDBACK_SUBMITTED': { he: 'דירוג שירות', en: 'Service Feedback Submitted' },
         'RESIDENT_COMMENT_ADDED': { he: 'הערת תושב', en: 'Resident Comment Added' },
-        'RESIDENT_METOO_INCREMENTED': { he: 'גם לי יש תקלה', en: 'Resident MeToo Clicked' },
+        'RESIDENT_METOO_INCREMENTED': { he: 'הצטרפות לפנייה (תוסיף אותי)', en: 'Joined Ticket (Add Me)' },
+        'RESIDENT_METOO_REMOVED': { he: 'ביטול הצטרפות לפנייה', en: 'Unjoined Ticket (Removed)' },
         'TICKET_FORWARDED_TO_VENDOR': { he: 'העברה לספק בוואטסאפ', en: 'Ticket Forwarded to Vendor' },
         'VENDOR_ACKNOWLEDGED_TICKET': { he: 'אישור קבלה ע״י ספק', en: 'Vendor Acknowledged Ticket' },
         'VENDOR_COMPLETED_TICKET': { he: 'דיווח ביצוע ע״י ספק', en: 'Vendor Completed Ticket' },
@@ -294,6 +296,9 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'QUOTA_NON_BILLABLE_FLAGGED': { he: 'זיכוי מכסה (פנייה ללא חיוב)', en: 'Quota Non-Billable Flagged' },
         'QUOTA_ALERT_DISPATCHED': { he: 'התראת מכסת פניות', en: 'Quota Alert Dispatched' },
         'BILLING_CYCLE_CLOSED': { he: 'סגירת מחזור חיוב חודשי', en: 'Billing Cycle Closed' },
+        'SUPPORT_INQUIRY_SUBMITTED': { he: 'פתיחת פניית תמיכה', en: 'Support Call Opened' },
+        'SUPPORT_INQUIRY_CLOSED': { he: 'סגירת פניית תמיכה', en: 'Support Call Closed' },
+        'SUPPORT_INQUIRY_REOPENED': { he: 'פתיחה מחדש של פניית תמיכה', en: 'Support Call Reopened' },
     };
 
     const statusMap: Record<string, { he: string; en: string }> = {
@@ -643,8 +648,37 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             case 'RESIDENT_METOO_INCREMENTED': {
                 const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn
-                    ? `Resident clicked Me Too on ticket ${ticketRef} in ${tenantName}`
-                    : `תושב סימן 'גם לי יש את התקלה' לפנייה ${ticketRef} בבניין ${tenantName}`;
+                    ? `Resident joined ticket ${ticketRef} ("Add me") in ${tenantName}`
+                    : `תושב הצטרף לפנייה ${ticketRef} ("תוסיף אותי") בבניין ${tenantName}`;
+            }
+            case 'RESIDENT_METOO_REMOVED': {
+                const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                return isEn
+                    ? `Resident removed addition from ticket ${ticketRef} in ${tenantName}`
+                    : `תושב ביטל הצטרפות לפנייה ${ticketRef} בבניין ${tenantName}`;
+            }
+            case 'SUPPORT_INQUIRY_SUBMITTED': {
+                const bName = log.details?.tenantName || (tenantName !== 'general' && tenantName !== 'Unknown' ? tenantName : '');
+                const bNameStr = bName ? (isEn ? ` for ${bName}` : ` בבניין ${bName}`) : '';
+                return isEn
+                    ? `${actor} opened a support call${bNameStr}`
+                    : `${actor} פתח/ה פניית תמיכה${bNameStr}`;
+            }
+            case 'SUPPORT_INQUIRY_CLOSED': {
+                const bName = log.details?.tenantName || (tenantName !== 'general' && tenantName !== 'Unknown' ? tenantName : '');
+                const bNameStr = bName ? (isEn ? ` for ${bName}` : ` בבניין ${bName}`) : '';
+                const caller = log.details?.callerName ? (isEn ? ` from ${log.details.callerName}` : ` מאת ${log.details.callerName}`) : '';
+                return isEn
+                    ? `${actor} closed/addressed support call${caller}${bNameStr}`
+                    : `${actor} סימן/ה כטופלה פניית תמיכה${caller}${bNameStr}`;
+            }
+            case 'SUPPORT_INQUIRY_REOPENED': {
+                const bName = log.details?.tenantName || (tenantName !== 'general' && tenantName !== 'Unknown' ? tenantName : '');
+                const bNameStr = bName ? (isEn ? ` for ${bName}` : ` בבניין ${bName}`) : '';
+                const caller = log.details?.callerName ? ` (${log.details.callerName})` : '';
+                return isEn
+                    ? `${actor} reopened support call${caller}${bNameStr}`
+                    : `${actor} פתח/ה מחדש פניית תמיכה${caller}${bNameStr}`;
             }
             default: {
                 const actionLabel = isEn

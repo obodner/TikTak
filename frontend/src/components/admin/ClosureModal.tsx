@@ -93,8 +93,8 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-      
-      <div 
+
+      <div
         className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
         dir={isEn ? 'ltr' : 'rtl'}
       >
@@ -123,8 +123,8 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
                   onClick={() => handleSelectReason(r.id)}
                   className={`
                     flex items-center gap-2 px-3 py-3 rounded-xl border-2 transition-all text-sm font-bold
-                    ${selectedReason === r.id 
-                      ? `${r.color} ring-2 ring-blue-500/20` 
+                    ${selectedReason === r.id
+                      ? `${r.color} ring-2 ring-blue-500/20`
                       : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'
                     }
                   `}
@@ -154,11 +154,10 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={labels.placeholder}
-              className={`w-full bg-slate-50 border rounded-xl p-3 text-sm focus:ring-2 outline-none transition-all resize-none min-h-[90px] ${
-                isReasonRequired && !notes.trim()
+              className={`w-full bg-slate-50 border rounded-xl p-3 text-sm focus:ring-2 outline-none transition-all resize-none min-h-[90px] ${isReasonRequired && !notes.trim()
                   ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-100 bg-amber-50/20'
                   : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
-              }`}
+                }`}
             />
             {isReasonRequired && !notes.trim() && (
               <p className="text-[11px] text-amber-600 font-medium px-1 mt-1 flex items-center gap-1">
@@ -171,20 +170,20 @@ export const ClosureModal: React.FC<ClosureModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-          <button 
+          <button
             onClick={onClose}
             className="px-4 py-2 text-xs font-bold text-slate-600 border border-slate-200 hover:bg-white rounded-lg transition-colors"
           >
             {labels.cancel}
           </button>
-          <button 
+          <button
             onClick={handleConfirm}
             disabled={!canSubmit || loading}
             title={!canSubmit && isReasonRequired ? labels.requiredWarning : undefined}
             className={`
               px-6 py-2.5 text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-2
-              ${canSubmit 
-                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200 cursor-pointer' 
+              ${canSubmit
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200 cursor-pointer'
                 : 'bg-slate-200 text-slate-400 shadow-none cursor-not-allowed'
               }
             `}

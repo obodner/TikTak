@@ -105,6 +105,13 @@
                 }
             },
             {
+                "source": "/api/submitSupportInquiry",
+                "function": {
+                    "functionId": "submitSupportInquiry",
+                    "region": "us-central1"
+                }
+            },
+            {
                 "source": "/api/getResidentTickets",
                 "function": {
                     "functionId": "getResidentTickets",

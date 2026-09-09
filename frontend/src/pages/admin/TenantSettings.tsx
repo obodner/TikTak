@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
@@ -12,13 +12,24 @@ import { QuickTapItem } from '../../components/admin/QuickTapEditor';
 
 export default function TenantSettings() {
   const { tenantId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuthState();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tenantName, setTenantName] = useState('');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'infrastructure' | 'users' | 'general'>('infrastructure');
+
+  // Active tab synchronized with URL query param ?tab=
+  const tabParam = searchParams.get('tab') as 'infrastructure' | 'users' | 'general' | null;
+  const activeTab: 'infrastructure' | 'users' | 'general' = 
+    (tabParam && ['infrastructure', 'users', 'general'].includes(tabParam))
+      ? tabParam
+      : 'infrastructure';
+
+  const handleTabChange = (tab: 'infrastructure' | 'users' | 'general') => {
+    setSearchParams({ tab });
+  };
 
   // Configuration State
   const [type, setType] = useState<'building' | 'municipality'>('building');
@@ -309,10 +320,10 @@ export default function TenantSettings() {
   return (
     <div key={tenantId} className="min-h-screen bg-slate-50" dir={language === 'en' ? 'ltr' : 'rtl'}>
       {/* Horizontal Sub-navigation Tab Bar */}
-      <div className="border-b border-slate-200 bg-white sticky top-[72px] md:top-[104px] z-40 shadow-sm">
+      <div className="border-b border-slate-200 bg-white sticky top-0 z-30 shadow-sm">
         <div className="max-w-4xl mx-auto flex justify-around sm:justify-start sm:gap-8 px-4" dir="rtl">
           <button
-            onClick={() => setActiveTab('infrastructure')}
+            onClick={() => handleTabChange('infrastructure')}
             className={`py-4 px-2 text-sm md:text-base font-bold transition-all relative border-b-2 outline-none ${
               activeTab === 'infrastructure'
                 ? 'text-blue-600 border-blue-600'
@@ -323,7 +334,7 @@ export default function TenantSettings() {
           </button>
 
           <button
-            onClick={() => setActiveTab('users')}
+            onClick={() => handleTabChange('users')}
             className={`py-4 px-2 text-sm md:text-base font-bold transition-all relative border-b-2 outline-none ${
               activeTab === 'users'
                 ? 'text-blue-600 border-blue-600'
@@ -334,7 +345,7 @@ export default function TenantSettings() {
           </button>
 
           <button
-            onClick={() => setActiveTab('general')}
+            onClick={() => handleTabChange('general')}
             className={`py-4 px-2 text-sm md:text-base font-bold transition-all relative border-b-2 outline-none ${
               activeTab === 'general'
                 ? 'text-blue-600 border-blue-600'

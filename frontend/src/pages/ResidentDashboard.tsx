@@ -129,9 +129,20 @@ export default function ResidentDashboard() {
         throw new Error('Failed to load tickets');
       } else {
         const data = await response.json();
+        const incomingOpen = data.openTickets || [];
         setMyTickets(data.myTickets || []);
-        setOpenTickets(data.openTickets || []);
+        setOpenTickets(incomingOpen);
         setPhoneError('');
+
+        // Sync server-side voted state with local map
+        const updatedMap = { ...meTooMap };
+        incomingOpen.forEach((t: any) => {
+          if (t.hasVotedMeToo) {
+            updatedMap[t.id] = true;
+          }
+        });
+        setMeTooMap(updatedMap);
+        localStorage.setItem('tiktak_resident_metoo_map', JSON.stringify(updatedMap));
       }
     } catch (err: any) {
       console.error(err);
@@ -244,10 +255,11 @@ export default function ResidentDashboard() {
     }
   };
 
-  // 6. Increment Me Too
+  // 6. Toggle "תוסיף אותי" / Undo
   const handleMeToo = async (ticketId: string) => {
-    if (meTooClickingId || meTooMap[ticketId] || !reporterPhone || !tenantId) return;
+    if (meTooClickingId || !reporterPhone || !tenantId) return;
 
+    const isCurrentlyClicked = !!meTooMap[ticketId];
     setMeTooClickingId(ticketId);
     try {
       const response = await fetch('/api/incrementMeToo', {
@@ -256,19 +268,34 @@ export default function ResidentDashboard() {
         body: JSON.stringify({
           tenantId,
           ticketId,
-          reporterPhone
+          reporterPhone,
+          action: isCurrentlyClicked ? 'remove' : 'add'
         })
       });
 
       if (response.ok) {
-        // Toggle active design & lock click
-        const nextMap = { ...meTooMap, [ticketId]: true };
+        const resData = await response.json();
+        const newIsClicked = resData.isMeToo !== undefined ? resData.isMeToo : !isCurrentlyClicked;
+
+        const nextMap = { ...meTooMap, [ticketId]: newIsClicked };
+        if (!newIsClicked) {
+          delete nextMap[ticketId];
+        }
         setMeTooMap(nextMap);
         localStorage.setItem('tiktak_resident_metoo_map', JSON.stringify(nextMap));
 
-        // Increment locally
+        // Update count locally
         const updateList = (prev: Ticket[]) =>
-          prev.map(t => (t.id === ticketId ? { ...t, meToo: (t.meToo || 0) + 1 } : t));
+          prev.map(t => {
+            if (t.id === ticketId) {
+              const currentCount = t.meToo || 0;
+              const newCount = resData.meToo !== undefined
+                ? resData.meToo
+                : (newIsClicked ? currentCount + 1 : Math.max(0, currentCount - 1));
+              return { ...t, meToo: newCount, hasVotedMeToo: newIsClicked };
+            }
+            return t;
+          });
 
         setMyTickets(updateList);
         setOpenTickets(updateList);
@@ -805,15 +832,15 @@ function TicketCard({
               </span>
               <button
                 onClick={onMeToo}
-                disabled={isMeTooClicked || meTooClicking}
-                title={t('me_too_tooltip')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all duration-150 active:scale-95 ${isMeTooClicked
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+                disabled={meTooClicking}
+                title={isMeTooClicked ? (isHe ? 'לחץ לביטול' : 'Click to undo') : t('me_too_tooltip')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all duration-150 active:scale-95 cursor-pointer ${isMeTooClicked
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-100 hover:bg-blue-700'
                     : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
                   }`}
               >
-                <span>🙋</span>
-                <span>{isHe ? 'גם לי יש את זה' : 'Me Too'}</span>
+                <span>{isMeTooClicked ? '✓' : '🙋'}</span>
+                <span>{isHe ? (isMeTooClicked ? 'התווספת (בטל)' : 'תוסיף אותי') : (isMeTooClicked ? 'Added (Undo)' : 'Add me')}</span>
                 {ticket.meToo !== undefined && ticket.meToo > 0 && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${isMeTooClicked ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'
                     }`}>

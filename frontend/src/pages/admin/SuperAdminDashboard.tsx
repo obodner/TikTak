@@ -3,7 +3,8 @@ import { collection, getDocs, query, orderBy, where, doc, getDoc, updateDoc, arr
 import { db, auth } from '../../lib/firebase';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { AuditExplorer } from '../../components/admin/AuditExplorer';
-import { Building, Shield, LogOut, ChevronRight, Search, Activity, Globe, Calendar, X, RefreshCw } from 'lucide-react';
+import { SupportInquiriesExplorer } from '../../components/admin/SupportInquiriesExplorer';
+import { Building, Shield, LogOut, ChevronRight, Search, Activity, Globe, Calendar, X, RefreshCw, Headphones } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 
 interface Tenant {
@@ -20,20 +21,32 @@ export default function SuperAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get('tab') as 'tenants' | 'audit' | 'holidays') || 'tenants';
+  const activeTab = (searchParams.get('tab') as 'tenants' | 'support' | 'audit' | 'holidays') || 'tenants';
   
-  const setActiveTab = (tab: 'tenants' | 'audit' | 'holidays') => {
+  const setActiveTab = (tab: 'tenants' | 'support' | 'audit' | 'holidays') => {
     setSearchParams({ tab });
   };
 
   const navigate = useNavigate();
 
   const [stats, setStats] = useState({ activeUsers: 0, activeTenantsCount: 0 });
+  const [unaddressedInquiriesCount, setUnaddressedInquiriesCount] = useState<number>(0);
 
   useEffect(() => {
     fetchTenants();
     fetchStats();
+    fetchSupportInquiriesBadge();
   }, []);
+
+  const fetchSupportInquiriesBadge = async () => {
+    try {
+      const q = query(collection(db, 'support_inquiries'), where('status', '==', 'new'));
+      const snap = await getDocs(q);
+      setUnaddressedInquiriesCount(snap.size);
+    } catch (e) {
+      // Non-blocking fallback
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -108,7 +121,7 @@ export default function SuperAdminDashboard() {
 
       <main className="max-w-7xl mx-auto p-4 md:p-8">
         {/* Navigation Tabs */}
-        <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200 mb-8 max-w-lg">
+        <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200 mb-8 max-w-2xl">
           <button
             onClick={() => setActiveTab('tenants')}
             className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
@@ -116,6 +129,19 @@ export default function SuperAdminDashboard() {
             }`}
           >
             <Building size={18} /> ניהול לקוחות
+          </button>
+          <button
+            onClick={() => setActiveTab('support')}
+            className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${
+              activeTab === 'support' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            <Headphones size={18} /> פניות תמיכה
+            {unaddressedInquiriesCount > 0 && (
+              <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                {unaddressedInquiriesCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -206,6 +232,8 @@ export default function SuperAdminDashboard() {
               </div>
             )}
           </div>
+        ) : activeTab === 'support' ? (
+          <SupportInquiriesExplorer />
         ) : activeTab === 'audit' ? (
           <AuditExplorer isEn={false} />
         ) : (

@@ -12,8 +12,15 @@ import {
   Menu, 
   X, 
   ChevronDown,
-  Building2
+  Building2,
+  Bell,
+  Headphones,
+  Boxes,
+  Users2,
+  Sliders
 } from 'lucide-react';
+import { NotificationsModal } from './NotificationsModal';
+import { ContactModal } from './ContactModal';
 
 interface AdminNavbarProps {
   tenantId: string;
@@ -42,6 +49,30 @@ export function AdminNavbar({
 }: AdminNavbarProps) {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isContactOpen, setIsContactOpen] = useState(false);
+  const [isSettingsAccordionOpen, setIsSettingsAccordionOpen] = useState(currentPage === 'settings');
+
+  const settingsSubItems = [
+    {
+      id: 'infrastructure',
+      label: isEn ? 'Infrastructure & Resources' : 'משאבי מבנה ותשתית',
+      path: `/admin/${tenantId}/settings?tab=infrastructure`,
+      icon: Boxes,
+    },
+    {
+      id: 'users',
+      label: isEn ? 'Admins & Vendors' : 'ניהול מנהלים וספקים',
+      path: `/admin/${tenantId}/settings?tab=users`,
+      icon: Users2,
+    },
+    {
+      id: 'general',
+      label: isEn ? 'General Settings' : 'הגדרות כלליות',
+      path: `/admin/${tenantId}/settings?tab=general`,
+      icon: Sliders,
+    }
+  ];
 
   const handleLogout = async () => {
     try {
@@ -96,8 +127,8 @@ export function AdminNavbar({
 
   return (
     <>
-      <header className="bg-slate-900 text-white p-3 md:p-4 sticky top-0 z-50 shadow-md border-b border-slate-800" dir={isEn ? 'ltr' : 'rtl'}>
-        <div className="max-w-7xl mx-auto flex justify-between items-center px-2 md:px-4">
+      <header className="md:hidden bg-slate-900 text-white p-3 sticky top-0 z-50 shadow-md border-b border-slate-800" dir={isEn ? 'ltr' : 'rtl'}>
+        <div className="max-w-7xl mx-auto flex justify-between items-center px-2">
           {/* Right/Start Section: Logo & Building Switcher */}
           <div className="flex items-center gap-2 md:gap-4">
             <Link 
@@ -186,6 +217,28 @@ export function AdminNavbar({
               </Link>
             )}
 
+            <button
+              type="button"
+              onClick={() => setIsNotificationsOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+              title={isEn ? "Notifications" : "התראות"}
+              aria-label={isEn ? "Notifications" : "התראות"}
+              data-testid="navbar-desktop-notifications-btn"
+            >
+              <Bell size={20} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsContactOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+              title={isEn ? "Contact Support" : "צור קשר"}
+              aria-label={isEn ? "Contact Support" : "צור קשר"}
+              data-testid="navbar-desktop-contact-btn"
+            >
+              <Headphones size={20} />
+            </button>
+
             {onOpenHelp && (
               <button
                 onClick={onOpenHelp}
@@ -206,13 +259,25 @@ export function AdminNavbar({
             </button>
           </div>
 
-          {/* Mobile Hamburger Toggle Button (Option 2) */}
-          <div className="flex md:hidden items-center gap-2">
+          {/* Mobile Hamburger & Quick Action Buttons */}
+          <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setIsNotificationsOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+              title={isEn ? "Notifications" : "התראות"}
+              aria-label={isEn ? "Notifications" : "התראות"}
+              data-testid="navbar-header-notifications-btn"
+            >
+              <Bell size={22} />
+            </button>
+
             {onOpenHelp && (
               <button
                 onClick={onOpenHelp}
                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                 title={isEn ? "Help" : "עזרה"}
+                aria-label={isEn ? "Help" : "עזרה"}
               >
                 <HelpCircle size={22} />
               </button>
@@ -222,6 +287,7 @@ export function AdminNavbar({
               onClick={() => setIsMobileMenuOpen(true)}
               className="p-2 text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
               aria-label={isEn ? "Open Menu" : "פתח תפריט"}
+              data-testid="navbar-mobile-menu-btn"
             >
               <Menu size={26} />
             </button>
@@ -234,6 +300,7 @@ export function AdminNavbar({
         <div 
           className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm transition-opacity duration-200"
           dir={isEn ? 'ltr' : 'rtl'}
+          data-testid="navbar-mobile-drawer"
         >
           {/* Backdrop click listener */}
           <div 
@@ -244,20 +311,20 @@ export function AdminNavbar({
           {/* Drawer Container */}
           <div className="relative w-4/5 max-w-sm bg-slate-900 text-white h-full shadow-2xl flex flex-col z-10 border-s border-slate-800 transform transition-transform duration-300">
             {/* Drawer Header */}
-            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-              <div className="flex items-center gap-2">
+            <div className="p-4 border-b border-slate-800 flex justify-between items-start bg-slate-950">
+              <div className="flex flex-col gap-1.5 min-w-0">
                 <img
                   src="/logo_transparent.png"
                   alt="TikTak"
-                  className="h-9 w-auto object-contain"
+                  className="h-11 w-auto object-contain self-start drop-shadow"
                 />
-                <span className="text-xs text-slate-400 font-medium truncate max-w-[150px]">
+                <span className="text-xs text-slate-300 font-semibold truncate max-w-[190px]">
                   {tenantName || tenantId}
                 </span>
               </div>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all shrink-0"
                 aria-label={isEn ? "Close Menu" : "סגור תפריט"}
               >
                 <X size={22} />
@@ -273,6 +340,68 @@ export function AdminNavbar({
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentPage === item.id;
+
+                if (item.id === 'settings') {
+                  return (
+                    <div key={item.id} className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsSettingsAccordionOpen(prev => !prev)}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold transition-all ${
+                          isActive
+                            ? 'bg-slate-800 text-white'
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        }`}
+                        data-testid="navbar-settings-accordion-trigger"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Settings
+                            size={20}
+                            className={`shrink-0 transition-transform duration-300 ease-out ${
+                              isSettingsAccordionOpen ? 'rotate-90 text-blue-400' : ''
+                            }`}
+                          />
+                          <span>{item.label}</span>
+                        </div>
+                        <ChevronDown
+                          size={18}
+                          className={`transition-transform duration-300 ease-out text-slate-400 ${
+                            isSettingsAccordionOpen ? 'transform rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {/* Rolling Sub-items list */}
+                      <div
+                        className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${
+                          isSettingsAccordionOpen
+                            ? 'grid-rows-[1fr] opacity-100'
+                            : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                        }`}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div className="space-y-1 ps-4 border-s border-slate-800 ms-6 me-2 py-1">
+                            {settingsSubItems.map((sub) => {
+                              const SubIcon = sub.icon;
+                              return (
+                                <Link
+                                  key={sub.id}
+                                  to={sub.path}
+                                  onClick={() => setIsMobileMenuOpen(false)}
+                                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+                                >
+                                  <SubIcon size={16} className="shrink-0" />
+                                  <span>{sub.label}</span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.id}
@@ -315,6 +444,43 @@ export function AdminNavbar({
                   </Link>
                 </div>
               )}
+
+              {/* Divider */}
+              <div className="py-2">
+                <div className="border-t border-slate-800/80" />
+              </div>
+
+              {/* Notifications Menu Item */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsNotificationsOpen(true);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-all"
+                data-testid="navbar-notifications-btn"
+              >
+                <div className="flex items-center gap-3">
+                  <Bell size={20} className="shrink-0" />
+                  <span>{isEn ? 'Notifications' : 'התראות'}</span>
+                </div>
+              </button>
+
+              {/* Contact Us Menu Item */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsContactOpen(true);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-all"
+                data-testid="navbar-contact-btn"
+              >
+                <div className="flex items-center gap-3">
+                  <Headphones size={20} className="shrink-0" />
+                  <span>{isEn ? 'Contact Support' : 'צור קשר'}</span>
+                </div>
+              </button>
             </nav>
 
             {/* Drawer Footer Actions */}
@@ -346,6 +512,21 @@ export function AdminNavbar({
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      <NotificationsModal
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        isEn={isEn}
+      />
+
+      <ContactModal
+        isOpen={isContactOpen}
+        onClose={() => setIsContactOpen(false)}
+        tenantName={tenantName}
+        tenantId={tenantId}
+        isEn={isEn}
+      />
     </>
   );
 }
