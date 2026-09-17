@@ -17,7 +17,8 @@ import {
   Headphones,
   Boxes,
   Users2,
-  Sliders
+  Sliders,
+  BarChart3
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
@@ -26,7 +27,7 @@ import { NotificationItem } from '../../utils/notificationsEngine';
 interface AdminNavbarProps {
   tenantId: string;
   tenantName?: string;
-  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet';
+  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics';
   myTenants?: { id: string; name?: string }[];
   isFleet?: boolean;
   isSuper?: boolean;
@@ -99,7 +100,7 @@ export function AdminNavbar({
   };
 
   const navItems: {
-    id: 'dashboard' | 'backlog' | 'settings' | 'fleet';
+    id: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics';
     label: string;
     path: string;
     icon: typeof LayoutDashboard;
@@ -118,6 +119,12 @@ export function AdminNavbar({
       path: `/admin/${tenantId}/backlog`,
       icon: ListTodo,
       count: backlogCount,
+    },
+    {
+      id: 'analytics',
+      label: isEn ? 'Analytics & BI' : 'סטטיסטיקה ודוחות',
+      path: `/admin/${tenantId}/analytics`,
+      icon: BarChart3,
     },
     {
       id: 'settings',
@@ -220,11 +227,11 @@ export function AdminNavbar({
             {isSuper && (
               <Link
                 to="/admin/god-view"
-                className="flex items-center gap-1.5 text-xs font-bold bg-blue-600/90 hover:bg-blue-600 text-white px-3 py-2 rounded-lg transition-all shadow-md shadow-blue-900/20"
+                className="flex items-center gap-1.5 text-xs font-black bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 hover:text-amber-300 px-3 py-2 rounded-lg transition-all shadow-sm shadow-amber-500/10"
                 title={isEn ? "God View" : "מצב אל"}
               >
-                <Shield size={15} />
-                <span>{isEn ? 'God Mode' : 'מצב אל'}</span>
+                <Shield size={15} className="text-amber-400" />
+                <span className="text-amber-400 font-extrabold">{isEn ? 'God Mode' : 'מצב אל'}</span>
               </Link>
             )}
 
@@ -453,19 +460,6 @@ export function AdminNavbar({
                 );
               })}
 
-              {isSuper && (
-                <div className="pt-4 mt-4 border-t border-slate-800">
-                  <Link
-                    to="/admin/god-view"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-base font-bold bg-blue-950/60 border border-blue-800/50 text-blue-300 hover:bg-blue-900/50"
-                  >
-                    <Shield size={20} />
-                    <span>{isEn ? 'God Mode' : 'מצב אל'}</span>
-                  </Link>
-                </div>
-              )}
-
               {/* Divider */}
               <div className="py-2">
                 <div className="border-t border-slate-800/80" />
@@ -507,6 +501,20 @@ export function AdminNavbar({
                   <span>{isEn ? 'Contact Support' : 'צור קשר'}</span>
                 </div>
               </button>
+
+              {/* Conditional: God View - Positioned at bottom of items list with distinctive amber styling */}
+              {isSuper && (
+                <div className="pt-2">
+                  <Link
+                    to="/admin/god-view"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-base font-extrabold bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 transition-all"
+                  >
+                    <Shield size={20} className="text-amber-400" />
+                    <span className="text-amber-400">{isEn ? 'God Mode' : 'מצב אל'}</span>
+                  </Link>
+                </div>
+              )}
             </nav>
 
             {/* Drawer Footer Actions */}

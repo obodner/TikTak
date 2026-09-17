@@ -52,8 +52,9 @@ export function AdminLayout() {
   }, [tenantId]);
 
   // Determine current active tab from pathname
-  const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' | 'fleet' => {
+  const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics' => {
     const path = location.pathname;
+    if (path.endsWith('/analytics')) return 'analytics';
     if (path.endsWith('/settings')) return 'settings';
     if (path.endsWith('/backlog')) return 'backlog';
     if (path.endsWith('/fleet')) return 'fleet';

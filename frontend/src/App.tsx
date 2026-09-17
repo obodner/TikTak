@@ -6,6 +6,7 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TenantSettings from './pages/admin/TenantSettings';
 import TasksBacklog from './pages/admin/TasksBacklog';
+import AdminAnalytics from './pages/admin/AdminAnalytics';
 import SuperAdminDashboard from './pages/admin/SuperAdminDashboard';
 import EnterpriseFleetDashboard from './pages/admin/EnterpriseFleetDashboard';
 
@@ -68,6 +69,7 @@ export default function App() {
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="settings" element={<TenantSettings />} />
                 <Route path="backlog" element={<TasksBacklog />} />
+                <Route path="analytics" element={<AdminAnalytics />} />
                 <Route path="fleet" element={<EnterpriseFleetDashboard />} />
             </Route>
 

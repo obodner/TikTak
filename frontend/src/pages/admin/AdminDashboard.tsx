@@ -12,8 +12,9 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert, HelpCircle } from 'lucide-react';
-import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { format, parseISO, subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
+import { MonthYearRangePicker } from '../../components/admin/MonthYearRangePicker';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
 import { QuotaProgressWidget } from '../../components/admin/QuotaProgressWidget';
 import { he } from 'date-fns/locale';
@@ -289,6 +290,7 @@ export default function AdminDashboard() {
 
 
   const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [showCustomDashboardPicker, setShowCustomDashboardPicker] = useState(false);
   const [savedVendors, setSavedVendors] = useState<any[]>([]);
 
   // Smart Hybrid Refresh State
@@ -298,10 +300,10 @@ export default function AdminDashboard() {
   const lastActivityRef = useRef<number>(Date.now());
 
   // Filter State
-  const [filters, setFilters] = useState({
-    timeRange: 'all',
-    startDate: '',
-    endDate: '',
+  const [filters, setFilters] = useState(() => ({
+    timeRange: searchParams.get('timeRange') || 'all',
+    startDate: searchParams.get('startDate') || '',
+    endDate: searchParams.get('endDate') || '',
     location: 'all',
     subLocation: 'all',
     category: 'all',
@@ -311,7 +313,21 @@ export default function AdminDashboard() {
     statuses: ['new', 'in-progress', 'closed'],
     source: 'all',
     channel: 'all'
-  });
+  }));
+
+  useEffect(() => {
+    const tr = searchParams.get('timeRange');
+    const sd = searchParams.get('startDate');
+    const ed = searchParams.get('endDate');
+    if (tr) {
+      setFilters(prev => ({
+        ...prev,
+        timeRange: tr,
+        startDate: sd || prev.startDate,
+        endDate: ed || prev.endDate
+      }));
+    }
+  }, [searchParams]);
 
   const activeSecondaryFilterCount = useMemo(() => {
     return [
@@ -398,10 +414,10 @@ export default function AdminDashboard() {
       export: isHe ? 'ייצא לאקסל' : 'Export CSV',
       ranges: {
         all: isHe ? 'כל הזמן' : 'All Time',
-        '1m': isHe ? 'חודש אחרון' : 'Last Month',
-        '3m': isHe ? '3 חודשים אחרונים' : 'Last 3 Months',
-        '6m': isHe ? 'חצי שנה אחרונה' : 'Last 6 Months',
-        '12m': isHe ? 'שנה אחרונה' : 'Last Year',
+        current_month: isHe ? 'חודש נוכחי' : 'Current Month',
+        last_3_months: isHe ? '3 חודשים אחרונים' : 'Last 3 Months',
+        last_12_months: isHe ? '12 חודשים אחרונים' : 'Last 12 Months',
+        this_year: isHe ? 'השנה' : 'This Year',
         custom: isHe ? 'טווח מותאם' : 'Custom Range'
       },
       source: isHe ? 'מקור' : 'Source'
@@ -690,24 +706,29 @@ export default function AdminDashboard() {
       if (filters.subLocation !== 'all' && t.subLocation !== filters.subLocation) return false;
       if (filters.severity !== 'all' && t.urgency !== filters.severity) return false;
 
-      // c. Time
+      // c. Time (Whole-Month Alignment)
       const ticketDate = parseTicketDate(t.createdAt);
       if (filters.timeRange !== 'all') {
-        if (filters.timeRange === 'custom') {
+        const now = new Date();
+        let interval: { start: Date; end: Date } | null = null;
+        if (filters.timeRange === 'current_month' || filters.timeRange === '1m') {
+          interval = { start: startOfMonth(now), end: endOfMonth(now) };
+        } else if (filters.timeRange === 'last_3_months' || filters.timeRange === '3m') {
+          interval = { start: startOfMonth(subMonths(now, 2)), end: endOfMonth(now) };
+        } else if (filters.timeRange === 'last_12_months' || filters.timeRange === '12m') {
+          interval = { start: startOfMonth(subMonths(now, 11)), end: endOfMonth(now) };
+        } else if (filters.timeRange === 'this_year') {
+          interval = { start: startOfYear(now), end: endOfYear(now) };
+        } else if (filters.timeRange === 'custom') {
           if (filters.startDate && filters.endDate) {
             const startDateObj = parseInputDate(filters.startDate);
             const endDateObj = parseInputDate(filters.endDate);
             if (startDateObj && endDateObj) {
-              const start = startOfDay(startDateObj);
-              const end = endOfDay(endDateObj);
-              if (!isWithinInterval(ticketDate, { start, end })) return false;
+              interval = { start: startOfMonth(startDateObj), end: endOfMonth(endDateObj) };
             }
           }
-        } else {
-          const monthsBack = parseInt(filters.timeRange);
-          const cutoff = subMonths(new Date(), monthsBack);
-          if (ticketDate < cutoff) return false;
         }
+        if (interval && !isWithinInterval(ticketDate, interval)) return false;
       }
 
       // d. Status
@@ -746,9 +767,36 @@ export default function AdminDashboard() {
         }
       }
 
+      // h. SLA Stagnation Filter (from searchParams e.g. ?sla=stale-9, stale-5, stale-2)
+      const slaParam = searchParams.get('sla');
+      if (slaParam && (slaParam === 'stale-9' || slaParam === 'stale-5' || slaParam === 'stale-2')) {
+        if (t.status !== 'open' && t.status !== 'in-progress') return false;
+        const workingDaysList = tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4];
+        const ticketSla = t.slaStatus || getSlaStatus(calculateWorkingDays(
+          t.lastStatusChangeAt || t.createdAt,
+          new Date(),
+          workingDaysList,
+          holidays
+        ));
+        if (ticketSla !== slaParam) return false;
+      }
+
       return true;
     });
-  }, [tickets, filters]);
+  }, [tickets, filters, searchParams, tenantConfig, holidays]);
+
+  useEffect(() => {
+    const slaParam = searchParams.get('sla');
+    if (slaParam) {
+      const hasOpen = filteredTickets.some(t => t.status === 'open');
+      const hasProgress = filteredTickets.some(t => t.status === 'in-progress');
+      if (!hasOpen && hasProgress) {
+        setActiveTab('progress');
+      } else if (hasOpen) {
+        setActiveTab('new');
+      }
+    }
+  }, [searchParams, filteredTickets]);
 
   const handleStatusUpdate = async (ticketId: string, newStatus: Ticket['status'], ticketObj?: Ticket) => {
     if (!tenantId) return;
@@ -1181,6 +1229,16 @@ export default function AdminDashboard() {
       source: 'all',
       channel: 'all'
     });
+    if (searchParams.has('sla') || searchParams.has('timeRange') || searchParams.has('startDate') || searchParams.has('endDate')) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('sla');
+        next.delete('timeRange');
+        next.delete('startDate');
+        next.delete('endDate');
+        return next;
+      });
+    }
   };
 
   // 4. Stats logic (uses filteredTickets)
@@ -1603,7 +1661,19 @@ export default function AdminDashboard() {
     );
   }
 
-  const hasActiveFilters = filters.search || filters.timeRange !== 'all' || filters.category !== 'all' || filters.location !== 'all' || filters.subLocation !== 'all' || filters.severity !== 'all' || filters.statuses.length < 3;
+  const hasActiveFilters = Boolean(
+    filters.search ||
+    filters.timeRange !== 'all' ||
+    filters.category !== 'all' ||
+    filters.location !== 'all' ||
+    filters.subLocation !== 'all' ||
+    filters.severity !== 'all' ||
+    filters.closureReason !== 'all' ||
+    filters.source !== 'all' ||
+    filters.channel !== 'all' ||
+    filters.statuses.length < 3 ||
+    searchParams.get('sla')
+  );
 
   return (
     <div className="min-h-screen bg-white relative" dir={isEn ? 'ltr' : 'rtl'}>
@@ -1722,17 +1792,110 @@ export default function AdminDashboard() {
         </section>
 
         <section className="bg-slate-50/50 p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm backdrop-blur-sm space-y-3">
+          {searchParams.get('sla') && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">{isEn ? 'Active SLA Filter:' : 'סינון SLA פעיל:'}</span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${
+                  searchParams.get('sla') === 'stale-9' ? 'bg-red-50 text-red-700 border-red-200 shadow-sm' :
+                  searchParams.get('sla') === 'stale-5' ? 'bg-orange-50 text-orange-700 border-orange-200 shadow-sm' :
+                  'bg-amber-50 text-amber-700 border-amber-200 shadow-sm'
+                }`}>
+                  <span className="w-2 h-2 rounded-full animate-pulse" style={{
+                    backgroundColor: searchParams.get('sla') === 'stale-9' ? '#dc2626' : searchParams.get('sla') === 'stale-5' ? '#ea580c' : '#d97706'
+                  }} />
+                  <span>
+                    {searchParams.get('sla') === 'stale-9' ? (isEn ? 'Delay 9+ Days (Red)' : 'השהיית SLA: מעל 9 ימים (אדום)') :
+                     searchParams.get('sla') === 'stale-5' ? (isEn ? 'Delay 5+ Days (Orange)' : 'השהיית SLA: מעל 5 ימים (כתום)') :
+                     (isEn ? 'Delay 2+ Days (Yellow)' : 'השהיית SLA: מעל 2 ימים (צהוב)')}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setSearchParams(prev => {
+                        const next = new URLSearchParams(prev);
+                        next.delete('sla');
+                        return next;
+                      });
+                    }}
+                    className="hover:bg-black/10 rounded-full p-0.5 transition-colors ms-1 cursor-pointer"
+                    title={isEn ? 'Clear SLA Filter' : 'הסר סינון חריגה'}
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setSearchParams(prev => {
+                    const next = new URLSearchParams(prev);
+                    next.delete('sla');
+                    return next;
+                  });
+                }}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+              >
+                {isEn ? 'Show all tickets' : 'הצג את כל הפניות'}
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-end gap-3 w-full">
             {/* 1. Time Range */}
-            <div className="flex flex-col gap-1.5 min-w-[120px] flex-1 sm:flex-initial">
+            <div className="flex flex-col gap-1.5 min-w-[130px] flex-1 sm:flex-initial relative">
               <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.time}</label>
               <select
                 value={filters.timeRange}
-                onChange={e => setFilters({ ...filters, timeRange: e.target.value })}
+                onChange={e => {
+                  const val = e.target.value;
+                  setFilters(prev => ({ ...prev, timeRange: val }));
+                  if (val === 'custom') {
+                    setShowCustomDashboardPicker(true);
+                  }
+                }}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[38px]"
               >
                 {Object.entries(uiLabels.filters.ranges).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
               </select>
+
+              {/* Custom Range Indicator & Picker Popover */}
+              {filters.timeRange === 'custom' && (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomDashboardPicker(true)}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer truncate px-1"
+                  title={isEn ? "Change Custom Range" : "שנה טווח חודשים"}
+                >
+                  <Calendar size={12} />
+                  <span>
+                    {filters.startDate && filters.endDate
+                      ? `${format(parseISO(filters.startDate), 'MM/yy')} – ${format(parseISO(filters.endDate), 'MM/yy')}`
+                      : (isEn ? 'Choose Months' : 'בחר חודשים')}
+                  </span>
+                </button>
+              )}
+
+              {showCustomDashboardPicker && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowCustomDashboardPicker(false)} />
+                  <div className="absolute top-full mt-2 start-0 z-50 shadow-2xl">
+                    <MonthYearRangePicker
+                      startDate={filters.startDate ? parseISO(filters.startDate) : startOfMonth(subMonths(new Date(), 2))}
+                      endDate={filters.endDate ? parseISO(filters.endDate) : endOfMonth(new Date())}
+                      onChange={(start, end) => {
+                        setFilters(prev => ({
+                          ...prev,
+                          timeRange: 'custom',
+                          startDate: format(start, 'yyyy-MM-dd'),
+                          endDate: format(end, 'yyyy-MM-dd')
+                        }));
+                        setShowCustomDashboardPicker(false);
+                      }}
+                      onClose={() => setShowCustomDashboardPicker(false)}
+                      isEn={isEn}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 2. Status Dropdown */}

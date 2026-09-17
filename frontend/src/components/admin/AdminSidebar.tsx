@@ -19,7 +19,8 @@ import {
   PanelLeftOpen,
   Boxes,
   Users2,
-  Sliders
+  Sliders,
+  BarChart3
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
@@ -28,7 +29,7 @@ import { NotificationItem } from '../../utils/notificationsEngine';
 export interface AdminSidebarProps {
   tenantId: string;
   tenantName?: string;
-  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet';
+  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics';
   myTenants?: { id: string; name?: string }[];
   isFleet?: boolean;
   isSuper?: boolean;
@@ -314,6 +315,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             )}
           </Link>
 
+          {/* Analytics & BI */}
+          <Link
+            to={`/admin/${tenantId}/analytics`}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${
+              currentPage === 'analytics'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            } ${isCollapsed ? 'justify-center' : ''}`}
+            title={isCollapsed ? (isEn ? 'Analytics & BI' : 'סטטיסטיקה ודוחות') : undefined}
+          >
+            <BarChart3 size={20} className="shrink-0" />
+            {!isCollapsed && (
+              <span className="flex-1 truncate">{isEn ? 'Analytics & BI' : 'סטטיסטיקה ודוחות'}</span>
+            )}
+          </Link>
+
           {/* Settings Section (Accordion in Expanded / Flyout in Collapsed) */}
           <div className="relative">
             {isCollapsed ? (
@@ -457,24 +474,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </Link>
           )}
 
-          {/* Conditional: God View */}
-          {isSuper && (
-            <Link
-              to="/admin/god-view"
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group ${
-                location.pathname === '/admin/god-view'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              } ${isCollapsed ? 'justify-center' : ''}`}
-              title={isCollapsed ? (isEn ? 'God Mode' : 'מצב אל') : undefined}
-            >
-              <Shield size={20} className="shrink-0" />
-              {!isCollapsed && (
-                <span className="flex-1 truncate">{isEn ? 'God Mode' : 'מצב אל'}</span>
-              )}
-            </Link>
-          )}
-
           {/* Divider */}
           <div className="py-2">
             <div className="border-t border-slate-800/80" />
@@ -542,6 +541,29 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 <span className="flex-1 text-start truncate">{isEn ? 'Help & Guide' : 'עזרה ומדריך'}</span>
               )}
             </button>
+          )}
+
+          {/* Conditional: God View - Positioned at the bottom of the items list with distinctive amber styling */}
+          {isSuper && (
+            <div className="pt-2">
+              <Link
+                to="/admin/god-view"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-black transition-all group border ${
+                  location.pathname === '/admin/god-view'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/50'
+                } ${isCollapsed ? 'justify-center' : ''}`}
+                title={isCollapsed ? (isEn ? 'God Mode' : 'מצב אל') : undefined}
+                data-testid="sidebar-god-mode-btn"
+              >
+                <Shield size={20} className="shrink-0 text-amber-400 group-hover:text-amber-300 transition-colors" />
+                {!isCollapsed && (
+                  <span className="flex-1 truncate tracking-wide text-amber-400 group-hover:text-amber-300 font-extrabold">
+                    {isEn ? 'God Mode' : 'מצב אל'}
+                  </span>
+                )}
+              </Link>
+            </div>
           )}
         </nav>
 
