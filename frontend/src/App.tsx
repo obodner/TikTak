@@ -29,6 +29,12 @@ function HomeRoute() {
     return <LandingPage />;
 }
 
+function AdminIndexRedirect() {
+    const [searchParams] = useSearchParams();
+    const search = searchParams.toString();
+    return <Navigate to={`dashboard${search ? `?${search}` : ''}`} replace />;
+}
+
 export default function App() {
     useEffect(() => {
         if (!sessionStorage.getItem('tiktak_session_id')) {
@@ -58,7 +64,7 @@ export default function App() {
                     <AdminLayout />
                 </SessionEnforcer>
             }>
-                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route index element={<AdminIndexRedirect />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="settings" element={<TenantSettings />} />
                 <Route path="backlog" element={<TasksBacklog />} />

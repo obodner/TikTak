@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { logAction } from '../../utils/auditLogger';
 import { ConfirmModal, ConfirmType } from '../../components/admin/ConfirmModal';
 import { collection, getDocs, getDoc, orderBy, query, doc, updateDoc, arrayUnion, arrayRemove, where, limit } from 'firebase/firestore';
@@ -7,10 +7,11 @@ import { db } from '../../lib/firebase';
 import { CommentModal } from '../../components/admin/CommentModal';
 import { ClosureModal } from '../../components/admin/ClosureModal';
 import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModal';
+import { TicketDetailsModal } from '../../components/admin/TicketDetailsModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert, HelpCircle } from 'lucide-react';
 import { format, parseISO, subMonths, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { HelpModal } from '../../components/admin/HelpModal';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
@@ -139,6 +140,7 @@ const CustomTooltip = ({ active, payload, label, isEn }: any) => {
 
 export default function AdminDashboard() {
   const { tenantId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuthState();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -150,6 +152,46 @@ export default function AdminDashboard() {
   const [commentTicketId, setCommentTicketId] = useState<string | null>(null);
   const [closureTicketId, setClosureTicketId] = useState<string | null>(null);
   const [forwardTicket, setForwardTicket] = useState<any | null>(null);
+  const [detailsTicket, setDetailsTicket] = useState<Ticket | null>(null);
+
+  const ticketParam = searchParams.get('ticket');
+  useEffect(() => {
+    if (!ticketParam || !tenantId) return;
+    const found = tickets.find(t => t.id === ticketParam || String(t.ticketNumber) === ticketParam);
+    if (found) {
+      setDetailsTicket(found);
+    } else {
+      getDoc(doc(db, "tenants", tenantId, "tickets", ticketParam))
+        .then(d => {
+          if (d.exists()) {
+            setDetailsTicket({ id: d.id, ...d.data() } as Ticket);
+          }
+        })
+        .catch(err => console.error("Error fetching ticket from search param:", err));
+    }
+  }, [ticketParam, tickets, tenantId]);
+
+  useEffect(() => {
+    const handleOpenTicketEvent = (e: any) => {
+      const tId = e.detail?.ticketId;
+      if (!tId || !tenantId) return;
+      const found = tickets.find(t => t.id === tId || String(t.ticketNumber) === tId);
+      if (found) {
+        setDetailsTicket(found);
+      } else {
+        getDoc(doc(db, "tenants", tenantId, "tickets", tId))
+          .then(d => {
+            if (d.exists()) {
+              setDetailsTicket({ id: d.id, ...d.data() } as Ticket);
+            }
+          })
+          .catch(err => console.error("Error fetching ticket for details event:", err));
+      }
+    };
+
+    window.addEventListener('tiktak:open-ticket-details', handleOpenTicketEvent);
+    return () => window.removeEventListener('tiktak:open-ticket-details', handleOpenTicketEvent);
+  }, [tickets, tenantId]);
 
   const getAdminDisplayName = () => {
     if (adminProfile && (adminProfile.firstName || adminProfile.lastName)) {
@@ -1344,8 +1386,12 @@ export default function AdminDashboard() {
                           {translateCategory(t.category)}
                         </div>
                         <p
-                          className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium cursor-help"
-                          title={t.summary || (isEn ? 'No summary' : 'אין תיאור')}
+                          className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium cursor-pointer hover:text-blue-600 transition-colors"
+                          title={isEn ? "Click to view full ticket details" : "לחץ לצפייה בפרטי הפנייה המלאים"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDetailsTicket(t);
+                          }}
                         >
                           {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
                         </p>
@@ -1847,6 +1893,15 @@ export default function AdminDashboard() {
                     </span>
                   )}
                 </button>
+
+                <button
+                  onClick={() => setIsHelpOpen(true)}
+                  className="h-[38px] w-[38px] flex items-center justify-center bg-white hover:bg-blue-50 active:scale-95 text-slate-500 hover:text-blue-600 rounded-xl transition-all border border-slate-200 shadow-sm shrink-0 cursor-pointer"
+                  title={isEn ? "Help & Guide" : "עזרה ומדריך"}
+                  aria-label={isEn ? "Help & Guide" : "עזרה ומדריך"}
+                >
+                  <HelpCircle size={18} />
+                </button>
               </div>
             </div>
           </div>
@@ -2009,6 +2064,40 @@ export default function AdminDashboard() {
           adminName={getAdminDisplayName()}
           onSend={handleSendForwardToVendor}
           isEn={isEn}
+        />
+
+        <TicketDetailsModal
+          isOpen={!!detailsTicket}
+          onClose={() => {
+            setDetailsTicket(null);
+            if (searchParams.get('ticket')) {
+              setSearchParams(prev => {
+                const next = new URLSearchParams(prev);
+                next.delete('ticket');
+                return next;
+              });
+            }
+          }}
+          ticket={detailsTicket}
+          tenantId={tenantId || ''}
+          isEn={isEn}
+          onOpenComments={(t) => {
+            setDetailsTicket(null);
+            setCommentTicketId(t.id);
+          }}
+          onForwardToVendor={(t) => {
+            setDetailsTicket(null);
+            setForwardTicket(t);
+          }}
+          onUpdateStatus={(t, newStatus) => {
+            if (newStatus === 'resolved') {
+              setDetailsTicket(null);
+              setClosureTicketId(t.id);
+            } else {
+              handleStatusUpdate(t.id, newStatus, t);
+              setDetailsTicket(prev => prev ? { ...prev, status: newStatus } : null);
+            }
+          }}
         />
 
         <HelpModal

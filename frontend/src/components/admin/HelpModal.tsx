@@ -255,6 +255,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_forward_vendor_label || (isHe ? 'העברה לספק (Forward to Vendor)' : 'Forward to Vendor')}</strong>: ${dict.mgr_forward_vendor}` }} />
                     <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_comments_whatsapp_label || (isHe ? 'כתיבת הערה ועדכון המדווח בוואטסאפ' : 'Comments & Reporter Notifications')}</strong>: ${dict.mgr_comments_whatsapp}` }} />
                     <li><strong>{dict.mgr_ticket_analysis_label || (isHe ? 'ניתוח תקלה' : 'Ticket Analysis')}</strong>: {dict.mgr_ticket_analysis}</li>
+                    <li><strong>{dict.mgr_notifications_hub_label || (isHe ? 'מרכז התראות חכם' : 'Notifications Hub')}</strong>: {dict.mgr_notifications_hub}</li>
+                    <li><strong>{dict.mgr_ticket_details_modal_label || (isHe ? 'כרטיסיית פרטי פנייה מורחבת' : 'Full Ticket Details')}</strong>: {dict.mgr_ticket_details_modal}</li>
                   </ul>
                 </div>
 

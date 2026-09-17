@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
+import { NotificationItem } from '../../utils/notificationsEngine';
 
 interface AdminNavbarProps {
   tenantId: string;
@@ -33,6 +34,11 @@ interface AdminNavbarProps {
   onOpenHelp?: () => void;
   dashboardCount?: number;
   backlogCount?: number;
+  notifications?: NotificationItem[];
+  unreadNotificationsCount?: number;
+  onToggleRead?: (notificationId: string) => void;
+  onMarkAllRead?: () => void;
+  onSelectTicket?: (ticketId: string) => void;
 }
 
 export function AdminNavbar({
@@ -45,7 +51,12 @@ export function AdminNavbar({
   isEn = false,
   onOpenHelp,
   dashboardCount,
-  backlogCount
+  backlogCount,
+  notifications = [],
+  unreadNotificationsCount = 0,
+  onToggleRead,
+  onMarkAllRead,
+  onSelectTicket
 }: AdminNavbarProps) {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -220,12 +231,17 @@ export function AdminNavbar({
             <button
               type="button"
               onClick={() => setIsNotificationsOpen(true)}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all relative"
               title={isEn ? "Notifications" : "התראות"}
               aria-label={isEn ? "Notifications" : "התראות"}
               data-testid="navbar-desktop-notifications-btn"
             >
               <Bell size={20} />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-extrabold text-white ring-2 ring-slate-900 animate-pulse">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -264,12 +280,17 @@ export function AdminNavbar({
             <button
               type="button"
               onClick={() => setIsNotificationsOpen(true)}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all relative"
               title={isEn ? "Notifications" : "התראות"}
               aria-label={isEn ? "Notifications" : "התראות"}
               data-testid="navbar-header-notifications-btn"
             >
               <Bell size={22} />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-extrabold text-white ring-2 ring-slate-900 animate-pulse">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
             </button>
 
             {onOpenHelp && (
@@ -464,6 +485,11 @@ export function AdminNavbar({
                   <Bell size={20} className="shrink-0" />
                   <span>{isEn ? 'Notifications' : 'התראות'}</span>
                 </div>
+                {unreadNotificationsCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-red-500 text-xs font-bold text-white">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
               </button>
 
               {/* Contact Us Menu Item */}
@@ -517,7 +543,13 @@ export function AdminNavbar({
       <NotificationsModal
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
+        tenantId={tenantId}
         isEn={isEn}
+        notifications={notifications}
+        backlogCount={backlogCount}
+        onToggleRead={onToggleRead || (() => {})}
+        onMarkAllRead={onMarkAllRead || (() => {})}
+        onSelectTicket={onSelectTicket}
       />
 
       <ContactModal

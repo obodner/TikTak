@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation, Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -8,6 +8,13 @@ import { AdminNavbar } from './AdminNavbar';
 import { AdminSidebar } from './AdminSidebar';
 import { HelpModal } from './HelpModal';
 import { ShieldAlert, Building2, LogOut, ArrowLeft } from 'lucide-react';
+import { 
+  generateNotifications, 
+  getDismissedMap, 
+  setDismissed, 
+  setAllDismissed, 
+  NotificationItem 
+} from '../../utils/notificationsEngine';
 
 export interface AdminLayoutContext {
   tenantConfig: any;
@@ -17,6 +24,8 @@ export interface AdminLayoutContext {
   openHelp: () => void;
   dashboardCount?: number;
   backlogCount?: number;
+  notifications?: NotificationItem[];
+  unreadNotificationsCount?: number;
 }
 
 export function AdminLayout() {
@@ -33,6 +42,14 @@ export function AdminLayout() {
   const [loading, setLoading] = useState(true);
   const [dashboardCount, setDashboardCount] = useState<number | undefined>(undefined);
   const [backlogCount, setBacklogCount] = useState<number | undefined>(undefined);
+  const [ticketsList, setTicketsList] = useState<any[]>([]);
+  const [dismissedMap, setDismissedMap] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (tenantId) {
+      setDismissedMap(getDismissedMap(tenantId));
+    }
+  }, [tenantId]);
 
   // Determine current active tab from pathname
   const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' | 'fleet' => {
@@ -113,9 +130,11 @@ export function AdminLayout() {
     const unsubscribe = onSnapshot(ticketsRef, (snapshot) => {
       let openCount = 0;
       let backlogTicketCount = 0;
+      const fetched: any[] = [];
 
       snapshot.docs.forEach((doc) => {
         const data = doc.data();
+        fetched.push({ id: doc.id, ...data });
         if (data.status === 'open') {
           openCount++;
         } else if (data.status === 'backlog') {
@@ -125,6 +144,7 @@ export function AdminLayout() {
 
       setDashboardCount(openCount);
       setBacklogCount(backlogTicketCount);
+      setTicketsList(fetched);
     }, (err) => {
       console.error("Error listening to tickets for counts:", err);
       if (err?.code === 'permission-denied' || err?.message?.toLowerCase().includes('permission')) {
@@ -134,6 +154,40 @@ export function AdminLayout() {
 
     return () => unsubscribe();
   }, [user, tenantId, isUnauthorized, loading]);
+
+  const isEn = tenantConfig?.language === 'en';
+
+  const notifications = useMemo(() => {
+    return generateNotifications(ticketsList, tenantId as string, dismissedMap, isEn, tenantConfig);
+  }, [ticketsList, tenantId, dismissedMap, isEn, tenantConfig]);
+
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.filter(n => !n.isRead).length;
+  }, [notifications]);
+
+  const handleToggleRead = (notificationId: string) => {
+    if (!tenantId) return;
+    const isCurrentlyRead = Boolean(dismissedMap[notificationId]);
+    const updated = setDismissed(tenantId, notificationId, !isCurrentlyRead);
+    setDismissedMap(updated);
+  };
+
+  const handleMarkAllRead = () => {
+    if (!tenantId) return;
+    const allIds = notifications.map(n => n.id);
+    const updated = setAllDismissed(tenantId, allIds);
+    setDismissedMap(updated);
+  };
+
+  const handleSelectTicket = (ticketId: string) => {
+    if (!tenantId) return;
+    navigate(`/admin/${tenantId}/dashboard?ticket=${ticketId}`);
+    try {
+      window.dispatchEvent(new CustomEvent('tiktak:open-ticket-details', { detail: { ticketId } }));
+    } catch (e) {
+      console.error("Error dispatching open ticket event:", e);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -153,8 +207,6 @@ export function AdminLayout() {
   }
 
   if (!user) return <Navigate to="/admin/login" replace />;
-
-  const isEn = tenantConfig?.language === 'en';
 
   if (isUnauthorized) {
     return (
@@ -255,6 +307,11 @@ export function AdminLayout() {
         onOpenHelp={() => setIsHelpOpen(true)}
         dashboardCount={dashboardCount}
         backlogCount={backlogCount}
+        notifications={notifications}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onToggleRead={handleToggleRead}
+        onMarkAllRead={handleMarkAllRead}
+        onSelectTicket={handleSelectTicket}
       />
 
       <div className="flex flex-col md:flex-row min-h-screen">
@@ -267,8 +324,14 @@ export function AdminLayout() {
           isFleet={Boolean(tenantConfig?.isPoolMaster || tenantConfig?.usesParentPool)}
           isSuper={isSuper}
           isEn={isEn}
+          onOpenHelp={() => setIsHelpOpen(true)}
           dashboardCount={dashboardCount}
           backlogCount={backlogCount}
+          notifications={notifications}
+          unreadNotificationsCount={unreadNotificationsCount}
+          onToggleRead={handleToggleRead}
+          onMarkAllRead={handleMarkAllRead}
+          onSelectTicket={handleSelectTicket}
         />
 
         {/* Page Body Content */}
@@ -280,7 +343,9 @@ export function AdminLayout() {
             isEn,
             openHelp: () => setIsHelpOpen(true),
             dashboardCount,
-            backlogCount
+            backlogCount,
+            notifications,
+            unreadNotificationsCount
           } satisfies AdminLayoutContext} />
         </main>
       </div>

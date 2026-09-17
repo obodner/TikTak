@@ -12,6 +12,7 @@ import {
   Building2,
   Bell,
   Headphones,
+  HelpCircle,
   PanelRightClose,
   PanelRightOpen,
   PanelLeftClose,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
+import { NotificationItem } from '../../utils/notificationsEngine';
 
 export interface AdminSidebarProps {
   tenantId: string;
@@ -31,8 +33,14 @@ export interface AdminSidebarProps {
   isFleet?: boolean;
   isSuper?: boolean;
   isEn?: boolean;
+  onOpenHelp?: () => void;
   dashboardCount?: number;
   backlogCount?: number;
+  notifications?: NotificationItem[];
+  unreadNotificationsCount?: number;
+  onToggleRead?: (notificationId: string) => void;
+  onMarkAllRead?: () => void;
+  onSelectTicket?: (ticketId: string) => void;
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
@@ -43,8 +51,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   isFleet = false,
   isSuper = false,
   isEn = false,
+  onOpenHelp,
   dashboardCount,
-  backlogCount
+  backlogCount,
+  notifications = [],
+  unreadNotificationsCount = 0,
+  onToggleRead,
+  onMarkAllRead,
+  onSelectTicket
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -470,15 +484,29 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <button
             type="button"
             onClick={() => setIsNotificationsOpen(true)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all ${
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all relative ${
               isCollapsed ? 'justify-center' : ''
             }`}
             title={isCollapsed ? (isEn ? 'Notifications' : 'התראות') : undefined}
             data-testid="sidebar-notifications-btn"
           >
-            <Bell size={20} className="shrink-0" />
+            <div className="relative flex items-center justify-center">
+              <Bell size={20} className="shrink-0" />
+              {isCollapsed && unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-extrabold text-white ring-2 ring-slate-900 animate-pulse">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
+            </div>
             {!isCollapsed && (
-              <span className="flex-1 text-start truncate">{isEn ? 'Notifications' : 'התראות'}</span>
+              <>
+                <span className="flex-1 text-start truncate">{isEn ? 'Notifications' : 'התראות'}</span>
+                {unreadNotificationsCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-red-500 text-xs font-bold text-white">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+              </>
             )}
           </button>
 
@@ -497,6 +525,24 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <span className="flex-1 text-start truncate">{isEn ? 'Contact Support' : 'צור קשר'}</span>
             )}
           </button>
+
+          {/* New Item: Help & Guide */}
+          {onOpenHelp && (
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all ${
+                isCollapsed ? 'justify-center' : ''
+              }`}
+              title={isCollapsed ? (isEn ? 'Help & Guide' : 'עזרה ומדריך') : undefined}
+              data-testid="sidebar-help-btn"
+            >
+              <HelpCircle size={20} className="shrink-0" />
+              {!isCollapsed && (
+                <span className="flex-1 text-start truncate">{isEn ? 'Help & Guide' : 'עזרה ומדריך'}</span>
+              )}
+            </button>
+          )}
         </nav>
 
         {/* Footer Section (Pinned Bottom) */}
@@ -521,7 +567,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       <NotificationsModal
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
+        tenantId={tenantId}
         isEn={isEn}
+        notifications={notifications}
+        backlogCount={backlogCount}
+        onToggleRead={onToggleRead || (() => {})}
+        onMarkAllRead={onMarkAllRead || (() => {})}
+        onSelectTicket={onSelectTicket}
       />
 
       <ContactModal
