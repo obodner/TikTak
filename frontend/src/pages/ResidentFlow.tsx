@@ -6,7 +6,7 @@ import { ReportingForm } from '../components/ReportingForm';
 import { QuickTapPills } from '../components/QuickTapPills';
 import { QuickTapItem } from '../components/admin/QuickTapEditor';
 import { compressImage } from '../utils/compression';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Wrench, Info, X } from 'lucide-react';
 
 type FlowState = 'idle' | 'analyzing' | 'editing' | 'sending' | 'success' | 'error' | 'invalid' | 'rate-limited';
 
@@ -95,6 +95,16 @@ export default function ResidentFlow() {
     const [pendingBase64Image, setPendingBase64Image] = useState<string | null>(null);
     const [pendingMimeType, setPendingMimeType] = useState<string | null>(null);
     const [showAiFallbackNotice, setShowAiFallbackNotice] = useState<boolean>(false);
+    const [isBannerDismissed, setIsBannerDismissed] = useState<boolean>(false);
+    const [noticeBanner, setNoticeBanner] = useState<{
+        active: boolean;
+        message: string;
+        location?: string;
+        type?: 'warning' | 'info' | 'maintenance';
+        durationHours?: number | 'manual';
+        expiresAt?: string | null;
+        createdAt?: string;
+    } | null>(null);
 
     useEffect(() => {
         const saved = localStorage.getItem('tiktak_reporter_phone');
@@ -159,6 +169,10 @@ export default function ResidentFlow() {
                     }
                     if (data.admins) {
                         setAdmins(data.admins);
+                    }
+
+                    if (data.noticeBanner) {
+                        setNoticeBanner(data.noticeBanner);
                     }
 
                     setConfig({
@@ -484,6 +498,84 @@ export default function ResidentFlow() {
 
                 {state === 'idle' || state === 'analyzing' ? (
                     <div className="flex-1 flex flex-col items-center justify-between w-full">
+
+                        {/* Pinned Resident Notice Banner */}
+                        {(() => {
+                            if (!noticeBanner?.active || !noticeBanner.message) return null;
+                            const isExpired = noticeBanner.expiresAt ? new Date(noticeBanner.expiresAt) <= new Date() : false;
+                            const bannerStorageKey = `tiktak_dismissed_banner_${tenantId}`;
+                            const isSessionDismissed = noticeBanner.createdAt 
+                                ? sessionStorage.getItem(bannerStorageKey) === noticeBanner.createdAt 
+                                : false;
+                            
+                            if (isExpired || isBannerDismissed || isSessionDismissed) return null;
+
+                            const bType = noticeBanner.type || 'warning';
+                            const styleConfig = {
+                                warning: {
+                                    container: 'bg-amber-50 border-amber-300 text-amber-950',
+                                    iconBg: 'bg-amber-500 text-white',
+                                    badge: 'bg-amber-200/80 text-amber-900',
+                                    locationText: 'text-amber-800',
+                                    label: i18n.language === 'en' ? 'Warning' : 'אזהרה',
+                                    Icon: AlertTriangle
+                                },
+                                maintenance: {
+                                    container: 'bg-blue-50 border-blue-300 text-blue-950',
+                                    iconBg: 'bg-blue-600 text-white',
+                                    badge: 'bg-blue-200/80 text-blue-900',
+                                    locationText: 'text-blue-800',
+                                    label: i18n.language === 'en' ? 'In Progress' : 'בטיפול',
+                                    Icon: Wrench
+                                },
+                                info: {
+                                    container: 'bg-emerald-50 border-emerald-300 text-emerald-950',
+                                    iconBg: 'bg-emerald-600 text-white',
+                                    badge: 'bg-emerald-200/80 text-emerald-900',
+                                    locationText: 'text-emerald-800',
+                                    label: i18n.language === 'en' ? 'Update' : 'עדכון',
+                                    Icon: Info
+                                }
+                            }[bType];
+                            const BannerIcon = styleConfig.Icon;
+
+                            return (
+                                <div className={`mb-4 w-full p-4 rounded-2xl border shadow-sm flex items-start gap-3 text-start animate-in fade-in slide-in-from-top-2 duration-300 ${styleConfig.container}`}>
+                                    <div className={`p-2 rounded-xl shrink-0 mt-0.5 shadow-xs ${styleConfig.iconBg}`}>
+                                        <BannerIcon size={18} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`font-extrabold text-[11px] uppercase tracking-wider px-2 py-0.5 rounded-md ${styleConfig.badge}`}>
+                                                {styleConfig.label}
+                                            </span>
+                                            {noticeBanner.location && (
+                                                <span className={`font-bold text-xs truncate ${styleConfig.locationText}`}>
+                                                    • {noticeBanner.location}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-800 leading-snug">
+                                            {noticeBanner.message}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsBannerDismissed(true);
+                                            if (noticeBanner.createdAt) {
+                                                sessionStorage.setItem(bannerStorageKey, noticeBanner.createdAt);
+                                            }
+                                        }}
+                                        aria-label={i18n.language === 'en' ? 'Close notice' : 'סגור הודעה'}
+                                        className="p-1.5 -mr-1.5 -mt-1.5 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer shrink-0"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            );
+                        })()}
 
                         {/* 2. HERO SECTION */}
                         <section className="text-center mb-4 animate-in fade-in slide-in-from-top-4 duration-1000">

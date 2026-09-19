@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, MessageSquare, AlertTriangle, Send, Clock, User, Eye, EyeOff } from 'lucide-react';
+import { ChevronRight, MessageSquare, AlertTriangle, Wrench, Info, Send, Clock, User, Eye, EyeOff, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { he } from 'date-fns/locale';
 
@@ -49,6 +49,16 @@ export default function ResidentDashboard() {
   const [tenantName, setTenantName] = useState('');
   const [address, setAddress] = useState('');
   const [tenantType, setTenantType] = useState<'building' | 'municipality'>('building');
+  const [isBannerDismissed, setIsBannerDismissed] = useState<boolean>(false);
+  const [noticeBanner, setNoticeBanner] = useState<{
+    active: boolean;
+    message: string;
+    location?: string;
+    type?: 'warning' | 'info' | 'maintenance';
+    durationHours?: number | 'manual';
+    expiresAt?: string | null;
+    createdAt?: string;
+  } | null>(null);
 
   // Ticket data
   const [myTickets, setMyTickets] = useState<Ticket[]>([]);
@@ -94,6 +104,7 @@ export default function ResidentDashboard() {
           if (data.name) setTenantName(data.name);
           if (data.address) setAddress(data.address);
           if (data.type) setTenantType(data.type);
+          if (data.noticeBanner) setNoticeBanner(data.noticeBanner);
           if (data.language) {
             i18n.changeLanguage(data.language);
           }
@@ -425,6 +436,84 @@ export default function ResidentDashboard() {
 
       {/* Main Body */}
       <main className="flex-1 w-full max-w-sm mx-auto px-4 py-4 flex flex-col gap-6">
+
+        {/* Pinned Resident Notice Banner */}
+        {(() => {
+          if (!noticeBanner?.active || !noticeBanner.message) return null;
+          const isExpired = noticeBanner.expiresAt ? new Date(noticeBanner.expiresAt) <= new Date() : false;
+          const bannerStorageKey = `tiktak_dismissed_banner_${tenantId}`;
+          const isSessionDismissed = noticeBanner.createdAt 
+            ? sessionStorage.getItem(bannerStorageKey) === noticeBanner.createdAt 
+            : false;
+
+          if (isExpired || isBannerDismissed || isSessionDismissed) return null;
+
+          const bType = noticeBanner.type || 'warning';
+          const styleConfig = {
+            warning: {
+              container: 'bg-amber-50 border-amber-300 text-amber-950',
+              iconBg: 'bg-amber-500 text-white',
+              badge: 'bg-amber-200/80 text-amber-900',
+              locationText: 'text-amber-800',
+              label: isHe ? 'אזהרה' : 'Warning',
+              Icon: AlertTriangle
+            },
+            maintenance: {
+              container: 'bg-blue-50 border-blue-300 text-blue-950',
+              iconBg: 'bg-blue-600 text-white',
+              badge: 'bg-blue-200/80 text-blue-900',
+              locationText: 'text-blue-800',
+              label: isHe ? 'בטיפול' : 'In Progress',
+              Icon: Wrench
+            },
+            info: {
+              container: 'bg-emerald-50 border-emerald-300 text-emerald-950',
+              iconBg: 'bg-emerald-600 text-white',
+              badge: 'bg-emerald-200/80 text-emerald-900',
+              locationText: 'text-emerald-800',
+              label: isHe ? 'עדכון' : 'Update',
+              Icon: Info
+            }
+          }[bType];
+          const BannerIcon = styleConfig.Icon;
+
+          return (
+            <div className={`w-full p-4 rounded-2xl border shadow-sm flex items-start gap-3 text-start animate-in fade-in slide-in-from-top-2 duration-300 ${styleConfig.container}`}>
+              <div className={`p-2 rounded-xl shrink-0 mt-0.5 shadow-xs ${styleConfig.iconBg}`}>
+                <BannerIcon size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`font-extrabold text-[11px] uppercase tracking-wider px-2 py-0.5 rounded-md ${styleConfig.badge}`}>
+                    {styleConfig.label}
+                  </span>
+                  {noticeBanner.location && (
+                    <span className={`font-bold text-xs truncate ${styleConfig.locationText}`}>
+                      • {noticeBanner.location}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-bold text-slate-800 leading-snug">
+                  {noticeBanner.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsBannerDismissed(true);
+                  if (noticeBanner.createdAt) {
+                    sessionStorage.setItem(bannerStorageKey, noticeBanner.createdAt);
+                  }
+                }}
+                aria-label={isHe ? 'סגור הודעה' : 'Close notice'}
+                className="p-1.5 -mr-1.5 -mt-1.5 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Tab Contents */}
         {!reporterPhone ? (

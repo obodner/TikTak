@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
-import { 
-  LayoutDashboard, 
-  ListTodo, 
-  Settings, 
-  Shield, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  ListTodo,
+  Settings,
+  Shield,
+  LogOut,
   ChevronDown,
   Building2,
   Bell,
@@ -164,9 +164,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   return (
     <>
       <aside
-        className={`hidden md:flex flex-col bg-slate-900 text-white h-screen sticky top-0 z-40 transition-all duration-300 ease-in-out shrink-0 select-none ${
-          isCollapsed ? 'w-20' : 'w-64'
-        } ${isEn ? 'border-r border-slate-800' : 'border-l border-slate-800'}`}
+        className={`hidden md:flex flex-col bg-slate-900 text-white h-screen sticky top-0 z-40 transition-all duration-300 ease-in-out shrink-0 select-none ${isCollapsed ? 'w-20' : 'w-64'
+          } ${isEn ? 'border-r border-slate-800' : 'border-l border-slate-800'}`}
         dir={isEn ? 'ltr' : 'rtl'}
         data-testid="admin-sidebar"
         data-collapsed={isCollapsed}
@@ -175,7 +174,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         <div className="p-3.5 border-b border-slate-800 flex flex-col justify-center min-h-[82px]">
           {isCollapsed ? (
             <div className="flex flex-col items-center gap-2.5">
-              <Link 
+              <Link
                 to={`/admin/${tenantId}/dashboard`}
                 className="flex items-center justify-center p-1 rounded-lg hover:bg-slate-800 transition-colors"
                 title="TikTak"
@@ -200,7 +199,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <div className="flex flex-col gap-2.5">
               {/* Top Row: Larger TikTak Logo & Collapse Button */}
               <div className="flex items-center justify-between">
-                <Link 
+                <Link
                   to={`/admin/${tenantId}/dashboard`}
                   className="shrink-0 transition-transform hover:scale-105 flex items-center"
                 >
@@ -239,13 +238,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown 
-                    className={`absolute top-1/2 -translate-y-1/2 ${isEn ? 'right-2' : 'left-2'} text-slate-400 pointer-events-none`} 
-                    size={14} 
+                  <ChevronDown
+                    className={`absolute top-1/2 -translate-y-1/2 ${isEn ? 'right-2' : 'left-2'} text-slate-400 pointer-events-none`}
+                    size={14}
                   />
                 </div>
               ) : (
-                <div 
+                <div
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/60 border border-slate-750 text-slate-300 min-w-0"
                   title={tenantName || tenantId}
                 >
@@ -264,11 +263,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {/* Dashboard */}
           <Link
             to={`/admin/${tenantId}/dashboard`}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${
-              currentPage === 'dashboard'
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${currentPage === 'dashboard'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            } ${isCollapsed ? 'justify-center' : ''}`}
+              } ${isCollapsed ? 'justify-center' : ''}`}
             title={isCollapsed ? (isEn ? 'Dashboard' : 'דשבורד') : undefined}
           >
             <LayoutDashboard size={20} className="shrink-0" />
@@ -277,11 +275,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             )}
             {typeof dashboardCount === 'number' && (
               <span
-                className={`px-2 py-0.5 rounded-full text-xs font-extrabold transition-colors ${
-                  currentPage === 'dashboard'
+                className={`px-2 py-0.5 rounded-full text-xs font-extrabold transition-colors ${currentPage === 'dashboard'
                     ? 'bg-white/20 text-white'
                     : 'bg-slate-800 text-slate-300 border border-slate-700/80'
-                } ${isCollapsed ? 'absolute -top-1 -end-1 px-1.5 py-0 text-[10px]' : ''}`}
+                  } ${isCollapsed ? 'absolute -top-1 -end-1 px-1.5 py-0 text-[10px]' : ''}`}
               >
                 {dashboardCount}
               </span>
@@ -291,11 +288,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {/* Tasks Backlog */}
           <Link
             to={`/admin/${tenantId}/backlog`}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${
-              currentPage === 'backlog'
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${currentPage === 'backlog'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            } ${isCollapsed ? 'justify-center' : ''}`}
+              } ${isCollapsed ? 'justify-center' : ''}`}
             title={isCollapsed ? (isEn ? 'Tasks Backlog' : 'מצבור משימות') : undefined}
           >
             <ListTodo size={20} className="shrink-0" />
@@ -304,11 +300,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             )}
             {typeof backlogCount === 'number' && (
               <span
-                className={`px-2 py-0.5 rounded-full text-xs font-extrabold transition-colors ${
-                  currentPage === 'backlog'
+                className={`px-2 py-0.5 rounded-full text-xs font-extrabold transition-colors ${currentPage === 'backlog'
                     ? 'bg-white/20 text-white'
                     : 'bg-slate-800 text-slate-300 border border-slate-700/80'
-                } ${isCollapsed ? 'absolute -top-1 -end-1 px-1.5 py-0 text-[10px]' : ''}`}
+                  } ${isCollapsed ? 'absolute -top-1 -end-1 px-1.5 py-0 text-[10px]' : ''}`}
               >
                 {backlogCount}
               </span>
@@ -318,11 +313,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {/* Analytics & BI */}
           <Link
             to={`/admin/${tenantId}/analytics`}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${
-              currentPage === 'analytics'
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group relative ${currentPage === 'analytics'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            } ${isCollapsed ? 'justify-center' : ''}`}
+              } ${isCollapsed ? 'justify-center' : ''}`}
             title={isCollapsed ? (isEn ? 'Analytics & BI' : 'סטטיסטיקה ודוחות') : undefined}
           >
             <BarChart3 size={20} className="shrink-0" />
@@ -339,11 +333,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsFlyoutOpen(prev => !prev)}
-                  className={`w-full flex items-center justify-center p-2.5 rounded-xl text-sm font-bold transition-all group ${
-                    currentPage === 'settings'
+                  className={`w-full flex items-center justify-center p-2.5 rounded-xl text-sm font-bold transition-all group ${currentPage === 'settings'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                  }`}
+                    }`}
                   title={isEn ? 'Settings' : 'הגדרות'}
                   aria-expanded={isFlyoutOpen}
                   data-testid="sidebar-settings-flyout-trigger"
@@ -355,9 +348,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 {isFlyoutOpen && (
                   <div
                     ref={flyoutRef}
-                    className={`fixed z-50 bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl py-2 px-1.5 w-60 animate-in fade-in zoom-in-95 duration-150 ${
-                      isEn ? 'left-22' : 'right-22'
-                    }`}
+                    className={`fixed z-50 bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl py-2 px-1.5 w-60 animate-in fade-in zoom-in-95 duration-150 ${isEn ? 'left-22' : 'right-22'
+                      }`}
                     style={{
                       top: '180px'
                     }}
@@ -377,11 +369,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                             key={sub.id}
                             to={sub.path}
                             onClick={() => setIsFlyoutOpen(false)}
-                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                              sub.isActive
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${sub.isActive
                                 ? 'bg-blue-600 text-white'
                                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                            }`}
+                              }`}
                           >
                             <SubIcon size={16} className="shrink-0" />
                             <span className="truncate">{sub.label}</span>
@@ -398,37 +389,33 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAccordionOpen(prev => !prev)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 group ${
-                    currentPage === 'settings'
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 group ${currentPage === 'settings'
                       ? 'bg-slate-800/80 text-white'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                  }`}
+                    }`}
                   data-testid="sidebar-settings-accordion-trigger"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <Settings 
-                      size={20} 
-                      className={`shrink-0 transition-transform duration-300 ease-out ${
-                        isAccordionOpen ? 'rotate-90 text-blue-400' : 'group-hover:rotate-45'
-                      }`} 
+                    <Settings
+                      size={20}
+                      className={`shrink-0 transition-transform duration-300 ease-out ${isAccordionOpen ? 'rotate-90 text-blue-400' : 'group-hover:rotate-45'
+                        }`}
                     />
                     <span className="truncate">{isEn ? 'Settings' : 'הגדרות'}</span>
                   </div>
                   <ChevronDown
                     size={16}
-                    className={`transition-transform duration-300 ease-out text-slate-400 group-hover:text-white ${
-                      isAccordionOpen ? 'transform rotate-180' : ''
-                    }`}
+                    className={`transition-transform duration-300 ease-out text-slate-400 group-hover:text-white ${isAccordionOpen ? 'transform rotate-180' : ''
+                      }`}
                   />
                 </button>
 
                 {/* Rolling Sub-items list */}
                 <div
-                  className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${
-                    isAccordionOpen
+                  className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${isAccordionOpen
                       ? 'grid-rows-[1fr] opacity-100 mt-1'
                       : 'grid-rows-[0fr] opacity-0 mt-0 pointer-events-none'
-                  }`}
+                    }`}
                 >
                   <div className="min-h-0 overflow-hidden">
                     <div className="space-y-1 ps-4 border-s border-slate-800 ms-5 me-1 py-1">
@@ -438,11 +425,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                           <Link
                             key={sub.id}
                             to={sub.path}
-                            className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
-                              sub.isActive
+                            className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${sub.isActive
                                 ? 'bg-blue-600 text-white font-bold shadow-sm'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                            }`}
+                              }`}
                           >
                             <SubIcon size={14} className="shrink-0" />
                             <span className="truncate">{sub.label}</span>
@@ -460,11 +446,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {isFleet && (
             <Link
               to={`/admin/${tenantId}/fleet`}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group ${
-                currentPage === 'fleet'
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group ${currentPage === 'fleet'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              } ${isCollapsed ? 'justify-center' : ''}`}
+                } ${isCollapsed ? 'justify-center' : ''}`}
               title={isCollapsed ? (isEn ? 'Fleet Overlook' : 'דשבורד צי') : undefined}
             >
               <Building2 size={20} className="shrink-0" />
@@ -483,9 +468,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <button
             type="button"
             onClick={() => setIsNotificationsOpen(true)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all relative ${
-              isCollapsed ? 'justify-center' : ''
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all relative ${isCollapsed ? 'justify-center' : ''
+              }`}
             title={isCollapsed ? (isEn ? 'Notifications' : 'התראות') : undefined}
             data-testid="sidebar-notifications-btn"
           >
@@ -513,9 +497,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <button
             type="button"
             onClick={() => setIsContactOpen(true)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all ${
-              isCollapsed ? 'justify-center' : ''
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all ${isCollapsed ? 'justify-center' : ''
+              }`}
             title={isCollapsed ? (isEn ? 'Contact & Support' : 'צור קשר') : undefined}
             data-testid="sidebar-contact-btn"
           >
@@ -530,9 +513,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <button
               type="button"
               onClick={onOpenHelp}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all ${
-                isCollapsed ? 'justify-center' : ''
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all ${isCollapsed ? 'justify-center' : ''
+                }`}
               title={isCollapsed ? (isEn ? 'Help & Guide' : 'עזרה ומדריך') : undefined}
               data-testid="sidebar-help-btn"
             >
@@ -548,11 +530,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <div className="pt-2">
               <Link
                 to="/admin/god-view"
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-black transition-all group border ${
-                  location.pathname === '/admin/god-view'
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-black transition-all group border ${location.pathname === '/admin/god-view'
                     ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
                     : 'text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/50'
-                } ${isCollapsed ? 'justify-center' : ''}`}
+                  } ${isCollapsed ? 'justify-center' : ''}`}
                 title={isCollapsed ? (isEn ? 'God Mode' : 'מצב אל') : undefined}
                 data-testid="sidebar-god-mode-btn"
               >
@@ -571,9 +552,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         <div className="p-3 border-t border-slate-800 bg-slate-950/40">
           <button
             onClick={handleLogout}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border border-transparent hover:border-red-500/20 ${
-              isCollapsed ? 'justify-center px-2' : ''
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border border-transparent hover:border-red-500/20 ${isCollapsed ? 'justify-center px-2' : ''
+              }`}
             title={isEn ? "Logout" : "התנתק"}
             data-testid="sidebar-logout-btn"
           >
@@ -593,8 +573,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         isEn={isEn}
         notifications={notifications}
         backlogCount={backlogCount}
-        onToggleRead={onToggleRead || (() => {})}
-        onMarkAllRead={onMarkAllRead || (() => {})}
+        onToggleRead={onToggleRead || (() => { })}
+        onMarkAllRead={onMarkAllRead || (() => { })}
         onSelectTicket={onSelectTicket}
       />
 

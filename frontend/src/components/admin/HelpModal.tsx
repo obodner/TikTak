@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLink, Download, ChevronDown } from 'lucide-react';
+import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLink, Download, ChevronDown, BarChart3 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import heMessages from '../../locales/he.json';
 import enMessages from '../../locales/en.json';
@@ -188,11 +188,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   <ul className="text-sm text-slate-600 space-y-3">
                     <li className="flex gap-2">
                       <span className="text-red-500">📸</span>
-                      <span><strong>Snap</strong>: {dict.step2_snap}</span>
+                      <span><strong>{isHe ? 'צילום מהיר' : 'Snap'}</strong>: {dict.step2_snap}</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="text-blue-500">📝</span>
-                      <span><strong>Manual</strong>: {dict.step2_manual}</span>
+                      <span><strong>{isHe ? 'דיווח מפורט' : 'Manual'}</strong>: {dict.step2_manual}</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="text-amber-500">⚡</span>
@@ -219,11 +219,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   {dict.resident_dashboard_desc}
                 </p>
                 <ul className={`text-sm text-slate-600 space-y-3.5 list-disc list-inside ${isHe ? 'pr-2' : 'pl-2'}`}>
-                  <li><strong>{dict.res_my_reports_label || (isHe ? 'טאב "הדיווחים שלי"' : '"My Reports" Tab')}</strong>: {dict.res_my_reports}</li>
-                  <li><strong>{dict.res_open_reports_label || (isHe ? 'טאב "דיווחים פתוחים"' : '"Open Reports" Tab')}</strong>: {dict.res_open_reports}</li>
-                  <li><strong>{dict.res_me_too_label || (isHe ? 'הצבעת "גם לי יש את זה" (Me Too)' : '"Me Too" Voting')}</strong>: {dict.res_me_too}</li>
+                  <li><strong>{dict.res_my_reports_label || (isHe ? 'לשונית "הדיווחים שלי"' : '"My Reports" Tab')}</strong>: {dict.res_my_reports}</li>
+                  <li><strong>{dict.res_open_reports_label || (isHe ? 'לשונית "דיווחים פתוחים"' : '"Open Reports" Tab')}</strong>: {dict.res_open_reports}</li>
+                  <li><strong>{dict.res_me_too_label || (isHe ? 'הצטרפות לפנייה ("גם לי יש את זה")' : '"Me Too" Voting')}</strong>: {dict.res_me_too}</li>
                   <li><strong>{dict.res_comments_label || (isHe ? 'הערות ועדכונים' : 'Comments & Media')}</strong>: {dict.res_comments}</li>
-                  <li><strong>{dict.res_sticky_ui_label || (isHe ? 'ממשק קבוע ונוח (Sticky UI)' : 'Frozen Header & Tabs (Sticky UI)')}</strong>: {dict.res_sticky_ui}</li>
+                  <li><strong>{dict.res_sticky_ui_label || (isHe ? 'ממשק קבוע ונוח לתפעול' : 'Frozen Header & Tabs (Sticky UI)')}</strong>: {dict.res_sticky_ui}</li>
                 </ul>
               </div>
             </section>
@@ -251,12 +251,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     <li><strong>{dict.mgr_dynamic_panel_label || (isHe ? 'לוח בקרה דינמי' : 'Dynamic Panel')}</strong>: {dict.mgr_dynamic_panel}</li>
                     <li><strong>{dict.mgr_drag_drop_label || (isHe ? 'עדכון סטטוס בגרירה' : 'Drag & Drop Status')}</strong>: {dict.mgr_drag_drop}</li>
                     <li><strong>{dict.mgr_quicktap_id_label || (isHe ? 'זיהוי דיווחים מהירים' : 'QuickTap ID')}</strong>: {dict.mgr_quicktap_id}</li>
-                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_backlog_label || (isHe ? 'מצבור משימות (Backlog)' : 'Tasks Backlog')}</strong>: ${dict.mgr_backlog}` }} />
-                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_forward_vendor_label || (isHe ? 'העברה לספק (Forward to Vendor)' : 'Forward to Vendor')}</strong>: ${dict.mgr_forward_vendor}` }} />
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_backlog_label || (isHe ? 'מצבור משימות לתכנון' : 'Tasks Backlog')}</strong>: ${dict.mgr_backlog}` }} />
+                    <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_forward_vendor_label || (isHe ? 'העברה לספק שירות' : 'Forward to Vendor')}</strong>: ${dict.mgr_forward_vendor}` }} />
                     <li dangerouslySetInnerHTML={{ __html: `<strong>${dict.mgr_comments_whatsapp_label || (isHe ? 'כתיבת הערה ועדכון המדווח בוואטסאפ' : 'Comments & Reporter Notifications')}</strong>: ${dict.mgr_comments_whatsapp}` }} />
                     <li><strong>{dict.mgr_ticket_analysis_label || (isHe ? 'ניתוח תקלה' : 'Ticket Analysis')}</strong>: {dict.mgr_ticket_analysis}</li>
-                    <li><strong>{dict.mgr_notifications_hub_label || (isHe ? 'מרכז התראות חכם' : 'Notifications Hub')}</strong>: {dict.mgr_notifications_hub}</li>
-                    <li><strong>{dict.mgr_ticket_details_modal_label || (isHe ? 'כרטיסיית פרטי פנייה מורחבת' : 'Full Ticket Details')}</strong>: {dict.mgr_ticket_details_modal}</li>
+                    <li><strong>{dict.mgr_notifications_hub_label || (isHe ? 'מרכז התראות ופעולות דחופות' : 'Notifications Hub')}</strong>: {dict.mgr_notifications_hub}</li>
+                    <li><strong>{dict.mgr_ticket_details_modal_label || (isHe ? 'כרטיסיית פרטי פנייה ומדיה' : 'Full Ticket Details')}</strong>: {dict.mgr_ticket_details_modal}</li>
                   </ul>
                 </div>
 
@@ -295,13 +295,31 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                   </div>
                 </div>
 
+                <div className={`${isHe ? 'border-r-4 pr-6' : 'border-l-4 pl-6'} border-indigo-500 space-y-4`}>
+                  <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <BarChart3 size={20} className="text-indigo-500" />
+                    {dict.mgr_bi_title}
+                  </h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    {dict.mgr_bi_desc}
+                  </p>
+                  <ul className="text-sm text-slate-600 space-y-3">
+                    <li><strong className="text-indigo-700 font-extrabold">{dict.mgr_bi_export_label}</strong>: {dict.mgr_bi_export}</li>
+                    <li><strong className="text-amber-700 font-extrabold">{dict.mgr_bi_banner_label}</strong>: {dict.mgr_bi_banner}</li>
+                    <li><strong>{dict.mgr_bi_funnel_label}</strong>: {dict.mgr_bi_funnel}</li>
+                    <li><strong>{dict.mgr_bi_workload_label}</strong>: {dict.mgr_bi_workload}</li>
+                    <li><strong>{dict.mgr_bi_insights_label}</strong>: {dict.mgr_bi_insights}</li>
+                    <li><strong>{dict.mgr_bi_vendors_label}</strong>: {dict.mgr_bi_vendors}</li>
+                  </ul>
+                </div>
+
                 <div className={`${isHe ? 'border-r-4 pr-6' : 'border-l-4 pl-6'} border-amber-500 space-y-4`}>
                   <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
                     <Settings size={20} className="text-amber-500" />
                     {dict.mgr_settings_title}
                   </h4>
                   <ul className="text-sm text-slate-600 space-y-3">
-                    <li><strong className="text-red-600">{isHe ? 'ניהול מורשים (Whitelist)' : 'Permissions & Whitelist'}</strong>: {dict.mgr_settings_whitelist}</li>
+                    <li><strong className="text-red-600">{isHe ? 'ניהול מורשים' : 'Permissions & Whitelist'}</strong>: {dict.mgr_settings_whitelist}</li>
                     <li><strong>{isHe ? 'ניהול מנהלים' : 'User Management'}</strong>: {dict.mgr_settings_users}</li>
                     <li><strong>{isHe ? 'ניהול אנשי שירות (ספקים)' : 'Vendors Management'}</strong>: {dict.mgr_settings_vendors}</li>
                     <li><strong>{isHe ? 'ניהול דיווחים מהירים' : 'QuickTap Setup'}</strong>: {dict.mgr_settings_quicktap}</li>
