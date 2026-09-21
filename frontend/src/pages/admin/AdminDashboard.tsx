@@ -312,21 +312,22 @@ export default function AdminDashboard() {
     search: '',
     statuses: ['new', 'in-progress', 'closed'],
     source: 'all',
-    channel: 'all'
+    channel: 'all',
+    sla: searchParams.get('sla') || 'all'
   }));
 
   useEffect(() => {
     const tr = searchParams.get('timeRange');
     const sd = searchParams.get('startDate');
     const ed = searchParams.get('endDate');
-    if (tr) {
-      setFilters(prev => ({
-        ...prev,
-        timeRange: tr,
-        startDate: sd || prev.startDate,
-        endDate: ed || prev.endDate
-      }));
-    }
+    const sla = searchParams.get('sla') || 'all';
+    setFilters(prev => ({
+      ...prev,
+      ...(tr ? { timeRange: tr } : {}),
+      startDate: sd !== null ? sd : prev.startDate,
+      endDate: ed !== null ? ed : prev.endDate,
+      sla
+    }));
   }, [searchParams]);
 
   const activeSecondaryFilterCount = useMemo(() => {
@@ -335,7 +336,8 @@ export default function AdminDashboard() {
       filters.location !== 'all',
       filters.subLocation !== 'all',
       filters.source !== 'all',
-      filters.channel !== 'all'
+      filters.channel !== 'all',
+      filters.sla !== 'all'
     ].filter(Boolean).length;
   }, [filters]);
 
@@ -767,9 +769,9 @@ export default function AdminDashboard() {
         }
       }
 
-      // h. SLA Stagnation Filter (from searchParams e.g. ?sla=stale-9, stale-5, stale-2)
-      const slaParam = searchParams.get('sla');
-      if (slaParam && (slaParam === 'stale-9' || slaParam === 'stale-5' || slaParam === 'stale-2')) {
+      // h. SLA Stagnation Filter (from filters.sla or searchParams e.g. stale-9, stale-5, stale-2)
+      const currentSla = (filters.sla && filters.sla !== 'all') ? filters.sla : searchParams.get('sla');
+      if (currentSla && (currentSla === 'stale-9' || currentSla === 'stale-5' || currentSla === 'stale-2')) {
         if (t.status !== 'open' && t.status !== 'in-progress') return false;
         const workingDaysList = tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4];
         const ticketSla = t.slaStatus || getSlaStatus(calculateWorkingDays(
@@ -778,7 +780,7 @@ export default function AdminDashboard() {
           workingDaysList,
           holidays
         ));
-        if (ticketSla !== slaParam) return false;
+        if (ticketSla !== currentSla) return false;
       }
 
       return true;
@@ -1227,7 +1229,8 @@ export default function AdminDashboard() {
       search: '',
       statuses: ['new', 'in-progress', 'closed'],
       source: 'all',
-      channel: 'all'
+      channel: 'all',
+      sla: 'all'
     });
     if (searchParams.has('sla') || searchParams.has('timeRange') || searchParams.has('startDate') || searchParams.has('endDate')) {
       setSearchParams(prev => {
@@ -1671,6 +1674,7 @@ export default function AdminDashboard() {
     filters.closureReason !== 'all' ||
     filters.source !== 'all' ||
     filters.channel !== 'all' ||
+    filters.sla !== 'all' ||
     filters.statuses.length < 3 ||
     searchParams.get('sla')
   );
@@ -1792,40 +1796,47 @@ export default function AdminDashboard() {
         </section>
 
         <section className="bg-slate-50/50 p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm backdrop-blur-sm space-y-3">
-          {searchParams.get('sla') && (
+          {(searchParams.get('sla') || (filters.sla && filters.sla !== 'all')) && (
             <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-500">{isEn ? 'Active SLA Filter:' : 'סינון SLA פעיל:'}</span>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${
-                  searchParams.get('sla') === 'stale-9' ? 'bg-red-50 text-red-700 border-red-200 shadow-sm' :
-                  searchParams.get('sla') === 'stale-5' ? 'bg-orange-50 text-orange-700 border-orange-200 shadow-sm' :
-                  'bg-amber-50 text-amber-700 border-amber-200 shadow-sm'
-                }`}>
-                  <span className="w-2 h-2 rounded-full animate-pulse" style={{
-                    backgroundColor: searchParams.get('sla') === 'stale-9' ? '#dc2626' : searchParams.get('sla') === 'stale-5' ? '#ea580c' : '#d97706'
-                  }} />
-                  <span>
-                    {searchParams.get('sla') === 'stale-9' ? (isEn ? 'Delay 9+ Days (Red)' : 'השהיית SLA: מעל 9 ימים (אדום)') :
-                     searchParams.get('sla') === 'stale-5' ? (isEn ? 'Delay 5+ Days (Orange)' : 'השהיית SLA: מעל 5 ימים (כתום)') :
-                     (isEn ? 'Delay 2+ Days (Yellow)' : 'השהיית SLA: מעל 2 ימים (צהוב)')}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setSearchParams(prev => {
-                        const next = new URLSearchParams(prev);
-                        next.delete('sla');
-                        return next;
-                      });
-                    }}
-                    className="hover:bg-black/10 rounded-full p-0.5 transition-colors ms-1 cursor-pointer"
-                    title={isEn ? 'Clear SLA Filter' : 'הסר סינון חריגה'}
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
+                {(() => {
+                  const activeSla = (filters.sla && filters.sla !== 'all') ? filters.sla : searchParams.get('sla');
+                  return (
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${
+                      activeSla === 'stale-9' ? 'bg-red-50 text-red-700 border-red-200 shadow-sm' :
+                      activeSla === 'stale-5' ? 'bg-orange-50 text-orange-700 border-orange-200 shadow-sm' :
+                      'bg-amber-50 text-amber-700 border-amber-200 shadow-sm'
+                    }`}>
+                      <span className="w-2 h-2 rounded-full animate-pulse" style={{
+                        backgroundColor: activeSla === 'stale-9' ? '#dc2626' : activeSla === 'stale-5' ? '#ea580c' : '#d97706'
+                      }} />
+                      <span>
+                        {activeSla === 'stale-9' ? (isEn ? 'Delay 9+ Days (Red)' : 'השהיית SLA: מעל 9 ימים (אדום)') :
+                         activeSla === 'stale-5' ? (isEn ? 'Delay 5+ Days (Orange)' : 'השהיית SLA: מעל 5 ימים (כתום)') :
+                         (isEn ? 'Delay 2+ Days (Yellow)' : 'השהיית SLA: מעל 2 ימים (צהוב)')}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setFilters(prev => ({ ...prev, sla: 'all' }));
+                          setSearchParams(prev => {
+                            const next = new URLSearchParams(prev);
+                            next.delete('sla');
+                            return next;
+                          });
+                        }}
+                        className="hover:bg-black/10 rounded-full p-0.5 transition-colors ms-1 cursor-pointer"
+                        title={isEn ? 'Clear SLA Filter' : 'הסר סינון חריגה'}
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  );
+                })()}
               </div>
               <button
                 onClick={() => {
+                  setFilters(prev => ({ ...prev, sla: 'all' }));
                   setSearchParams(prev => {
                     const next = new URLSearchParams(prev);
                     next.delete('sla');
@@ -2071,7 +2082,7 @@ export default function AdminDashboard() {
 
           {/* Second Row: Additional Filters */}
           {(showMoreFilters || activeSecondaryFilterCount > 0) && (
-            <div className="pt-3 border-t border-slate-200/70 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="pt-3 border-t border-slate-200/70 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.severity}</label>
                 <select
@@ -2083,6 +2094,35 @@ export default function AdminDashboard() {
                   <option value="High">{uiLabels.urgency.High}</option>
                   <option value="Moderate">{uiLabels.urgency.Moderate}</option>
                   <option value="Low">{uiLabels.urgency.Low}</option>
+                </select>
+              </div>
+
+              {/* SLA Filter */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">
+                  {isEn ? 'SLA Stagnation' : 'השהיית SLA'}
+                </label>
+                <select
+                  value={filters.sla}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setFilters(prev => ({ ...prev, sla: val }));
+                    setSearchParams(prev => {
+                      const next = new URLSearchParams(prev);
+                      if (val === 'all') {
+                        next.delete('sla');
+                      } else {
+                        next.set('sla', val);
+                      }
+                      return next;
+                    });
+                  }}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 shadow-sm cursor-pointer min-h-[36px]"
+                >
+                  <option value="all">{uiLabels.filters.all}</option>
+                  <option value="stale-9">🔴 {isEn ? 'Delay 9+ Days (Red)' : 'מעל 9 ימים (אדום)'}</option>
+                  <option value="stale-5">🟠 {isEn ? 'Delay 5+ Days (Orange)' : 'מעל 5 ימים (כתום)'}</option>
+                  <option value="stale-2">🟡 {isEn ? 'Delay 2+ Days (Yellow)' : 'מעל 2 ימים (צהוב)'}</option>
                 </select>
               </div>
 
