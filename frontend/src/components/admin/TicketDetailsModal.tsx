@@ -3,7 +3,6 @@ import {
   X, 
   MapPin, 
   Phone, 
-  Calendar, 
   MessageSquare, 
   Share2, 
   Flame, 
@@ -16,8 +15,13 @@ import {
   Briefcase,
   CheckCircle2,
   CheckCheck,
-  Send
+  Send,
+  History,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import heJson from '../../locales/he.json';
 import enJson from '../../locales/en.json';
 
@@ -74,6 +78,221 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   onUpdateStatus
 }) => {
   const [isImageExpanded, setIsImageExpanded] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(true);
+  const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
+
+  // Fetch complete audit logs & status lifecycle history for the ticket
+  useEffect(() => {
+    if (!isOpen || !ticket || !tenantId) return;
+
+    const curTicket = ticket;
+    const curTenantId = tenantId;
+    let isMounted = true;
+    setLoadingTimeline(true);
+
+    async function loadTimeline() {
+      const events: any[] = [];
+
+      // 1. Initial Creation Event (always baseline)
+      events.push({
+        id: 'creation',
+        type: 'creation',
+        status: 'open',
+        title: isEn ? 'Ticket Created' : 'פנייה נפתחה (דיווח ראשוני)',
+        subtitle: isEn ? 'Report submitted by resident' : 'הדיווח נקלט במערכת',
+        timestamp: curTicket.createdAt,
+        actor: curTicket.reporterName || (isEn ? 'Resident' : 'דייר/ת'),
+        badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
+        badgeText: isEn ? 'Open' : 'חדש',
+        dotClass: 'bg-blue-600 ring-2 ring-blue-100'
+      });
+
+      try {
+        const q = query(
+          collection(db, 'audit_logs'),
+          where('tenantId', '==', curTenantId),
+          where('details.ticketId', '==', curTicket.id)
+        );
+        const snap = await getDocs(q);
+
+        snap.forEach(d => {
+          const data = d.data();
+          const action = data.action;
+          const createdAt = data.createdAt;
+          const actorName = data.actor?.name;
+
+          if (action === 'TICKET_STATUS_UPDATE') {
+            const newStatus = data.details?.newStatus;
+            const closureReason = data.details?.closureReason;
+            const resolutionNote = data.details?.resolutionNote;
+
+            let statusText = isEn ? 'Status changed' : 'סטטוס עודכן';
+            let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+            let badgeText = newStatus;
+            let dotClass = 'bg-slate-500';
+
+            if (newStatus === 'in-progress') {
+              statusText = isEn ? 'Moved to In Progress' : 'הועבר לטיפול';
+              badgeClass = 'bg-amber-100 text-amber-800 border-amber-200';
+              badgeText = isEn ? 'In Progress' : 'בטיפול';
+              dotClass = 'bg-amber-500 ring-2 ring-amber-100';
+            } else if (newStatus === 'resolved' || newStatus === 'closed') {
+              statusText = isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה';
+              badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+              badgeText = isEn ? 'Resolved' : 'טופל';
+              dotClass = 'bg-emerald-600 ring-2 ring-emerald-100';
+            } else if (newStatus === 'dismissed') {
+              statusText = isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה';
+              badgeClass = 'bg-red-100 text-red-800 border-red-200';
+              badgeText = isEn ? 'Dismissed' : 'בוטל';
+              dotClass = 'bg-red-500 ring-2 ring-red-100';
+            } else if (newStatus === 'backlog') {
+              statusText = isEn ? 'Moved to Backlog' : 'הועבר לבקלוג';
+              badgeClass = 'bg-purple-100 text-purple-800 border-purple-200';
+              badgeText = isEn ? 'Backlog' : 'בקלוג';
+              dotClass = 'bg-purple-500 ring-2 ring-purple-100';
+            } else if (newStatus === 'open') {
+              statusText = isEn ? 'Reopened' : 'הפנייה נפתחה מחדש';
+              badgeClass = 'bg-blue-100 text-blue-800 border-blue-200';
+              badgeText = isEn ? 'Open' : 'פתוח';
+              dotClass = 'bg-blue-500 ring-2 ring-blue-100';
+            }
+
+            events.push({
+              id: d.id,
+              type: 'status_change',
+              status: newStatus,
+              title: statusText,
+              subtitle: actorName ? (isEn ? `Updated by ${actorName}` : `עודכן ע"י ${actorName}`) : undefined,
+              timestamp: createdAt,
+              actor: actorName,
+              closureReason,
+              resolutionNote,
+              badgeClass,
+              badgeText,
+              dotClass
+            });
+          } else if (action === 'TICKET_FORWARDED_TO_VENDOR') {
+            const vendorName = data.details?.vendorName || data.details?.vendorPhone;
+            events.push({
+              id: d.id,
+              type: 'vendor_forward',
+              title: isEn ? `Forwarded to Vendor (${vendorName})` : `פנייה הועברה לספק (${vendorName})`,
+              subtitle: actorName ? (isEn ? `Dispatched by ${actorName}` : `נשלח ע"י ${actorName}`) : undefined,
+              timestamp: createdAt,
+              actor: actorName,
+              badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+              badgeText: isEn ? 'Forwarded' : 'נשלח לספק',
+              dotClass: 'bg-blue-400'
+            });
+          } else if (action === 'VENDOR_ACKNOWLEDGED_TICKET') {
+            const respMins = data.details?.responseTimeMinutes;
+            events.push({
+              id: d.id,
+              type: 'vendor_ack',
+              title: isEn ? 'Vendor Confirmed Receipt' : 'הספק אישר קבלה בוואטסאפ',
+              subtitle: isEn ? '"Received the message"' : '"קיבלתי את ההודעה"',
+              timestamp: createdAt || data.details?.acknowledgedAt,
+              actor: data.details?.vendorName,
+              badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+              badgeText: respMins ? `${respMins} ${isEn ? 'min' : 'דק\''}` : (isEn ? 'Confirmed' : 'אושר'),
+              dotClass: 'bg-emerald-500'
+            });
+          } else if (action === 'VENDOR_COMPLETED_TICKET') {
+            events.push({
+              id: d.id,
+              type: 'vendor_done',
+              title: isEn ? 'Vendor Completed Task' : 'הספק דיווח על סיום הביצוע',
+              subtitle: isEn ? 'Task completed on site' : 'הספק סיים את הטיפול בשטח',
+              timestamp: createdAt || data.details?.completedAt,
+              badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+              badgeText: isEn ? 'Done' : 'בוצע',
+              dotClass: 'bg-emerald-600 ring-2 ring-emerald-100'
+            });
+          } else if (action === 'SERVICE_FEEDBACK_SUBMITTED') {
+            const rating = data.details?.rating || ticket?.vaadRating;
+            const ratingHebrew = rating === 'good' ? 'טוב מאוד' : rating === 'bad' ? 'טעון שיפור' : rating;
+            events.push({
+              id: d.id,
+              type: 'feedback',
+              title: isEn ? 'Resident Service Feedback' : 'משוב שירות מהדייר',
+              subtitle: isEn ? `Rating: ${rating}` : `דירוג: ${ratingHebrew}`,
+              timestamp: createdAt,
+              actor: actorName || ticket?.reporterName,
+              badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+              badgeText: isEn ? 'Rating' : 'משוב שירות',
+              dotClass: 'bg-amber-400'
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('Could not load audit logs for ticket timeline, falling back to document fields:', err);
+      }
+
+      // If no status updates were found in audit_logs, synthesize from ticket fields
+      const hasStatusUpdate = events.some(e => e.type === 'status_change');
+      if (!hasStatusUpdate) {
+        if (Array.isArray(ticket?.statusHistory) && ticket.statusHistory.length > 0) {
+          ticket.statusHistory.forEach((sh: any, idx: number) => {
+            events.push({
+              id: `sh_${idx}`,
+              type: 'status_change',
+              status: sh.status,
+              title: sh.status === 'in-progress' ? (isEn ? 'Moved to In Progress' : 'הועבר לטיפול') :
+                     sh.status === 'resolved' ? (isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה') :
+                     sh.status === 'dismissed' ? (isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה') :
+                     sh.status === 'backlog' ? (isEn ? 'Moved to Backlog' : 'הועבר לבקלוג') : (isEn ? 'Status Updated' : 'סטטוס עודכן'),
+              subtitle: sh.changedBy ? (isEn ? `By ${sh.changedBy}` : `עודכן ע"י ${sh.changedBy}`) : undefined,
+              timestamp: sh.changedAt,
+              closureReason: sh.closureReason,
+              resolutionNote: sh.resolutionNote,
+              badgeClass: sh.status === 'resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                          sh.status === 'in-progress' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                          'bg-slate-100 text-slate-700 border-slate-200',
+              badgeText: sh.status === 'resolved' ? (isEn ? 'Resolved' : 'טופל') :
+                         sh.status === 'in-progress' ? (isEn ? 'In Progress' : 'בטיפול') : sh.status,
+              dotClass: sh.status === 'resolved' ? 'bg-emerald-600 ring-2 ring-emerald-100' : 'bg-slate-500'
+            });
+          });
+        } else if (ticket?.status && ticket.status !== 'open') {
+          const changeTime = ticket.lastStatusChangeAt || ticket.resolvedAt || ticket.closedAt || ticket.updatedAt;
+          if (changeTime && changeTime !== ticket.createdAt) {
+            events.push({
+              id: 'current_status_change',
+              type: 'status_change',
+              status: ticket.status,
+              title: ticket.status === 'in-progress' ? (isEn ? 'Moved to In Progress' : 'הועבר לטיפול') :
+                     ticket.status === 'resolved' ? (isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה') :
+                     ticket.status === 'dismissed' ? (isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה') :
+                     ticket.status === 'backlog' ? (isEn ? 'Moved to Backlog' : 'הועבר לבקלוג') : (isEn ? 'Status Updated' : 'סטטוס עודכן'),
+              subtitle: ticket.status === 'resolved' && ticket.closureReason ? `${isEn ? 'Reason' : 'סיבה'}: ${ticket.closureReason}` : undefined,
+              timestamp: changeTime,
+              closureReason: ticket.closureReason,
+              resolutionNote: ticket.resolutionNote,
+              badgeClass: ticket.status === 'resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                          ticket.status === 'in-progress' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                          'bg-slate-100 text-slate-700 border-slate-200',
+              badgeText: ticket.status === 'resolved' ? (isEn ? 'Resolved' : 'טופל') :
+                         ticket.status === 'in-progress' ? (isEn ? 'In Progress' : 'בטיפול') : ticket.status,
+              dotClass: ticket.status === 'resolved' ? 'bg-emerald-600 ring-2 ring-emerald-100' : 'bg-slate-500'
+            });
+          }
+        }
+      }
+
+      // Sort chronological
+      events.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+
+      if (isMounted) {
+        setTimelineEvents(events);
+        setLoadingTimeline(false);
+      }
+    }
+
+    loadTimeline();
+    return () => { isMounted = false; };
+  }, [isOpen, ticket?.id, ticket?.status, ticket?.updatedAt, tenantId, isEn]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -329,23 +548,118 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
             </div>
           </div>
 
-          {/* Time & SLA Tracking */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
-            <div className="flex items-center gap-2 text-slate-600">
-              <Calendar size={15} className="text-slate-400" />
-              <span>{t.reportedAt}: <strong>{formatDateTime(ticket.createdAt)}</strong></span>
+          {/* Status History & Lifecycle Timeline */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-100 text-blue-700 shrink-0">
+                  <History size={16} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>{t.statusHistory || (isEn ? 'Status History & Timeline' : 'ציר זמן והיסטוריית סטטוסים')}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700">
+                      {timelineEvents.length}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    {t.reportedAt}: <strong>{formatDateTime(ticket.createdAt)}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {typeof ticket.stagnationDays === 'number' && ticket.stagnationDays > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Clock size={13} className={ticket.stagnationDays >= 5 ? 'text-amber-600' : 'text-slate-400'} />
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      ticket.stagnationDays >= 9 ? 'bg-red-100 text-red-700' :
+                      ticket.stagnationDays >= 5 ? 'bg-amber-100 text-amber-700' :
+                      'bg-yellow-50 text-yellow-800'
+                    }`}>
+                      {t.stagnationDays}: {ticket.stagnationDays}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                  title={isTimelineExpanded ? (isEn ? 'Collapse' : 'כווץ') : (isEn ? 'Expand' : 'הרחב')}
+                >
+                  {isTimelineExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
             </div>
 
-            {typeof ticket.stagnationDays === 'number' && ticket.stagnationDays > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Clock size={15} className={ticket.stagnationDays >= 5 ? 'text-amber-600' : 'text-slate-400'} />
-                <span className={`font-bold px-2 py-0.5 rounded-md ${
-                  ticket.stagnationDays >= 9 ? 'bg-red-100 text-red-700' :
-                  ticket.stagnationDays >= 5 ? 'bg-amber-100 text-amber-700' :
-                  'bg-yellow-50 text-yellow-800'
-                }`}>
-                  {t.stagnationDays}: {ticket.stagnationDays}
-                </span>
+            {isTimelineExpanded && (
+              <div className="pt-2 border-t border-slate-200/70">
+                {loadingTimeline ? (
+                  <div className="py-3 flex items-center justify-center gap-2 text-xs text-slate-400">
+                    <Clock size={14} className="animate-spin text-blue-500" />
+                    <span>{isEn ? 'Loading history...' : 'טוען ציר זמן...'}</span>
+                  </div>
+                ) : (
+                  <div className="relative border-s-2 border-blue-200 ms-3.5 ps-4 py-1 space-y-3.5">
+                    {timelineEvents.map((evt, idx) => {
+                      const isLast = idx === timelineEvents.length - 1;
+                      return (
+                        <div key={evt.id || idx} className="relative group">
+                          {/* Dot / Indicator */}
+                          <div className={`absolute -start-[23px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${
+                            evt.dotClass || (isLast ? 'bg-blue-600 ring-2 ring-blue-200' : 'bg-slate-400')
+                          }`} />
+
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-xs space-y-1">
+                            <div className="flex flex-wrap items-center justify-between gap-1.5">
+                              <span className="font-extrabold text-xs text-slate-900">
+                                {evt.title}
+                              </span>
+                              {evt.badgeText && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${evt.badgeClass || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                  {evt.badgeText}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                              <span className="font-bold text-slate-700">
+                                {formatDateTime(evt.timestamp)}
+                              </span>
+                              {evt.actor && (
+                                <>
+                                  <span>•</span>
+                                  <bdi className="text-slate-600">{evt.actor}</bdi>
+                                </>
+                              )}
+                            </div>
+
+                            {evt.subtitle && (
+                              <p className="text-[11px] text-slate-600 font-medium">
+                                {evt.subtitle}
+                              </p>
+                            )}
+
+                            {evt.closureReason && (
+                              <p className="text-[10px] text-slate-500 font-medium">
+                                <strong>{isEn ? 'Reason:' : 'סיבת סגירה:'}</strong> {evt.closureReason}
+                              </p>
+                            )}
+
+                            {evt.resolutionNote && (
+                              <div className="mt-1 p-2 rounded-lg bg-emerald-50/80 border border-emerald-100 text-[11px] text-emerald-950">
+                                <span className="font-bold block text-[10px] text-emerald-700 uppercase mb-0.5">
+                                  {isEn ? 'Resolution Note:' : 'הערת סגירה / טיפול:'}
+                                </span>
+                                <span className="whitespace-pre-wrap">{evt.resolutionNote}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -526,12 +840,19 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                                 {isDone ? (
                                   <>
                                     {isEn ? 'Vendor reported task completed' : 'הספק דיווח על סיום הטיפול בהצלחה'}
-                                    {(v.completedAt || v.updatedAt) && ` • ${formatDateTime(v.completedAt || v.updatedAt)}`}
+                                    {(v.completedAt || v.updatedAt || ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt) && 
+                                      ` • ${formatDateTime(v.completedAt || v.updatedAt || ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt)}`
+                                    }
                                     {typeof v.executionTimeMinutes === 'number' && ` (${isEn ? 'Execution time' : 'משך ביצוע'}: ${v.executionTimeMinutes} ${isEn ? 'min' : 'דק\''})`}
                                     {!v.executionTimeMinutes && typeof v.totalResolutionTimeMinutes === 'number' && ` (${isEn ? 'Total time' : 'משך כולל'}: ${v.totalResolutionTimeMinutes} ${isEn ? 'min' : 'דק\''})`}
                                   </>
                                 ) : isTicketClosed ? (
-                                  isEn ? 'Ticket was marked resolved in system' : 'הפנייה נסגרה וסומנה כטופלה במערכת'
+                                  <>
+                                    {isEn ? 'Ticket was marked resolved in system' : 'הפנייה נסגרה וסומנה כטופלה במערכת'}
+                                    {(ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt || ticket.updatedAt) && 
+                                      ` • ${formatDateTime(ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt || ticket.updatedAt)}`
+                                    }
+                                  </>
                                 ) : (
                                   isEn ? 'Waiting for vendor to report completion' : 'ממתין לדיווח סיום הטיפול מהספק'
                                 )}

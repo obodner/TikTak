@@ -357,6 +357,8 @@
         "comments": "הערות והיסטוריית טיפול",
         "openComments": "הערה ועדכון בוואטסאפ",
         "forwardToVendor": "העבר לספק",
+        "statusHistory": "ציר זמן והיסטוריית סטטוסים",
+        "statusHistorySubtitle": "מעקב שינויי סטטוס ואירועים",
         "close": "סגור"
     },
     "Auth": {

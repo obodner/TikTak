@@ -814,7 +814,12 @@ export default function AdminDashboard() {
           backlogColumn: 'important-urgent',
           backlogOrder: -Date.now(),
           backloggedAt: nowIso,
-          updatedAt: nowIso
+          updatedAt: nowIso,
+          statusHistory: arrayUnion({
+            status: 'backlog',
+            changedAt: nowIso,
+            changedBy: getAuditActor()?.name || (isEn ? 'Admin' : 'מנהל')
+          })
         });
 
         await logAction({
@@ -837,7 +842,12 @@ export default function AdminDashboard() {
 
       await updateDoc(ticketRef, {
         status: newStatus,
-        updatedAt: nowIso
+        updatedAt: nowIso,
+        statusHistory: arrayUnion({
+          status: newStatus,
+          changedAt: nowIso,
+          changedBy: getAuditActor()?.name || (isEn ? 'Admin' : 'מנהל')
+        })
       });
 
       // Audit Log
@@ -902,11 +912,19 @@ export default function AdminDashboard() {
     setUpdatingId(ticket.id);
     try {
       const ticketRef = doc(db, "tenants", tenantId, "tickets", ticket.id);
+      const nowIso = new Date().toISOString();
       await updateDoc(ticketRef, {
         status: 'resolved',
         closureReason: reason,
         resolutionNote: notes,
-        updatedAt: new Date().toISOString()
+        updatedAt: nowIso,
+        statusHistory: arrayUnion({
+          status: 'resolved',
+          changedAt: nowIso,
+          changedBy: getAuditActor()?.name || (isEn ? 'Admin' : 'מנהל'),
+          closureReason: reason,
+          resolutionNote: notes
+        })
       });
 
       // Audit Log

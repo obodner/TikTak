@@ -34,8 +34,12 @@ service cloud.firestore {
       // Anyone logged in can create a log (from the app logic)
       allow create: if request.auth != null; 
       
-      // Only Super Admins can read the global audit feed
-      allow read: if isSuperAdmin();
+      // Super Admins OR tenant admins reading logs scoped to their tenant
+      allow read: if isSuperAdmin() || (
+        request.auth != null && 
+        resource.data.tenantId != null && 
+        isTenantAdmin(resource.data.tenantId)
+      );
       
       allow update, delete: if false; // Immutable
     }

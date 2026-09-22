@@ -266,19 +266,34 @@ export default function AdminAnalytics() {
     rangeTickets.forEach(t => {
       if (!t.createdAt) return;
       const created = parseISO(t.createdAt).getTime();
-      let touchTime: number | null = null;
+      const candidates: number[] = [];
 
       if (t.firstTouchAt) {
-        touchTime = parseISO(t.firstTouchAt).getTime();
-      } else if (Array.isArray(t.adminComments) && t.adminComments.length > 0 && t.adminComments[0].createdAt) {
-        touchTime = parseISO(t.adminComments[0].createdAt).getTime();
-      } else if (Array.isArray(t.vendors) && t.vendors.length > 0 && t.vendors[0].sentAt) {
-        touchTime = parseISO(t.vendors[0].sentAt).getTime();
-      } else if (t.lastVendorForwardAt) {
-        touchTime = parseISO(t.lastVendorForwardAt).getTime();
+        const time = parseISO(t.firstTouchAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (Array.isArray(t.adminComments) && t.adminComments.length > 0 && t.adminComments[0].createdAt) {
+        const time = parseISO(t.adminComments[0].createdAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (Array.isArray(t.vendors) && t.vendors.length > 0 && t.vendors[0].sentAt) {
+        const time = parseISO(t.vendors[0].sentAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (t.lastVendorForwardAt) {
+        const time = parseISO(t.lastVendorForwardAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (t.status && t.status !== 'open') {
+        const statusTimeStr = t.lastStatusChangeAt || t.resolvedAt || t.closedAt || t.backloggedAt || t.updatedAt;
+        if (statusTimeStr) {
+          const time = parseISO(statusTimeStr).getTime();
+          if (!isNaN(time) && time >= created) candidates.push(time);
+        }
       }
 
-      if (touchTime && touchTime >= created) {
+      if (candidates.length > 0) {
+        const touchTime = Math.min(...candidates);
         const diffMinutes = (touchTime - created) / (1000 * 60);
         totalMinutes += diffMinutes;
         touchedCount++;
@@ -627,16 +642,33 @@ export default function AdminAnalytics() {
       const resolvedTime = parseISO(t.resolvedAt || t.closedAt || t.updatedAt || t.createdAt).getTime();
 
       let intakeTime = created;
+      const candidates: number[] = [];
       if (t.firstTouchAt) {
-        intakeTime = parseISO(t.firstTouchAt).getTime();
-      } else if (Array.isArray(t.adminComments) && t.adminComments.length > 0 && t.adminComments[0].createdAt) {
-        intakeTime = parseISO(t.adminComments[0].createdAt).getTime();
-      } else if (Array.isArray(t.vendors) && t.vendors.length > 0 && t.vendors[0].sentAt) {
-        intakeTime = parseISO(t.vendors[0].sentAt).getTime();
-      } else if (t.lastVendorForwardAt) {
-        intakeTime = parseISO(t.lastVendorForwardAt).getTime();
-      } else if (t.lastStatusChangeAt) {
-        intakeTime = parseISO(t.lastStatusChangeAt).getTime();
+        const time = parseISO(t.firstTouchAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (Array.isArray(t.adminComments) && t.adminComments.length > 0 && t.adminComments[0].createdAt) {
+        const time = parseISO(t.adminComments[0].createdAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (Array.isArray(t.vendors) && t.vendors.length > 0 && t.vendors[0].sentAt) {
+        const time = parseISO(t.vendors[0].sentAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (t.lastVendorForwardAt) {
+        const time = parseISO(t.lastVendorForwardAt).getTime();
+        if (!isNaN(time) && time >= created) candidates.push(time);
+      }
+      if (t.status && t.status !== 'open') {
+        const statusTimeStr = t.lastStatusChangeAt || t.resolvedAt || t.closedAt || t.backloggedAt || t.updatedAt;
+        if (statusTimeStr) {
+          const time = parseISO(statusTimeStr).getTime();
+          if (!isNaN(time) && time >= created) candidates.push(time);
+        }
+      }
+
+      if (candidates.length > 0) {
+        intakeTime = Math.min(...candidates);
       } else {
         intakeTime = created + (resolvedTime - created) * 0.2;
       }

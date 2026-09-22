@@ -200,7 +200,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-1.5">
             <ShieldCheck className="text-blue-600" size={16} />
-            <h3 className="font-bold text-slate-800 text-sm whitespace-nowrap">ניהול מנהלים</h3>
+            <h3 className="font-bold text-slate-800 text-sm whitespace-nowrap">מנהלים</h3>
           </div>
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter shrink-0">
              <span className={isLimitReached ? 'text-amber-600' : 'text-blue-600'}>{users.length}/5</span>

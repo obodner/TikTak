@@ -247,7 +247,7 @@ export const VendorManagement: React.FC<VendorManagementProps> = ({ tenantId, ca
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-1.5">
             <Wrench className="text-blue-600" size={16} />
-            <h3 className="font-bold text-slate-800 text-sm whitespace-nowrap">ניהול אנשי שירות</h3>
+            <h3 className="font-bold text-slate-800 text-sm whitespace-nowrap">קבלנים וספקים</h3>
           </div>
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter shrink-0">
             <span className={isLimitReached ? 'text-amber-600' : 'text-blue-600'}>

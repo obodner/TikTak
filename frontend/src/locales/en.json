@@ -355,6 +355,8 @@
         "comments": "Comments & Activity Log",
         "openComments": "Comment & WhatsApp",
         "forwardToVendor": "Forward to Vendor",
+        "statusHistory": "Status History & Timeline",
+        "statusHistorySubtitle": "Status transitions and milestone history",
         "close": "Close"
     },
     "Auth": {
