@@ -19,7 +19,8 @@ import {
   Lightbulb,
   Pin,
   Users,
-  LayoutDashboard
+  LayoutDashboard,
+  Eye
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -39,6 +40,8 @@ import { he, enUS } from 'date-fns/locale';
 import { calculateWorkingDays, getSlaStatus } from '../../utils/slaEngine';
 import { MonthYearRangePicker } from '../../components/admin/MonthYearRangePicker';
 import { HotspotNoticeModal, NoticeBannerData } from '../../components/admin/HotspotNoticeModal';
+import { KpiDrilldownModal } from '../../components/admin/KpiDrilldownModal';
+import { TicketDetailsModal } from '../../components/admin/TicketDetailsModal';
 import { generateServiceInsights } from '../../utils/serviceInsightsEngine';
 import heJson from '../../locales/he.json';
 import enJson from '../../locales/en.json';
@@ -97,6 +100,10 @@ export default function AdminAnalytics() {
   const [noticeModalLocation, setNoticeModalLocation] = useState('');
   const [noticeModalCategory, setNoticeModalCategory] = useState('');
   const [activeBanner, setActiveBanner] = useState<NoticeBannerData | null>(null);
+
+  // KPI Drilldown Inspection State
+  const [drilldownType, setDrilldownType] = useState<'mttr' | 'first_touch' | null>(null);
+  const [selectedTicketForDetails, setSelectedTicketForDetails] = useState<any | null>(null);
 
   useEffect(() => {
     if (outletCtx?.tenantConfig?.noticeBanner) {
@@ -220,22 +227,36 @@ export default function AdminAnalytics() {
     });
 
     if (validClosures.length === 0) {
-      return { avgDays: null, count: 0, text: dict.kpi_mttr_no_data };
+      return { avgDays: null, count: 0, text: dict.kpi_mttr_no_data, formatted: dict.kpi_mttr_no_data, totalWorkingDays: 0, tickets: [] };
     }
 
     let totalWorkingDays = 0;
-    validClosures.forEach(t => {
+    const detailedTickets = validClosures.map(t => {
       const start = t.createdAt;
       const end = t.resolvedAt || t.closedAt || t.updatedAt || new Date().toISOString();
       const days = calculateWorkingDays(start, end, workingDays, holidays);
-      totalWorkingDays += Math.max(0.1, days);
+      totalWorkingDays += days;
+      return {
+        ...t,
+        calculatedDays: days,
+        resolvedDate: end
+      };
     });
 
     const avg = totalWorkingDays / validClosures.length;
+    detailedTickets.sort((a, b) => {
+      const numA = typeof a.ticketNumber === 'number' ? a.ticketNumber : (parseInt(a.ticketNumber, 10) || 0);
+      const numB = typeof b.ticketNumber === 'number' ? b.ticketNumber : (parseInt(b.ticketNumber, 10) || 0);
+      if (numA !== numB) return numB - numA;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
     return {
       avgDays: avg,
       count: validClosures.length,
-      formatted: avg < 1 ? `${Math.round(avg * 24)} ${isEn ? 'hrs' : 'שעות'}` : `${avg.toFixed(1)} ${dict.kpi_mttr_unit}`
+      totalWorkingDays,
+      formatted: avg < 1 ? `${Math.round(avg * 24)} ${isEn ? 'hrs' : 'שעות'}` : `${avg.toFixed(1)} ${dict.kpi_mttr_unit}`,
+      tickets: detailedTickets
     };
   }, [rangeTickets, workingDays, holidays, dict, isEn]);
 
@@ -262,54 +283,75 @@ export default function AdminAnalytics() {
   const firstTouchMetrics = useMemo(() => {
     let touchedCount = 0;
     let totalMinutes = 0;
+    const detailedTickets: any[] = [];
 
     rangeTickets.forEach(t => {
       if (!t.createdAt) return;
       const created = parseISO(t.createdAt).getTime();
-      const candidates: number[] = [];
+      const candidates: { time: number; type: string }[] = [];
 
       if (t.firstTouchAt) {
         const time = parseISO(t.firstTouchAt).getTime();
-        if (!isNaN(time) && time >= created) candidates.push(time);
+        if (!isNaN(time) && time >= created) candidates.push({ time, type: isEn ? 'Initial Response' : 'מענה ראשוני' });
       }
       if (Array.isArray(t.adminComments) && t.adminComments.length > 0 && t.adminComments[0].createdAt) {
         const time = parseISO(t.adminComments[0].createdAt).getTime();
-        if (!isNaN(time) && time >= created) candidates.push(time);
+        if (!isNaN(time) && time >= created) candidates.push({ time, type: isEn ? 'Admin Comment' : 'הערת מנהל' });
       }
       if (Array.isArray(t.vendors) && t.vendors.length > 0 && t.vendors[0].sentAt) {
         const time = parseISO(t.vendors[0].sentAt).getTime();
-        if (!isNaN(time) && time >= created) candidates.push(time);
+        if (!isNaN(time) && time >= created) candidates.push({ time, type: isEn ? 'Forwarded to Vendor' : 'העברה לספק' });
       }
       if (t.lastVendorForwardAt) {
         const time = parseISO(t.lastVendorForwardAt).getTime();
-        if (!isNaN(time) && time >= created) candidates.push(time);
+        if (!isNaN(time) && time >= created) candidates.push({ time, type: isEn ? 'Forwarded to Vendor' : 'העברה לספק' });
       }
       if (t.status && t.status !== 'open') {
         const statusTimeStr = t.lastStatusChangeAt || t.resolvedAt || t.closedAt || t.backloggedAt || t.updatedAt;
         if (statusTimeStr) {
           const time = parseISO(statusTimeStr).getTime();
-          if (!isNaN(time) && time >= created) candidates.push(time);
+          if (!isNaN(time) && time >= created) candidates.push({ time, type: isEn ? 'Status Change' : 'עדכון סטטוס' });
         }
       }
 
       if (candidates.length > 0) {
-        const touchTime = Math.min(...candidates);
-        const diffMinutes = (touchTime - created) / (1000 * 60);
+        candidates.sort((a, b) => a.time - b.time);
+        const earliest = candidates[0];
+        const diffMinutes = (earliest.time - created) / (1000 * 60);
         totalMinutes += diffMinutes;
         touchedCount++;
+        detailedTickets.push({
+          ...t,
+          firstTouchTime: new Date(earliest.time).toISOString(),
+          firstTouchType: earliest.type,
+          responseMinutes: diffMinutes
+        });
       }
     });
 
     if (touchedCount === 0) {
-      return { formatted: dict.kpi_first_touch_no_data, touchedCount: 0 };
+      return { formatted: dict.kpi_first_touch_no_data, touchedCount: 0, totalMinutes: 0, avgMinutes: 0, tickets: [] };
     }
 
     const avgMinutes = totalMinutes / touchedCount;
-    if (avgMinutes < 60) {
-      return { formatted: `${Math.round(avgMinutes)} ${isEn ? 'min' : 'דקות'}`, touchedCount };
-    }
-    const hours = avgMinutes / 60;
-    return { formatted: `${hours.toFixed(1)} ${isEn ? 'hrs' : 'שעות'}`, touchedCount };
+    const formatted = avgMinutes < 60
+      ? `${Math.round(avgMinutes)} ${isEn ? 'min' : 'דקות'}`
+      : `${(avgMinutes / 60).toFixed(1)} ${isEn ? 'hrs' : 'שעות'}`;
+
+    detailedTickets.sort((a, b) => {
+      const numA = typeof a.ticketNumber === 'number' ? a.ticketNumber : (parseInt(a.ticketNumber, 10) || 0);
+      const numB = typeof b.ticketNumber === 'number' ? b.ticketNumber : (parseInt(b.ticketNumber, 10) || 0);
+      if (numA !== numB) return numB - numA;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
+    return { 
+      formatted, 
+      touchedCount,
+      totalMinutes,
+      avgMinutes,
+      tickets: detailedTickets
+    };
   }, [rangeTickets, dict, isEn]);
 
   // 4. TOP KPI: Period Quota Consumption (aligned with active time filter)
@@ -367,7 +409,7 @@ export default function AdminAnalytics() {
       percentage,
       monthsCount,
       subLabel: rolloverTickets > 0
-        ? `${dict.kpi_quota_sub} (+${rolloverTickets} ${isEn ? 'rollover' : 'מגושרות'})`
+        ? `${dict.kpi_quota_sub} (+${rolloverTickets} ${isEn ? 'rollover' : 'פניות צבורות'})`
         : monthsCount > 1 
         ? `${dict.kpi_quota_sub} (${monthsCount} ${isEn ? 'months' : 'חודשים'})`
         : dict.kpi_quota_sub
@@ -991,102 +1033,141 @@ export default function AdminAnalytics() {
       {/* ─────────────────────────────────────────────────────────────
           2. TOP KPI RIBBON (Executive Pulse)
       ───────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* KPI 1: MTTR */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">{dict.kpi_mttr}</span>
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-              <Clock size={18} />
-            </div>
-          </div>
-          <div className="text-2xl md:text-3xl font-black text-slate-900">
-            {mttrMetrics.formatted || mttrMetrics.text}
-          </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            {mttrMetrics.count > 0 ? `${mttrMetrics.count} ${isEn ? 'resolved tickets' : 'פניות שטופלו'}` : dict.kpi_mttr_sub}
-          </p>
-        </div>
-
-        {/* KPI 2: Active SLA Stagnation (Clickable Traffic-Light Zone) */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">{dict.kpi_sla_stale}</span>
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-              <AlertTriangle size={18} />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2 mt-1">
-            {/* Red zone (9+ days) */}
-            <button
-              onClick={() => {
-                let url = `/admin/${tenantId}/dashboard?sla=stale-9&timeRange=${dateRange}`;
-                if (dateRange === 'custom') {
-                  url += `&startDate=${format(customStartDate, 'yyyy-MM-dd')}&endDate=${format(customEndDate, 'yyyy-MM-dd')}`;
-                }
-                navigate(url);
-              }}
-              className="flex-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 py-1 px-2 rounded-xl text-center transition-all cursor-pointer"
-              title={isEn ? 'Filter Red SLA (9+ days) on Kanban' : 'סינון חריגות 9+ ימים בדשבורד'}
+      {(() => {
+        const isInspectable = dateRange === 'current_month' || dateRange === 'last_3_months';
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* KPI 1: MTTR */}
+            <div 
+              onClick={() => isInspectable && mttrMetrics.count > 0 && setDrilldownType('mttr')}
+              className={`bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm transition-all relative overflow-hidden flex flex-col justify-between ${
+                isInspectable && mttrMetrics.count > 0
+                  ? 'hover:shadow-md hover:border-blue-300 cursor-pointer active:scale-98 group' 
+                  : 'hover:shadow-md'
+              }`}
+              title={isInspectable && mttrMetrics.count > 0 ? dict.kpi_click_inspect : undefined}
             >
-              <div className="text-base font-black">{slaStaleMetrics.red}</div>
-              <div className="text-[10px] font-bold">{dict.kpi_sla_red}</div>
-            </button>
+              <div>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">{dict.kpi_mttr}</span>
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-100 transition-colors">
+                    <Clock size={18} />
+                  </div>
+                </div>
+                <div className="text-2xl md:text-3xl font-black text-slate-900">
+                  {mttrMetrics.formatted || mttrMetrics.text}
+                </div>
+                <p className="text-xs text-slate-500 mt-1 font-medium">
+                  {mttrMetrics.count > 0 ? `${mttrMetrics.count} ${isEn ? 'resolved tickets' : 'פניות שטופלו'}` : dict.kpi_mttr_sub}
+                </p>
+              </div>
 
-            {/* Orange zone (5+ days) */}
-            <button
-              onClick={() => {
-                let url = `/admin/${tenantId}/dashboard?sla=stale-5&timeRange=${dateRange}`;
-                if (dateRange === 'custom') {
-                  url += `&startDate=${format(customStartDate, 'yyyy-MM-dd')}&endDate=${format(customEndDate, 'yyyy-MM-dd')}`;
-                }
-                navigate(url);
-              }}
-              className="flex-1 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 py-1 px-2 rounded-xl text-center transition-all cursor-pointer"
-              title={isEn ? 'Filter Orange SLA (5+ days) on Kanban' : 'סינון חריגות 5+ ימים בדשבורד'}
-            >
-              <div className="text-base font-black">{slaStaleMetrics.orange}</div>
-              <div className="text-[10px] font-bold">{dict.kpi_sla_orange}</div>
-            </button>
-
-            {/* Yellow zone (2+ days) */}
-            <button
-              onClick={() => {
-                let url = `/admin/${tenantId}/dashboard?sla=stale-2&timeRange=${dateRange}`;
-                if (dateRange === 'custom') {
-                  url += `&startDate=${format(customStartDate, 'yyyy-MM-dd')}&endDate=${format(customEndDate, 'yyyy-MM-dd')}`;
-                }
-                navigate(url);
-              }}
-              className="flex-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 py-1 px-2 rounded-xl text-center transition-all cursor-pointer"
-              title={isEn ? 'Filter Yellow SLA (2+ days) on Kanban' : 'סינון חריגות 2+ ימים בדשבורד'}
-            >
-              <div className="text-base font-black">{slaStaleMetrics.yellow}</div>
-              <div className="text-[10px] font-bold">{dict.kpi_sla_yellow}</div>
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-2 font-medium">
-            {isEn ? 'Click any zone to filter live board' : 'הקלק על אזור לסינון מיידי בדשבורד'}
-          </p>
-        </div>
-
-        {/* KPI 3: First-Touch Response Rate */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">{dict.kpi_first_touch}</span>
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-              <CheckCircle2 size={18} />
+              {isInspectable && mttrMetrics.count > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 mt-3 pt-2 border-t border-slate-100">
+                  <Eye size={13} className="shrink-0" />
+                  <span>{dict.kpi_click_inspect}</span>
+                </div>
+              )}
             </div>
-          </div>
-          <div className="text-2xl md:text-3xl font-black text-slate-900">
-            {firstTouchMetrics.formatted}
-          </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            {dict.kpi_first_touch_sub}
-          </p>
-        </div>
+
+            {/* KPI 2: Active SLA Stagnation (Clickable Traffic-Light Zone) */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+              <div className="flex items-center justify-between text-slate-500 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider">{dict.kpi_sla_stale}</span>
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                  <AlertTriangle size={18} />
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 mt-1">
+                {/* Red zone (9+ days) */}
+                <button
+                  onClick={() => {
+                    let url = `/admin/${tenantId}/dashboard?sla=stale-9&timeRange=${dateRange}`;
+                    if (dateRange === 'custom') {
+                      url += `&startDate=${format(customStartDate, 'yyyy-MM-dd')}&endDate=${format(customEndDate, 'yyyy-MM-dd')}`;
+                    }
+                    navigate(url);
+                  }}
+                  className="flex-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 py-1 px-2 rounded-xl text-center transition-all cursor-pointer"
+                  title={isEn ? 'Filter Red SLA (9+ days) on Kanban' : 'סינון חריגות 9+ ימים בדשבורד'}
+                >
+                  <div className="text-base font-black">{slaStaleMetrics.red}</div>
+                  <div className="text-[10px] font-bold">{dict.kpi_sla_red}</div>
+                </button>
+
+                {/* Orange zone (5+ days) */}
+                <button
+                  onClick={() => {
+                    let url = `/admin/${tenantId}/dashboard?sla=stale-5&timeRange=${dateRange}`;
+                    if (dateRange === 'custom') {
+                      url += `&startDate=${format(customStartDate, 'yyyy-MM-dd')}&endDate=${format(customEndDate, 'yyyy-MM-dd')}`;
+                    }
+                    navigate(url);
+                  }}
+                  className="flex-1 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 py-1 px-2 rounded-xl text-center transition-all cursor-pointer"
+                  title={isEn ? 'Filter Orange SLA (5+ days) on Kanban' : 'סינון חריגות 5+ ימים בדשבורד'}
+                >
+                  <div className="text-base font-black">{slaStaleMetrics.orange}</div>
+                  <div className="text-[10px] font-bold">{dict.kpi_sla_orange}</div>
+                </button>
+
+                {/* Yellow zone (2+ days) */}
+                <button
+                  onClick={() => {
+                    let url = `/admin/${tenantId}/dashboard?sla=stale-2&timeRange=${dateRange}`;
+                    if (dateRange === 'custom') {
+                      url += `&startDate=${format(customStartDate, 'yyyy-MM-dd')}&endDate=${format(customEndDate, 'yyyy-MM-dd')}`;
+                    }
+                    navigate(url);
+                  }}
+                  className="flex-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 py-1 px-2 rounded-xl text-center transition-all cursor-pointer"
+                  title={isEn ? 'Filter Yellow SLA (2+ days) on Kanban' : 'סינון חריגות 2+ ימים בדשבורד'}
+                >
+                  <div className="text-base font-black">{slaStaleMetrics.yellow}</div>
+                  <div className="text-[10px] font-bold">{dict.kpi_sla_yellow}</div>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                {isEn ? 'Click any zone to filter live board' : 'הקלק על אזור לסינון מיידי בדשבורד'}
+              </p>
+            </div>
+
+            {/* KPI 3: First-Touch Response Rate */}
+            <div 
+              onClick={() => isInspectable && firstTouchMetrics.touchedCount > 0 && setDrilldownType('first_touch')}
+              className={`bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm transition-all relative overflow-hidden flex flex-col justify-between ${
+                isInspectable && firstTouchMetrics.touchedCount > 0
+                  ? 'hover:shadow-md hover:border-emerald-300 cursor-pointer active:scale-98 group' 
+                  : 'hover:shadow-md'
+              }`}
+              title={isInspectable && firstTouchMetrics.touchedCount > 0 ? dict.kpi_click_inspect : undefined}
+            >
+              <div>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">{dict.kpi_first_touch}</span>
+                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-100 transition-colors">
+                    <CheckCircle2 size={18} />
+                  </div>
+                </div>
+                <div className="text-2xl md:text-3xl font-black text-slate-900">
+                  {firstTouchMetrics.formatted}
+                </div>
+                <p className="text-xs text-slate-500 mt-1 font-medium">
+                  {firstTouchMetrics.touchedCount > 0 
+                    ? `${firstTouchMetrics.touchedCount} ${isEn ? 'tickets touched' : 'פניות שקיבלו מענה'}` 
+                    : dict.kpi_first_touch_sub}
+                </p>
+              </div>
+
+              {isInspectable && firstTouchMetrics.touchedCount > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 mt-3 pt-2 border-t border-slate-100">
+                  <Eye size={13} className="shrink-0" />
+                  <span>{dict.kpi_click_inspect}</span>
+                </div>
+              )}
+            </div>
 
         {/* KPI 4: Monthly Quota Gauge */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
@@ -1111,8 +1192,9 @@ export default function AdminAnalytics() {
             {quotaMetrics.subLabel || dict.kpi_quota_sub}
           </p>
         </div>
-
       </div>
+    );
+  })()}
 
       {/* ─────────────────────────────────────────────────────────────
           SUB-TABS NAVIGATION BAR (Option A - Categorized Views)
@@ -1897,6 +1979,28 @@ export default function AdminAnalytics() {
         initialCategory={noticeModalCategory}
         currentBanner={activeBanner}
         onBannerUpdated={(b) => setActiveBanner(b)}
+        isEn={isEn}
+      />
+
+      {/* KPI Drilldown Inspection Modal */}
+      <KpiDrilldownModal
+        isOpen={drilldownType !== null}
+        onClose={() => setDrilldownType(null)}
+        type={drilldownType || 'mttr'}
+        periodLabel={dateRange === 'current_month' ? (isEn ? 'Current Month' : 'חודש נוכחי') : (isEn ? 'Last 3 Months' : '3 חודשים אחרונים')}
+        tickets={drilldownType === 'mttr' ? mttrMetrics.tickets : firstTouchMetrics.tickets}
+        isEn={isEn}
+        onSelectTicket={(ticket) => setSelectedTicketForDetails(ticket)}
+        avgValueFormatted={drilldownType === 'mttr' ? (mttrMetrics.formatted || mttrMetrics.text) : firstTouchMetrics.formatted}
+        totalWorkingDays={drilldownType === 'mttr' ? mttrMetrics.totalWorkingDays : undefined}
+      />
+
+      {/* Ticket Deep Inspection Modal */}
+      <TicketDetailsModal
+        isOpen={selectedTicketForDetails !== null}
+        onClose={() => setSelectedTicketForDetails(null)}
+        ticket={selectedTicketForDetails}
+        tenantId={tenantId || ''}
         isEn={isEn}
       />
 

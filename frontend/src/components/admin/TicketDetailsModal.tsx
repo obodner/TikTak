@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  MapPin, 
-  Phone, 
-  MessageSquare, 
-  Share2, 
-  Flame, 
-  Clock, 
-  User, 
-  Maximize2, 
+import {
+  X,
+  MapPin,
+  Phone,
+  MessageSquare,
+  Share2,
+  Flame,
+  Clock,
+  User,
+  Maximize2,
   Minimize2,
   Volume2,
   Camera,
@@ -240,18 +240,18 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
               type: 'status_change',
               status: sh.status,
               title: sh.status === 'in-progress' ? (isEn ? 'Moved to In Progress' : 'הועבר לטיפול') :
-                     sh.status === 'resolved' ? (isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה') :
-                     sh.status === 'dismissed' ? (isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה') :
-                     sh.status === 'backlog' ? (isEn ? 'Moved to Backlog' : 'הועבר לבקלוג') : (isEn ? 'Status Updated' : 'סטטוס עודכן'),
+                sh.status === 'resolved' ? (isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה') :
+                  sh.status === 'dismissed' ? (isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה') :
+                    sh.status === 'backlog' ? (isEn ? 'Moved to Backlog' : 'הועבר לבקלוג') : (isEn ? 'Status Updated' : 'סטטוס עודכן'),
               subtitle: sh.changedBy ? (isEn ? `By ${sh.changedBy}` : `עודכן ע"י ${sh.changedBy}`) : undefined,
               timestamp: sh.changedAt,
               closureReason: sh.closureReason,
               resolutionNote: sh.resolutionNote,
               badgeClass: sh.status === 'resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                          sh.status === 'in-progress' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                          'bg-slate-100 text-slate-700 border-slate-200',
+                sh.status === 'in-progress' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                  'bg-slate-100 text-slate-700 border-slate-200',
               badgeText: sh.status === 'resolved' ? (isEn ? 'Resolved' : 'טופל') :
-                         sh.status === 'in-progress' ? (isEn ? 'In Progress' : 'בטיפול') : sh.status,
+                sh.status === 'in-progress' ? (isEn ? 'In Progress' : 'בטיפול') : sh.status,
               dotClass: sh.status === 'resolved' ? 'bg-emerald-600 ring-2 ring-emerald-100' : 'bg-slate-500'
             });
           });
@@ -263,18 +263,18 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
               type: 'status_change',
               status: ticket.status,
               title: ticket.status === 'in-progress' ? (isEn ? 'Moved to In Progress' : 'הועבר לטיפול') :
-                     ticket.status === 'resolved' ? (isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה') :
-                     ticket.status === 'dismissed' ? (isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה') :
-                     ticket.status === 'backlog' ? (isEn ? 'Moved to Backlog' : 'הועבר לבקלוג') : (isEn ? 'Status Updated' : 'סטטוס עודכן'),
+                ticket.status === 'resolved' ? (isEn ? 'Marked as Resolved' : 'הפנייה טופלה ונסגרה') :
+                  ticket.status === 'dismissed' ? (isEn ? 'Dismissed' : 'פנייה נדחתה / בוטלה') :
+                    ticket.status === 'backlog' ? (isEn ? 'Moved to Backlog' : 'הועבר לבקלוג') : (isEn ? 'Status Updated' : 'סטטוס עודכן'),
               subtitle: ticket.status === 'resolved' && ticket.closureReason ? `${isEn ? 'Reason' : 'סיבה'}: ${ticket.closureReason}` : undefined,
               timestamp: changeTime,
               closureReason: ticket.closureReason,
               resolutionNote: ticket.resolutionNote,
               badgeClass: ticket.status === 'resolved' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                          ticket.status === 'in-progress' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                          'bg-slate-100 text-slate-700 border-slate-200',
+                ticket.status === 'in-progress' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                  'bg-slate-100 text-slate-700 border-slate-200',
               badgeText: ticket.status === 'resolved' ? (isEn ? 'Resolved' : 'טופל') :
-                         ticket.status === 'in-progress' ? (isEn ? 'In Progress' : 'בטיפול') : ticket.status,
+                ticket.status === 'in-progress' ? (isEn ? 'In Progress' : 'בטיפול') : ticket.status,
               dotClass: ticket.status === 'resolved' ? 'bg-emerald-600 ring-2 ring-emerald-100' : 'bg-slate-500'
             });
           }
@@ -402,14 +402,14 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/75 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
       dir={isEn ? 'ltr' : 'rtl'}
     >
-      <div 
-        className="fixed inset-0" 
-        onClick={onClose} 
-        aria-hidden="true" 
+      <div
+        className="fixed inset-0"
+        onClick={onClose}
+        aria-hidden="true"
       />
 
       <div className="relative w-full max-w-2xl bg-white text-slate-900 rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-10 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
@@ -468,12 +468,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 </button>
               </div>
               <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 group shadow-sm">
-                <img 
-                  src={`/img/${tenantId}/${ticket.imageId}`} 
-                  alt="Incident capture" 
-                  className={`w-full transition-all cursor-pointer ${
-                    isImageExpanded ? 'max-h-[550px] object-contain' : 'max-h-64 object-cover'
-                  }`}
+                <img
+                  src={`/img/${tenantId}/${ticket.imageId}`}
+                  alt="Incident capture"
+                  className={`w-full transition-all cursor-pointer ${isImageExpanded ? 'max-h-[550px] object-contain' : 'max-h-64 object-cover'
+                    }`}
                   onClick={() => setIsImageExpanded(!isImageExpanded)}
                   loading="lazy"
                 />
@@ -488,10 +487,10 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 <Volume2 size={16} className="text-blue-600 animate-pulse" />
                 {t.audioRecording}
               </h4>
-              <audio 
-                controls 
+              <audio
+                controls
                 src={`/audio/${tenantId}/${ticket.audioId}`}
-                className="w-full rounded-xl focus:outline-none" 
+                className="w-full rounded-xl focus:outline-none"
                 preload="metadata"
               />
             </div>
@@ -572,11 +571,10 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 {typeof ticket.stagnationDays === 'number' && ticket.stagnationDays > 0 && (
                   <div className="flex items-center gap-1">
                     <Clock size={13} className={ticket.stagnationDays >= 5 ? 'text-amber-600' : 'text-slate-400'} />
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      ticket.stagnationDays >= 9 ? 'bg-red-100 text-red-700' :
-                      ticket.stagnationDays >= 5 ? 'bg-amber-100 text-amber-700' :
-                      'bg-yellow-50 text-yellow-800'
-                    }`}>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ticket.stagnationDays >= 9 ? 'bg-red-100 text-red-700' :
+                        ticket.stagnationDays >= 5 ? 'bg-amber-100 text-amber-700' :
+                          'bg-yellow-50 text-yellow-800'
+                      }`}>
                       {t.stagnationDays}: {ticket.stagnationDays}
                     </span>
                   </div>
@@ -606,9 +604,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                       return (
                         <div key={evt.id || idx} className="relative group">
                           {/* Dot / Indicator */}
-                          <div className={`absolute -start-[23px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${
-                            evt.dotClass || (isLast ? 'bg-blue-600 ring-2 ring-blue-200' : 'bg-slate-400')
-                          }`} />
+                          <div className={`absolute -start-[23px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${evt.dotClass || (isLast ? 'bg-blue-600 ring-2 ring-blue-200' : 'bg-slate-400')
+                            }`} />
 
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-xs space-y-1">
                             <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -666,8 +663,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
 
           {/* Vendor Dispatches (if any) - Active in all statuses including closed tickets */}
           {(() => {
-            const hasVendorActivity = (ticket.vendors && ticket.vendors.length > 0) || 
-              (ticket.vendorForwardCount && ticket.vendorForwardCount > 0) || 
+            const hasVendorActivity = (ticket.vendors && ticket.vendors.length > 0) ||
+              (ticket.vendorForwardCount && ticket.vendorForwardCount > 0) ||
               ticket.closureReason === 'vendor' ||
               Boolean(ticket.lastVendorForwardAt);
 
@@ -676,11 +673,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
             const vendorList = (ticket.vendors && ticket.vendors.length > 0)
               ? ticket.vendors
               : [{
-                  name: isEn ? 'Dispatched Vendor' : 'ספק שנשלח לטיפול',
-                  phone: '',
-                  status: (ticket.status === 'resolved' || ticket.status === 'dismissed') ? 'בוצע' : 'ממתין לתשובה מהספק ...',
-                  sentAt: ticket.lastVendorForwardAt || ticket.createdAt
-                }];
+                name: isEn ? 'Dispatched Vendor' : 'ספק שנשלח לטיפול',
+                phone: '',
+                status: (ticket.status === 'resolved' || ticket.status === 'dismissed') ? 'בוצע' : 'ממתין לתשובה מהספק ...',
+                sentAt: ticket.lastVendorForwardAt || ticket.createdAt
+              }];
 
             const isTicketClosed = ticket.status === 'resolved' || ticket.status === 'dismissed';
 
@@ -729,13 +726,12 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                           </div>
 
                           {/* Main Status Badge */}
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${
-                            isDone 
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                              : isAck 
-                                ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${isDone
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : isAck
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
                                 : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}>
+                            }`}>
                             {v.status || (isEn ? 'Awaiting response ...' : 'ממתין לתשובה מהספק ...')}
                           </span>
                         </div>
@@ -763,12 +759,10 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                           </div>
 
                           {/* 2. Action: "קיבלתי את ההודעה" (Acknowledged) */}
-                          <div className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-                            isAck ? 'bg-blue-50/60 border-blue-100' : 'bg-slate-50/50 border-slate-100 text-slate-400'
-                          }`}>
-                            <div className={`p-1 rounded-full mt-0.5 shrink-0 ${
-                              isAck ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
+                          <div className={`flex items-start gap-2.5 p-2 rounded-lg border ${isAck ? 'bg-blue-50/60 border-blue-100' : 'bg-slate-50/50 border-slate-100 text-slate-400'
                             }`}>
+                            <div className={`p-1 rounded-full mt-0.5 shrink-0 ${isAck ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
+                              }`}>
                               <CheckCheck size={12} />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -776,13 +770,12 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                                 <span className={`font-bold ${isAck ? 'text-blue-950' : 'text-slate-500'}`}>
                                   {isEn ? '"Received the message"' : '"קיבלתי את ההודעה"'}
                                 </span>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
-                                  isAck 
-                                    ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${isAck
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
                                     : 'bg-slate-200/60 text-slate-500'
-                                }`}>
-                                  {isAck 
-                                    ? (isEn ? 'Confirmed' : 'אושר ע"י הספק') 
+                                  }`}>
+                                  {isAck
+                                    ? (isEn ? 'Confirmed' : 'אושר ע"י הספק')
                                     : (isEn ? 'Pending' : 'טרם התקבל אישור')}
                                 </span>
                               </div>
@@ -801,20 +794,18 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                           </div>
 
                           {/* 3. Action: "בוצע" (Done / Completed) */}
-                          <div className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-                            isDone 
-                              ? 'bg-emerald-50/70 border-emerald-200' 
-                              : isTicketClosed 
-                                ? 'bg-slate-50 border-slate-200' 
+                          <div className={`flex items-start gap-2.5 p-2 rounded-lg border ${isDone
+                              ? 'bg-emerald-50/70 border-emerald-200'
+                              : isTicketClosed
+                                ? 'bg-slate-50 border-slate-200'
                                 : 'bg-slate-50/50 border-slate-100 text-slate-400'
-                          }`}>
-                            <div className={`p-1 rounded-full mt-0.5 shrink-0 ${
-                              isDone 
-                                ? 'bg-emerald-600 text-white' 
-                                : isTicketClosed 
-                                  ? 'bg-slate-400 text-white' 
-                                  : 'bg-slate-200 text-slate-400'
                             }`}>
+                            <div className={`p-1 rounded-full mt-0.5 shrink-0 ${isDone
+                                ? 'bg-emerald-600 text-white'
+                                : isTicketClosed
+                                  ? 'bg-slate-400 text-white'
+                                  : 'bg-slate-200 text-slate-400'
+                              }`}>
                               <CheckCircle2 size={12} />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -822,17 +813,16 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                                 <span className={`font-bold ${isDone ? 'text-emerald-950' : isTicketClosed ? 'text-slate-700' : 'text-slate-500'}`}>
                                   {isEn ? '"Completed"' : '"בוצע"'}
                                 </span>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
-                                  isDone 
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                                    : isTicketClosed 
-                                      ? 'bg-slate-200 text-slate-700' 
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${isDone
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : isTicketClosed
+                                      ? 'bg-slate-200 text-slate-700'
                                       : 'bg-slate-200/60 text-slate-500'
-                                }`}>
-                                  {isDone 
-                                    ? (isEn ? 'Done' : 'בוצע בהצלחה') 
-                                    : isTicketClosed 
-                                      ? (isEn ? 'Closed Ticket' : 'פנייה סגורה') 
+                                  }`}>
+                                  {isDone
+                                    ? (isEn ? 'Done' : 'בוצע בהצלחה')
+                                    : isTicketClosed
+                                      ? (isEn ? 'Closed Ticket' : 'פנייה סגורה')
                                       : (isEn ? 'In Progress' : 'בטיפול / טרם הושלם')}
                                 </span>
                               </div>
@@ -840,7 +830,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                                 {isDone ? (
                                   <>
                                     {isEn ? 'Vendor reported task completed' : 'הספק דיווח על סיום הטיפול בהצלחה'}
-                                    {(v.completedAt || v.updatedAt || ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt) && 
+                                    {(v.completedAt || v.updatedAt || ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt) &&
                                       ` • ${formatDateTime(v.completedAt || v.updatedAt || ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt)}`
                                     }
                                     {typeof v.executionTimeMinutes === 'number' && ` (${isEn ? 'Execution time' : 'משך ביצוע'}: ${v.executionTimeMinutes} ${isEn ? 'min' : 'דק\''})`}
@@ -849,7 +839,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                                 ) : isTicketClosed ? (
                                   <>
                                     {isEn ? 'Ticket was marked resolved in system' : 'הפנייה נסגרה וסומנה כטופלה במערכת'}
-                                    {(ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt || ticket.updatedAt) && 
+                                    {(ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt || ticket.updatedAt) &&
                                       ` • ${formatDateTime(ticket.resolvedAt || ticket.closedAt || ticket.lastStatusChangeAt || ticket.updatedAt)}`
                                     }
                                   </>

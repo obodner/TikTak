@@ -257,7 +257,7 @@
         "monthlyQuota": "מכסה חודשית",
         "netUsed": "ניצול בפועל",
         "effectiveQuota": "מכסה אפקטיבית",
-        "rolloverTickets": "פניות מגושרות",
+        "rolloverTickets": "פניות צבורות",
         "exclusions": "פניות שקוזזו",
         "daysRemaining": "נותרו {{days}} ימים למחזור החיוב",
         "daysRemainingOne": "נותר יום אחד למחזור החיוב",
@@ -446,6 +446,7 @@
         "tab_funnel_workload": "משפך טיפול ועומסים",
         "tab_hotspots_vendors": "מוקדי תקלות וספקים",
         "tab_insights": "תובנות והמלצות שירות",
-        "tab_active_banner_badge": "באנר פעיל"
+        "tab_active_banner_badge": "באנר פעיל",
+        "kpi_click_inspect": "לחץ לצפייה ברשימת הפניות"
     }
 }

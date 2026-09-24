@@ -444,6 +444,7 @@
         "tab_funnel_workload": "Funnel & Workload",
         "tab_hotspots_vendors": "Hotspots & Vendors",
         "tab_insights": "Smart Insights",
-        "tab_active_banner_badge": "Active Banner"
+        "tab_active_banner_badge": "Active Banner",
+        "kpi_click_inspect": "Click to inspect tickets"
     }
 }

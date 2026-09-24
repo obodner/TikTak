@@ -105,7 +105,7 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
               {t('Quota.monthlyQuota', 'מכסה חודשית')}: <strong className="text-slate-700">{monthlyQuota}</strong>
               {rolloverTickets > 0 && (
                 <span className="ms-1.5 text-emerald-600 font-medium">
-                  (+{rolloverTickets} {t('Quota.rolloverTickets', 'פניות מגושרות')})
+                  (+{rolloverTickets} {t('Quota.rolloverTickets', 'פניות צבורות')})
                 </span>
               )}
             </p>
