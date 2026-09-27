@@ -20,7 +20,10 @@ import {
   Boxes,
   Users2,
   Sliders,
-  BarChart3
+  BarChart3,
+  FileSpreadsheet,
+  FilePlus,
+  Receipt
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
@@ -29,7 +32,7 @@ import { NotificationItem } from '../../utils/notificationsEngine';
 export interface AdminSidebarProps {
   tenantId: string;
   tenantName?: string;
-  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics';
+  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics' | 'quotes';
   myTenants?: { id: string; name?: string }[];
   isFleet?: boolean;
   isSuper?: boolean;
@@ -78,16 +81,28 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const [isFlyoutOpen, setIsFlyoutOpen] = useState<boolean>(false);
   const flyoutRef = useRef<HTMLDivElement>(null);
 
+  // Quotes submenu states
+  const isQuotesActive = currentPage === 'quotes' || location.pathname.includes('/quotes');
+  const [isQuotesAccordionOpen, setIsQuotesAccordionOpen] = useState<boolean>(isQuotesActive);
+  const [isQuotesFlyoutOpen, setIsQuotesFlyoutOpen] = useState<boolean>(false);
+  const quotesFlyoutRef = useRef<HTMLDivElement>(null);
+
   // Modals
   const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
   const [isContactOpen, setIsContactOpen] = useState<boolean>(false);
 
-  // Sync accordion if user navigates to settings
+  // Sync accordion if user navigates to settings or quotes
   useEffect(() => {
     if (currentPage === 'settings') {
       setIsAccordionOpen(true);
     }
   }, [currentPage]);
+
+  useEffect(() => {
+    if (isQuotesActive) {
+      setIsQuotesAccordionOpen(true);
+    }
+  }, [isQuotesActive]);
 
   // Click outside listener for collapsed mode flyout
   useEffect(() => {
@@ -95,12 +110,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       if (flyoutRef.current && !flyoutRef.current.contains(e.target as Node)) {
         setIsFlyoutOpen(false);
       }
+      if (quotesFlyoutRef.current && !quotesFlyoutRef.current.contains(e.target as Node)) {
+        setIsQuotesFlyoutOpen(false);
+      }
     };
-    if (isFlyoutOpen) {
+    if (isFlyoutOpen || isQuotesFlyoutOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isFlyoutOpen]);
+  }, [isFlyoutOpen, isQuotesFlyoutOpen]);
 
   const handleToggleCollapse = () => {
     setIsCollapsed(prev => {
@@ -112,8 +130,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       }
       return next;
     });
-    // Close flyout when expanding
+    // Close flyouts when expanding/collapsing
     setIsFlyoutOpen(false);
+    setIsQuotesFlyoutOpen(false);
   };
 
   const handleLogout = async () => {
@@ -132,6 +151,23 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   // Determine active tab from URL query params if in settings
   const searchParams = new URLSearchParams(location.search);
   const currentTab = searchParams.get('tab') || 'infrastructure';
+
+  const quotesSubItems = [
+    {
+      id: 'new',
+      label: isEn ? 'New Quote Request' : 'בקשת הצעה חדשה',
+      path: `/admin/${tenantId}/quotes/new`,
+      icon: FilePlus,
+      isActive: location.pathname.includes('/quotes/new')
+    },
+    {
+      id: 'active',
+      label: isEn ? 'Received Quotes & Tracking' : 'הצעות מחיר שהתקבלו',
+      path: `/admin/${tenantId}/quotes/active`,
+      icon: FileSpreadsheet,
+      isActive: location.pathname.includes('/quotes/active') || location.pathname.endsWith('/quotes')
+    }
+  ];
 
   const settingsSubItems = [
     {
@@ -324,6 +360,121 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <span className="flex-1 truncate">{isEn ? 'Analytics & BI' : 'סטטיסטיקה ודוחות'}</span>
             )}
           </Link>
+
+          {/* Work Quotes (RFQ) Section (Accordion in Expanded / Flyout in Collapsed) */}
+          <div className="relative">
+            {isCollapsed ? (
+              // Collapsed Mode Quotes Button (Triggers Flyout)
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuotesFlyoutOpen(prev => !prev)}
+                  className={`w-full flex items-center justify-center p-2.5 rounded-xl text-sm font-bold transition-all group ${isQuotesActive
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  title={isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר'}
+                  aria-expanded={isQuotesFlyoutOpen}
+                  data-testid="sidebar-quotes-flyout-trigger"
+                >
+                  <Receipt size={20} className="shrink-0" />
+                </button>
+
+                {/* Floating Flyout Popover */}
+                {isQuotesFlyoutOpen && (
+                  <div
+                    ref={quotesFlyoutRef}
+                    className={`fixed z-50 bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl py-2 px-1.5 w-60 animate-in fade-in zoom-in-95 duration-150 ${isEn ? 'left-22' : 'right-22'
+                      }`}
+                    style={{ top: '140px' }}
+                    dir={isEn ? 'ltr' : 'rtl'}
+                    data-testid="quotes-flyout-popover"
+                  >
+                    <div className="px-3 py-1.5 border-b border-slate-800 mb-1">
+                      <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">
+                        {isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר מספקים'}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {quotesSubItems.map((sub) => {
+                        const SubIcon = sub.icon;
+                        return (
+                          <Link
+                            key={sub.id}
+                            to={sub.path}
+                            onClick={() => setIsQuotesFlyoutOpen(false)}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${sub.isActive
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                              }`}
+                          >
+                            <SubIcon size={16} className="shrink-0" />
+                            <span className="truncate">{sub.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Expanded Mode Quotes Accordion
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuotesAccordionOpen(prev => !prev)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 group ${isQuotesActive
+                      ? 'bg-slate-800/80 text-white'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  data-testid="sidebar-quotes-accordion-trigger"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Receipt
+                      size={20}
+                      className={`shrink-0 transition-transform duration-300 ease-out ${isQuotesAccordionOpen ? 'text-blue-400 scale-105' : 'group-hover:scale-105'
+                        }`}
+                    />
+                    <span className="truncate">{isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר'}</span>
+                  </div>
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-300 ease-out text-slate-400 group-hover:text-white ${isQuotesAccordionOpen ? 'transform rotate-180' : ''
+                      }`}
+                  />
+                </button>
+
+                {/* Rolling Sub-items list with identical smooth CSS Grid slide effect */}
+                <div
+                  className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${isQuotesAccordionOpen
+                      ? 'grid-rows-[1fr] opacity-100 mt-1'
+                      : 'grid-rows-[0fr] opacity-0 mt-0 pointer-events-none'
+                    }`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="space-y-1 ps-4 border-s border-slate-800 ms-5 me-1 py-1">
+                      {quotesSubItems.map((sub) => {
+                        const SubIcon = sub.icon;
+                        return (
+                          <Link
+                            key={sub.id}
+                            to={sub.path}
+                            className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${sub.isActive
+                                ? 'bg-blue-600 text-white font-bold shadow-sm'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                              }`}
+                          >
+                            <SubIcon size={14} className="shrink-0" />
+                            <span className="truncate">{sub.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Settings Section (Accordion in Expanded / Flyout in Collapsed) */}
           <div className="relative">

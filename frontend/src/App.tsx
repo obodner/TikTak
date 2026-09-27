@@ -9,6 +9,9 @@ import TasksBacklog from './pages/admin/TasksBacklog';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 import SuperAdminDashboard from './pages/admin/SuperAdminDashboard';
 import EnterpriseFleetDashboard from './pages/admin/EnterpriseFleetDashboard';
+import NewRfqPage from './pages/admin/NewRfqPage';
+import ActiveQuotesPage from './pages/admin/ActiveQuotesPage';
+import ContractorQuotePortal from './pages/ContractorQuotePortal';
 
 import { AdminLayout } from './components/admin/AdminLayout';
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
@@ -18,6 +21,11 @@ import { useEffect } from 'react';
 // Wrapper to dynamically load LandingPage or ResidentFlow based on QR query params
 function HomeRoute() {
     const [searchParams] = useSearchParams();
+    const hasVendor = searchParams.has('v') || searchParams.has('vendorId');
+    if (hasVendor) {
+        const rfq = searchParams.get('rfq') || searchParams.get('rfqId') || '';
+        return <Navigate to={`/quote/${rfq}${window.location.search}`} replace />;
+    }
     const hasTenant =
         searchParams.has('t') ||
         searchParams.has('tenant') ||
@@ -50,6 +58,12 @@ export default function App() {
             <Route path="/report/:tenantId" element={<ResidentFlow />} />
             <Route path="/report/:tenantId/dashboard" element={<ResidentDashboard />} />
 
+            {/* Contractor Facing RFQ Quoting Portal -> strictly public */}
+            <Route path="/quote/:rfqId" element={<ContractorQuotePortal />} />
+            <Route path="/quote/:rfqId/*" element={<ContractorQuotePortal />} />
+            <Route path="/quote/:tenantId/:rfqId" element={<ContractorQuotePortal />} />
+            <Route path="/quote/:tenantId/:rfqId/*" element={<ContractorQuotePortal />} />
+
             {/* Auth Portal */}
             <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
             <Route path="/admin/login" element={<AdminLogin />} />
@@ -71,6 +85,9 @@ export default function App() {
                 <Route path="backlog" element={<TasksBacklog />} />
                 <Route path="analytics" element={<AdminAnalytics />} />
                 <Route path="fleet" element={<EnterpriseFleetDashboard />} />
+                <Route path="quotes" element={<Navigate to="active" replace />} />
+                <Route path="quotes/new" element={<NewRfqPage />} />
+                <Route path="quotes/active" element={<ActiveQuotesPage />} />
             </Route>
 
             {/* Fallback */}

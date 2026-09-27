@@ -262,7 +262,11 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'TICKET_FORWARDED_TO_VENDOR', 'VENDOR_ACKNOWLEDGED_TICKET', 'VENDOR_COMPLETED_TICKET',
         'TICKET_BACKLOG_MOVED', 'BACKLOG_TICKET_REORDERED',
         'QUOTA_NON_BILLABLE_FLAGGED', 'QUOTA_ALERT_DISPATCHED', 'BILLING_CYCLE_CLOSED',
-        'SUPPORT_INQUIRY_SUBMITTED', 'SUPPORT_INQUIRY_CLOSED', 'SUPPORT_INQUIRY_REOPENED'
+        'SUPPORT_INQUIRY_SUBMITTED', 'SUPPORT_INQUIRY_CLOSED', 'SUPPORT_INQUIRY_REOPENED',
+        'NOTICE_BANNER_PINNED', 'NOTICE_BANNER_REMOVED', 'ANALYTICS_REPORT_EXPORTED',
+        'RFQ_CREATED', 'RFQ_BROADCAST_SENT', 'RFQ_WHATSAPP_DISPATCHED', 'VENDOR_QUOTE_SUBMITTED', 'VENDOR_QUOTE_UPDATED',
+        'RFQ_AWARDED', 'RFQ_CANCELLED', 'RFQ_EXPIRED',
+        'CONTRACTOR_AUTH_SUCCESS', 'CONTRACTOR_AUTH_FAILED'
     ];
 
     const actionLabels: Record<string, { he: string; en: string }> = {
@@ -299,6 +303,19 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'SUPPORT_INQUIRY_SUBMITTED': { he: 'פתיחת פניית תמיכה', en: 'Support Call Opened' },
         'SUPPORT_INQUIRY_CLOSED': { he: 'סגירת פניית תמיכה', en: 'Support Call Closed' },
         'SUPPORT_INQUIRY_REOPENED': { he: 'פתיחה מחדש של פניית תמיכה', en: 'Support Call Reopened' },
+        'NOTICE_BANNER_PINNED': { he: 'הצמדת באנר הודעה לדיירים', en: 'Notice Banner Pinned' },
+        'NOTICE_BANNER_REMOVED': { he: 'הסרת באנר הודעה לדיירים', en: 'Notice Banner Removed' },
+        'ANALYTICS_REPORT_EXPORTED': { he: 'הפקת דוח אנליטיקה לוועד', en: 'Analytics Report Exported' },
+        'RFQ_CREATED': { he: 'יצירת בקשת הצעת מחיר (RFQ)', en: 'RFQ Created' },
+        'RFQ_BROADCAST_SENT': { he: 'שיגור בקשת מחיר לקבלנים בוואטסאפ', en: 'RFQ Broadcast Sent' },
+        'RFQ_WHATSAPP_DISPATCHED': { he: 'שיגור פניות RFQ בוואטסאפ', en: 'RFQ WhatsApp Dispatched' },
+        'VENDOR_QUOTE_SUBMITTED': { he: 'הגשת הצעת מחיר ע״י קבלן', en: 'Vendor Quote Submitted' },
+        'VENDOR_QUOTE_UPDATED': { he: 'עדכון הצעת מחיר ע״י קבלן', en: 'Vendor Quote Updated' },
+        'RFQ_AWARDED': { he: 'אישור הצעה זוכה (RFQ)', en: 'RFQ Awarded' },
+        'RFQ_CANCELLED': { he: 'ביטול/סגירת בקשת הצעת מחיר', en: 'RFQ Cancelled' },
+        'RFQ_EXPIRED': { he: 'פקיעת תוקף בקשת הצעת מחיר', en: 'RFQ Expired' },
+        'CONTRACTOR_AUTH_SUCCESS': { he: 'אימות קבלן מורשה מוצלח (Whitelist)', en: 'Contractor Whitelist Verified' },
+        'CONTRACTOR_AUTH_FAILED': { he: 'ניסיון אימות קבלן נכשל (גישה חסומה 403)', en: 'Contractor Auth Blocked (403)' },
     };
 
     const statusMap: Record<string, { he: string; en: string }> = {
@@ -679,6 +696,115 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `${actor} reopened support call${caller}${bNameStr}`
                     : `${actor} פתח/ה מחדש פניית תמיכה${caller}${bNameStr}`;
+            }
+            case 'NOTICE_BANNER_PINNED': {
+                const loc = log.details?.location ? (isEn ? ` for "${log.details.location}"` : ` במיקום "${log.details.location}"`) : '';
+                const msg = log.details?.message ? `: "${log.details.message}"` : '';
+                return isEn
+                    ? `${actor} pinned an in-app notice banner${loc} in ${tenantName}${msg}`
+                    : `${actor} הצמיד/ה באנר הודעה לדיירים${loc} בבניין ${tenantName}${msg}`;
+            }
+            case 'NOTICE_BANNER_REMOVED': {
+                const loc = log.details?.previousLocation ? (isEn ? ` from "${log.details.previousLocation}"` : ` ממיקום "${log.details.previousLocation}"`) : '';
+                return isEn
+                    ? `${actor} removed the in-app notice banner${loc} in ${tenantName}`
+                    : `${actor} הסיר/ה את באנר ההודעה לדיירים${loc} בבניין ${tenantName}`;
+            }
+            case 'ANALYTICS_REPORT_EXPORTED': {
+                const total = log.details?.totalTickets !== undefined ? (isEn ? ` (${log.details.totalTickets} tickets)` : ` (${log.details.totalTickets} פניות)`) : '';
+                return isEn
+                    ? `${actor} exported analytics executive report${total} for ${tenantName}`
+                    : `${actor} הפיק/ה דוח אנליטיקה וסטטיסטיקה לוועד${total} עבור ${tenantName}`;
+            }
+            case 'RFQ_CREATED': {
+                const tRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null) 
+                    ? (isEn ? ` for ticket #${log.details.ticketNumber}` : ` לקריאה #${log.details.ticketNumber}`) 
+                    : '';
+                const countStr = log.details?.recipientCount ? (isEn ? ` (${log.details.recipientCount} contractors)` : ` (${log.details.recipientCount} קבלנים בתפוצה)`) : '';
+                const titleStr = log.details?.title ? ` "${log.details.title}"` : '';
+                return isEn
+                    ? `${actor} created work quote request (RFQ)${titleStr}${tRef}${countStr} in ${tenantName}`
+                    : `${actor} פתח/ה בקשה להצעת מחיר (RFQ)${titleStr}${tRef}${countStr} בבניין ${tenantName}`;
+            }
+            case 'RFQ_WHATSAPP_DISPATCHED':
+            case 'RFQ_BROADCAST_SENT': {
+                const reqCount = log.details?.requestedCount;
+                const succCount = log.details?.successCount;
+                let countStr = '';
+                if (succCount !== undefined && reqCount !== undefined && reqCount > succCount) {
+                    countStr = isEn
+                        ? `to ${succCount}/${reqCount} contractors`
+                        : `ל-${succCount} מתוך ${reqCount} קבלנים`;
+                } else {
+                    const count = succCount ?? reqCount ?? log.details?.totalRecipients ?? log.details?.targetVendors?.length ?? 0;
+                    countStr = count === 1
+                        ? (isEn ? 'to 1 contractor' : 'לקבלן אחד')
+                        : (isEn ? `to ${count} contractors` : `ל-${count} קבלנים`);
+                }
+                const titleStr = log.details?.title
+                    ? ` "${log.details.title}"`
+                    : (log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '');
+                const tRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
+                    ? (isEn ? ` (Ticket #${log.details.ticketNumber})` : ` (קריאה #${log.details.ticketNumber})`)
+                    : '';
+                return isEn
+                    ? `${actor} dispatched quote request (RFQ) via WhatsApp ${countStr}${titleStr}${tRef} in ${tenantName}`
+                    : `${actor} שיגר/ה בקשת הצעת מחיר (RFQ) בוואטסאפ ${countStr}${titleStr}${tRef} בבניין ${tenantName}`;
+            }
+            case 'VENDOR_QUOTE_SUBMITTED': {
+                const vName = log.details?.vendorName || log.actor?.name || actor;
+                const price = log.details?.price ? (isEn ? ` for ₪${Number(log.details.price).toLocaleString()}` : ` ע"ס ₪${Number(log.details.price).toLocaleString()}`) : '';
+                const vat = log.details?.priceIncludesVat ? (isEn ? ' (incl. VAT)' : ' (כולל מע"מ)') : (isEn ? ' (+ VAT)' : ' (+ מע"מ)');
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                return isEn
+                    ? `Contractor ${vName} submitted price quote${price}${vat} for${rfqTitle} in ${tenantName}`
+                    : `הקבלן ${vName} הגיש הצעת מחיר${price}${vat} עבור${rfqTitle} בבניין ${tenantName}`;
+            }
+            case 'VENDOR_QUOTE_UPDATED': {
+                const vName = log.details?.vendorName || log.actor?.name || actor;
+                const price = log.details?.price ? (isEn ? ` for ₪${Number(log.details.price).toLocaleString()}` : ` ע"ס ₪${Number(log.details.price).toLocaleString()}`) : '';
+                const vat = log.details?.priceIncludesVat ? (isEn ? ' (incl. VAT)' : ' (כולל מע"מ)') : (isEn ? ' (+ VAT)' : ' (+ מע"מ)');
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                return isEn
+                    ? `Contractor ${vName} updated price quote${price}${vat} for${rfqTitle} in ${tenantName}`
+                    : `הקבלן ${vName} עדכן את הצעת המחיר${price}${vat} עבור${rfqTitle} בבניין ${tenantName}`;
+            }
+            case 'RFQ_AWARDED': {
+                const winner = log.details?.winningVendorName || log.details?.vendorName || (isEn ? 'Contractor' : 'הקבלן');
+                const price = log.details?.winningPrice || log.details?.awardedPrice 
+                    ? (isEn ? ` for ₪${Number(log.details?.winningPrice || log.details?.awardedPrice).toLocaleString()}` : ` ע"ס ₪${Number(log.details?.winningPrice || log.details?.awardedPrice).toLocaleString()}`) 
+                    : '';
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                const reasonStr = log.details?.awardReason ? (isEn ? ` (Reason: ${log.details.awardReason})` : ` (נימוק: ${log.details.awardReason})`) : '';
+                return isEn
+                    ? `${actor} approved winning quote by ${winner}${price} for${rfqTitle} in ${tenantName}${reasonStr}`
+                    : `${actor} אישר/ה את הצעתו של ${winner}${price} כהצעה הזוכה עבור${rfqTitle} בבניין ${tenantName}${reasonStr}`;
+            }
+            case 'RFQ_CANCELLED': {
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                return isEn
+                    ? `${actor} cancelled work quote request${rfqTitle} in ${tenantName}`
+                    : `${actor} סגר/ביטל את הבקשה להצעת מחיר${rfqTitle} בבניין ${tenantName}`;
+            }
+            case 'RFQ_EXPIRED': {
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                return isEn
+                    ? `Work quote request${rfqTitle} expired for ${tenantName}`
+                    : `תוקף הבקשה להצעת מחיר${rfqTitle} פג עבור ${tenantName}`;
+            }
+            case 'CONTRACTOR_AUTH_SUCCESS': {
+                const vName = log.actor?.name || log.details?.vendorName || actor;
+                const rfqRef = log.details?.rfqId ? ` (פנייה #${log.details.rfqId.slice(0, 6)})` : '';
+                return isEn
+                    ? `Contractor ${vName} verified identity successfully via whitelist${rfqRef} in ${tenantName}`
+                    : `הקבלן ${vName} אימת/ה זהות בהצלחה מול רשימת המורשים (Whitelist)${rfqRef} בבניין ${tenantName}`;
+            }
+            case 'CONTRACTOR_AUTH_FAILED': {
+                const vName = log.details?.vendorName || actor || 'Unknown';
+                const tail = log.details?.enteredPhoneTail ? ` (סיומת ${log.details.enteredPhoneTail})` : '';
+                return isEn
+                    ? `Blocked unauthorized access attempt (403)${tail} for contractor ${vName} in ${tenantName}`
+                    : `נחסם ניסיון כניסה לא מורשה (403)${tail} עבור הקבלן ${vName} בבניין ${tenantName}`;
             }
             default: {
                 const actionLabel = isEn

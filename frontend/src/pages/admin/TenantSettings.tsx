@@ -50,6 +50,7 @@ export default function TenantSettings() {
     workingDays: [0, 1, 2, 3, 4], // Default Sun-Thu
     country: 'IL'
   });
+  const [logoUrl, setLogoUrl] = useState<string>('');
 
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
   const [initialConfig, setInitialConfig] = useState<any>(null);
@@ -76,6 +77,7 @@ export default function TenantSettings() {
           setTenantName(data.name || '');
           setType((data.type?.toLowerCase() || 'building') as 'building' | 'municipality');
           setLanguage(data.language || 'he');
+          setLogoUrl(data.logoUrl || '');
           setLocations(config.locations || config.floors || []);
           setSubLocations(config.subLocations || config.resources || []);
           setCategories(config.categories || []);
@@ -96,6 +98,7 @@ export default function TenantSettings() {
             name: data.name || '',
             type: data.type || 'building',
             language: data.language || 'he',
+            logoUrl: data.logoUrl || '',
             config: {
               locations: config.locations || config.floors || [],
               subLocations: config.subLocations || config.resources || [],
@@ -236,6 +239,7 @@ export default function TenantSettings() {
     tenantName: string;
     type: 'building' | 'municipality';
     language: 'he' | 'en';
+    logoUrl?: string;
     slaConfig: { enabled: boolean; workingDays: number[]; country: string; };
     uiConfig: { locationLabel: string; subLocationLabel: string; showLocation: boolean; };
   }) => {
@@ -247,6 +251,7 @@ export default function TenantSettings() {
         name: data.tenantName,
         type: data.type,
         language: data.language,
+        logoUrl: data.logoUrl || '',
         uiConfig: data.uiConfig,
         slaConfig: {
           enabled: data.slaConfig.enabled,
@@ -272,6 +277,7 @@ export default function TenantSettings() {
         compare('name', initialConfig.name, data.tenantName);
         compare('type', initialConfig.type, data.type);
         compare('language', initialConfig.language, data.language);
+        compare('logoUrl', initialConfig.logoUrl, data.logoUrl);
         compare('uiConfig', initialConfig.uiConfig, data.uiConfig);
         compare('slaConfig', initialConfig.slaConfig, data.slaConfig);
 
@@ -295,6 +301,7 @@ export default function TenantSettings() {
       setTenantName(data.tenantName);
       setType(data.type);
       setLanguage(data.language);
+      setLogoUrl(data.logoUrl || '');
       setUiConfig(data.uiConfig);
       setSlaConfig(data.slaConfig);
 
@@ -303,6 +310,7 @@ export default function TenantSettings() {
         name: data.tenantName,
         type: data.type,
         language: data.language,
+        logoUrl: data.logoUrl || '',
         uiConfig: data.uiConfig,
         slaConfig: data.slaConfig
       }));
@@ -389,15 +397,18 @@ export default function TenantSettings() {
                 tenantId={tenantId as string}
                 callerUid={user?.uid || ''}
                 callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')}
+                categories={categories}
               />
             </div>
 
             {/* Tab 3: General Settings */}
             <div className={activeTab === 'general' ? '' : 'hidden'}>
               <GeneralSettingsTab
+                tenantId={tenantId as string}
                 initialTenantName={tenantName}
                 initialType={type}
                 initialLanguage={language}
+                initialLogoUrl={logoUrl}
                 initialSlaConfig={slaConfig}
                 initialUiConfig={uiConfig}
                 isBuilding={isBuilding}

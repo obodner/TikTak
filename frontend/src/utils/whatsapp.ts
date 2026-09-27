@@ -1,7 +1,12 @@
-const normalizePhone = (phone: string) => {
-  let cleaned = phone.replace(/\D/g, '');
+export const normalizePhone = (phone: string) => {
+  let cleaned = (phone || '').replace(/\D/g, '');
+  if (cleaned.startsWith('00')) {
+    cleaned = cleaned.substring(2);
+  }
   if (cleaned.startsWith('0') && cleaned.length === 10) {
     cleaned = '972' + cleaned.substring(1);
+  } else if (!cleaned.startsWith('972') && cleaned.length === 9) {
+    cleaned = '972' + cleaned;
   }
   return cleaned;
 };

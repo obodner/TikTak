@@ -2373,18 +2373,42 @@ async function sendWhatsAppDocument(to: string, documentUrl: string, fileName: s
   }, phoneNumberId, token);
 }
 
-async function sendWhatsAppTemplate(to: string, templateName: string, langCode: string, parameters: string[], phoneNumberId: string, token: string) {
+async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  langCode: string,
+  parameters: string[],
+  phoneNumberId: string,
+  token: string,
+  buttonUrlSuffix?: string
+) {
+  const components: any[] = [
+    {
+      type: "body",
+      parameters: parameters.map(p => ({ type: "text", text: p }))
+    }
+  ];
+
+  if (buttonUrlSuffix) {
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [
+        {
+          type: "text",
+          text: buttonUrlSuffix
+        }
+      ]
+    });
+  }
+
   return sendWhatsAppMessage(to, {
     type: "template",
     template: {
       name: templateName,
       language: { code: langCode },
-      components: [
-        {
-          type: "body",
-          parameters: parameters.map(p => ({ type: "text", text: p }))
-        }
-      ]
+      components
     }
   }, phoneNumberId, token);
 }
@@ -2848,7 +2872,7 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                 // Whitelist silent authentication check across all tenants (reporters + adminUsers fallback)
                 let whitelistQuery = await db.collectionGroup("reporters").where("phone", "==", localPhone).get();
                 let docsToProcess: any[] = whitelistQuery.docs;
-                
+
                 if (whitelistQuery.empty) {
                   const adminQuery = await db.collectionGroup("adminUsers").get();
                   docsToProcess = adminQuery.docs.filter(doc => {
@@ -3865,7 +3889,7 @@ export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP
     const param2_sentBy = sanitizeParam(actorName || "מנהל");
     const param3_building = sanitizeParam(tenantData.name || tenantId);
     const param4_category = sanitizeParam(ticketData.category || "תחזוקה");
-    
+
     let param5_urgency = "בינונית ⚠️";
     const lowerUrgency = (ticketData.urgency || "").toLowerCase();
     if (lowerUrgency === "high") param5_urgency = "גבוהה 🚨";
@@ -4299,6 +4323,224 @@ export const submitSupportInquiry = onRequest({ cors: true }, async (req, res) =
   } catch (err: any) {
     logger.error("submitSupportInquiry error:", err);
     res.status(500).send({ error: "אירעה שגיאה בעיבוד הפנייה. אנא נסה שוב מאוחר יותר." });
+  }
+});
+
+export const dispatchRfqToVendors = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      res.status(405).send({ error: "Method not allowed. Use POST." });
+      return;
+    }
+
+    const { tenantId, rfqId, vendorIds, actor } = req.body || {};
+    if (!tenantId || !rfqId) {
+      res.status(400).send({ error: "Missing required parameters (tenantId, rfqId)" });
+      return;
+    }
+
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!token) {
+      res.status(500).send({ error: "WhatsApp access token not configured" });
+      return;
+    }
+
+    // 1. Fetch Tenant Document (Strict Multi-Tenancy Scoping)
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const tenantSnap = await tenantRef.get();
+    if (!tenantSnap.exists) {
+      res.status(404).send({ error: "Tenant not found" });
+      return;
+    }
+    const tenantData = tenantSnap.data() || {};
+    const phoneNumberId = tenantData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+
+    const tenantName = tenantData.name || tenantId;
+    const tenantAddress = tenantData.address || "";
+    const customerSiteStr = tenantAddress ? `${tenantName} (${tenantAddress})` : tenantName;
+
+    // 2. Fetch RFQ Document
+    const rfqRef = tenantRef.collection("rfqs").doc(rfqId);
+    const rfqSnap = await rfqRef.get();
+    if (!rfqSnap.exists) {
+      res.status(404).send({ error: "RFQ not found" });
+      return;
+    }
+    const rfqData = rfqSnap.data() || {};
+
+    // 3. Resolve Contact Person & Phone
+    const creatorName = rfqData.createdBy?.name || actor?.name || "ועד הבית";
+    let contactPhone = actor?.phone || tenantData.contactPhone || tenantData.phone || "";
+
+    if (!contactPhone && (actor?.uid || rfqData.createdBy?.uid)) {
+      const adminUid = actor?.uid || rfqData.createdBy?.uid;
+      try {
+        const adminSnap = await tenantRef.collection("adminUsers").doc(adminUid).get();
+        if (adminSnap.exists) {
+          const aData = adminSnap.data() || {};
+          contactPhone = aData.mobile || aData.phone || "";
+        }
+      } catch (adminErr) {
+        logger.warn(`Could not resolve admin phone for uid ${adminUid}:`, adminErr);
+      }
+    }
+    if (!contactPhone) {
+      contactPhone = "במערכת TikTak";
+    }
+
+    // 4. Resolve Target Vendors
+    const allDispatched: any[] = Array.isArray(rfqData.dispatchedVendors) ? [...rfqData.dispatchedVendors] : [];
+    let targetVendors = allDispatched;
+    if (vendorIds && Array.isArray(vendorIds) && vendorIds.length > 0) {
+      targetVendors = allDispatched.filter(v => vendorIds.includes(v.vendorId));
+    }
+
+    if (targetVendors.length === 0) {
+      res.status(400).send({ error: "No matching vendors found to dispatch" });
+      return;
+    }
+
+    logger.info(`Dispatching contractor_rfq_invite template for RFQ #${rfqId} to ${targetVendors.length} vendors in tenant ${tenantId}`);
+
+    const results: any[] = [];
+
+    // 5. Send Template to Each Vendor
+    for (const vendor of targetVendors) {
+      let rawPhone = String(vendor.phone || "").replace(/\D/g, "");
+      if (rawPhone.startsWith("0")) {
+        rawPhone = "972" + rawPhone.substring(1);
+      }
+
+      if (rawPhone.length < 8) {
+        results.push({
+          vendorId: vendor.vendorId,
+          vendorName: vendor.vendorName,
+          phone: vendor.phone,
+          success: false,
+          error: "Invalid phone number"
+        });
+        continue;
+      }
+
+      const p1_vendorName = sanitizeParam(vendor.vendorName || "ספק");
+      const p2_rfqTitle = sanitizeParam(rfqData.title || "בקשה להצעת מחיר");
+      const p3_site = sanitizeParam(customerSiteStr);
+      const p4_senderName = sanitizeParam(creatorName);
+      const p5_contactPhone = sanitizeParam(contactPhone);
+      const p6_category = sanitizeParam(rfqData.category || "תחזוקה");
+      const p7_location = sanitizeParam(rfqData.location || "לפי הפירוט והתמונות");
+
+      const templateParams = [
+        p1_vendorName,
+        p2_rfqTitle,
+        p3_site,
+        p4_senderName,
+        p5_contactPhone,
+        p6_category,
+        p7_location
+      ];
+
+      const buttonSuffix = `${rfqId}?tid=${tenantId}&v=${vendor.vendorId}${vendor.tokenHash ? `&t=${vendor.tokenHash}` : ''}`;
+
+      let metaMessageId: string | null = null;
+      let success = false;
+      let errorDetail: string | null = null;
+
+      try {
+        // Attempt 1: Approved Meta Template with dynamic URL button
+        const resp: any = await sendWhatsAppTemplate(
+          rawPhone,
+          "contractor_rfq_invite",
+          "he",
+          templateParams,
+          phoneNumberId,
+          token,
+          buttonSuffix
+        );
+        metaMessageId = resp?.messages?.[0]?.id || null;
+        success = true;
+        logger.info(`Successfully dispatched contractor_rfq_invite with button to ${rawPhone} (${vendor.vendorName})`);
+      } catch (btnErr: any) {
+        logger.warn(`Template with button failed for ${rawPhone}, attempting body-only template:`, btnErr?.message);
+        try {
+          // Attempt 2: Approved Meta Template with body-only params fallback
+          const resp: any = await sendWhatsAppTemplate(
+            rawPhone,
+            "contractor_rfq_invite",
+            "he",
+            templateParams,
+            phoneNumberId,
+            token
+          );
+          metaMessageId = resp?.messages?.[0]?.id || null;
+          success = true;
+          logger.info(`Successfully dispatched contractor_rfq_invite (body-only) to ${rawPhone}`);
+        } catch (bodyErr: any) {
+          logger.error(`contractor_rfq_invite failed for vendor ${rawPhone}:`, bodyErr);
+          errorDetail = bodyErr?.message || JSON.stringify(bodyErr);
+        }
+      }
+
+      results.push({
+        vendorId: vendor.vendorId,
+        vendorName: vendor.vendorName,
+        phone: rawPhone,
+        success,
+        metaMessageId,
+        error: errorDetail
+      });
+
+      const idx = allDispatched.findIndex(v => v.vendorId === vendor.vendorId);
+      if (idx >= 0) {
+        allDispatched[idx] = {
+          ...allDispatched[idx],
+          whatsappSent: success,
+          whatsappSentAt: new Date().toISOString(),
+          whatsappStatus: success ? 'sent' : 'failed',
+          ...(metaMessageId ? { whatsappMessageId: metaMessageId } : {}),
+          ...(errorDetail ? { whatsappError: errorDetail } : {})
+        };
+      }
+    }
+
+    // 6. Update RFQ Document with dispatch results
+    await rfqRef.update({
+      dispatchedVendors: allDispatched,
+      lastDispatchedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    // 7. Record Audit Log
+    await recordAuditLog({
+      tenantId,
+      action: "RFQ_WHATSAPP_DISPATCHED",
+      level: "INFO",
+      actor: {
+        uid: actor?.uid || "admin",
+        name: actor?.name || creatorName,
+        email: actor?.email || undefined,
+        type: "admin"
+      },
+      details: {
+        rfqId,
+        title: rfqData.title,
+        requestedCount: targetVendors.length,
+        successCount: results.filter(r => r.success).length,
+        results
+      }
+    });
+
+    const successCount = results.filter(r => r.success).length;
+
+    res.status(200).send({
+      success: successCount > 0,
+      message: `שוגרו הודעות WhatsApp ל-${successCount} מתוך ${targetVendors.length} קבלנים`,
+      results,
+      dispatchedVendors: allDispatched
+    });
+  } catch (err: any) {
+    logger.error("Exception in dispatchRfqToVendors:", err);
+    res.status(500).send({ error: err.message || "אירעה שגיאה בשיגור הודעות הוואטסאפ לקבלנים" });
   }
 });
 

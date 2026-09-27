@@ -24,6 +24,24 @@ service cloud.firestore {
       );
       allow update: if isTenantAdmin(tenantId);
       
+      // Public RFQ viewing and contractor quote submission
+      match /rfqs/{rfqId} {
+        allow read: if true;
+        allow write: if isTenantAdmin(tenantId);
+
+        match /submissions/{submissionId} {
+          allow read: if true;
+          allow create, update: if request.resource.data.price is number && request.resource.data.price > 0;
+          allow delete: if isTenantAdmin(tenantId);
+        }
+      }
+
+      // Allow public read on vendors for quote portal contractor whitelist verification
+      match /vendors/{vendorId} {
+        allow read: if true;
+        allow write: if isTenantAdmin(tenantId);
+      }
+
       match /{allSubcollections=**} {
         allow read, write: if isTenantAdmin(tenantId);
       }

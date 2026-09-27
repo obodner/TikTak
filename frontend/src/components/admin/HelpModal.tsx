@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLink, Download, ChevronDown, BarChart3 } from 'lucide-react';
+import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLink, Download, ChevronDown, BarChart3, Receipt } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import heMessages from '../../locales/he.json';
 import enMessages from '../../locales/en.json';
@@ -310,6 +310,23 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
                     <li><strong>{dict.mgr_bi_workload_label}</strong>: {dict.mgr_bi_workload}</li>
                     <li><strong>{dict.mgr_bi_insights_label}</strong>: {dict.mgr_bi_insights}</li>
                     <li><strong>{dict.mgr_bi_vendors_label}</strong>: {dict.mgr_bi_vendors}</li>
+                  </ul>
+                </div>
+
+                <div className={`${isHe ? 'border-r-4 pr-6' : 'border-l-4 pl-6'} border-blue-600 space-y-4`}>
+                  <h4 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <Receipt size={20} className="text-blue-600" />
+                    {dict.mgr_rfq_title}
+                  </h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    {dict.mgr_rfq_desc}
+                  </p>
+                  <ul className="text-sm text-slate-600 space-y-3">
+                    <li><strong className="text-blue-700 font-extrabold">{dict.mgr_rfq_create_label}</strong>: {dict.mgr_rfq_create}</li>
+                    <li><strong className="text-emerald-700 font-extrabold">{dict.mgr_rfq_dispatch_label}</strong>: {dict.mgr_rfq_dispatch}</li>
+                    <li><strong className="text-indigo-700 font-extrabold">{dict.mgr_rfq_portal_label}</strong>: {dict.mgr_rfq_portal}</li>
+                    <li><strong className="text-amber-700 font-extrabold">{dict.mgr_rfq_matrix_label}</strong>: {dict.mgr_rfq_matrix}</li>
+                    <li><strong className="text-purple-700 font-extrabold">{dict.mgr_rfq_contract_label || (isHe ? 'הפקת הסכם עבודה (חוזה)' : 'Work Order & Contract')}</strong>: {dict.mgr_rfq_contract}</li>
                   </ul>
                 </div>
 

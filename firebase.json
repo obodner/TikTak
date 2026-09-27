@@ -109,6 +109,13 @@
                 }
             },
             {
+                "source": "/api/dispatchRfqToVendors",
+                "function": {
+                    "functionId": "dispatchRfqToVendors",
+                    "region": "us-central1"
+                }
+            },
+            {
                 "source": "/api/checkAuth",
                 "function": {
                     "functionId": "checkAuth",

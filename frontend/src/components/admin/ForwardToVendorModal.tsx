@@ -27,6 +27,8 @@ export interface VendorItem {
   phone: string;
   email?: string;
   profession?: string;
+  categories?: string[];
+  vendorType?: string;
 }
 
 export interface ForwardToVendorModalProps {
@@ -142,9 +144,11 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
   const filteredVendors = savedVendors.filter(v => {
     if (!vendorName.trim()) return true;
     const term = vendorName.trim().toLowerCase();
+    const catMatch = Array.isArray(v.categories) && v.categories.some(c => c.toLowerCase().includes(term));
     return (
       v.fullName.toLowerCase().includes(term) ||
       (v.profession && v.profession.toLowerCase().includes(term)) ||
+      catMatch ||
       (v.phone && v.phone.includes(term))
     );
   });

@@ -1,22 +1,32 @@
 rules_version = '2';
 
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    // RFQ attachments and contractor quotes (max 6MB per file, safe document & media types only)
+    match /tenants/{tenantId}/rfqs/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if request.resource.size < 6 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType.matches('audio/.*')
+            || request.resource.contentType.matches('video/.*')
+            || request.resource.contentType == 'application/pdf'
+            || request.resource.contentType == 'application/msword'
+            || request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\..*')
+            || request.resource.contentType == 'application/vnd.ms-excel'
+            || request.resource.contentType == 'application/octet-stream');
+      allow delete: if true;
+    }
 
-    // This rule allows anyone with your Storage bucket reference to view, edit,
-    // and delete all data in your Storage bucket. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Storage bucket will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Storage bucket will be denied until you Update
-    // your rules
+    // General tenant storage
+    match /tenants/{tenantId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Fallback rule for authenticated users
     match /{allPaths=**} {
-      allow read, write: if request.time < timestamp.date(2026, 5, 10);
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }

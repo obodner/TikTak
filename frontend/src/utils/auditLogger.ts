@@ -31,13 +31,23 @@ export type AuditAction =
   | 'SUPPORT_INQUIRY_REOPENED'
   | 'NOTICE_BANNER_PINNED'
   | 'NOTICE_BANNER_REMOVED'
-  | 'ANALYTICS_REPORT_EXPORTED';
+  | 'ANALYTICS_REPORT_EXPORTED'
+  | 'RFQ_CREATED'
+  | 'RFQ_BROADCAST_SENT'
+  | 'RFQ_WHATSAPP_DISPATCHED'
+  | 'VENDOR_QUOTE_SUBMITTED'
+  | 'VENDOR_QUOTE_UPDATED'
+  | 'RFQ_AWARDED'
+  | 'RFQ_CANCELLED'
+  | 'RFQ_EXPIRED'
+  | 'CONTRACTOR_AUTH_SUCCESS'
+  | 'CONTRACTOR_AUTH_FAILED';
 
 export interface AuditActor {
   uid: string;
   name: string;
   email?: string;
-  type: 'admin' | 'resident';
+  type: 'admin' | 'resident' | 'vendor';
 }
 
 export const resetAuditSession = () => {

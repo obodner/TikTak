@@ -27,7 +27,7 @@ import { NotificationItem } from '../../utils/notificationsEngine';
 interface AdminNavbarProps {
   tenantId: string;
   tenantName?: string;
-  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics';
+  currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics' | 'quotes';
   myTenants?: { id: string; name?: string }[];
   isFleet?: boolean;
   isSuper?: boolean;
