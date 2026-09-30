@@ -32,9 +32,10 @@ import {
   Mic,
   Play,
   Pause,
-  ExternalLink
+  ExternalLink,
+  Save
 } from 'lucide-react';
-import { Vendor, VendorType, RfqAttachment } from '../../types/rfq';
+import { Vendor, VendorType, RfqAttachment, DispatchedVendorRecord, PaymentPhaseItem } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
 
 const DEFAULT_CATEGORIES = [
@@ -91,9 +92,34 @@ export default function NewRfqPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuthState();
 
+  // Current logged in admin profile (from adminUsers collection / Users tab)
+  const [adminProfile, setAdminProfile] = useState<{
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    mobile?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!tenantId || !user?.uid) return;
+    getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid)).then(snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim();
+        setAdminProfile({
+          firstName: d.firstName,
+          lastName: d.lastName,
+          fullName: fullName || undefined,
+          mobile: d.mobile || d.phone
+        });
+      }
+    }).catch(e => console.warn('Could not load current admin profile:', e));
+  }, [tenantId, user?.uid]);
+
   // Tenant metadata & categories
   const [tenantName, setTenantName] = useState('');
   const [tenantType, setTenantType] = useState<string>('building');
+  const isSettlement = tenantType?.toLowerCase() === 'municipality' || tenantType?.toLowerCase() === 'settlement' || tenantType?.toLowerCase() === 'community';
   const [categoryPool, setCategoryPool] = useState<string[]>(DEFAULT_CATEGORIES);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
@@ -101,6 +127,13 @@ export default function NewRfqPage() {
   // Audio player state for linked ticket
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Draft editing state
+  const draftId = searchParams.get('draftId') || searchParams.get('draft') || '';
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [loadedDraftCreatedAt, setLoadedDraftCreatedAt] = useState<string | null>(null);
+  const draftLoadedRef = useRef(false);
+  const prevCategoryRef = useRef<string | null>(null);
 
   // Form State
   const [ticketLookupNumber, setTicketLookupNumber] = useState(
@@ -114,6 +147,84 @@ export default function NewRfqPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
+
+  // Payment Terms & Milestones
+  const [paymentMode, setPaymentMode] = useState<'milestones' | 'single'>('milestones');
+  const [singlePaymentTerm, setSinglePaymentTerm] = useState('שוטף + 30 יום מגמר העבודה ומסירת האתר');
+  const [paymentPhases, setPaymentPhases] = useState<PaymentPhaseItem[]>([]);
+
+  // Waste Policy Presets (Dynamic based on customer entity type: Settlement/Municipality vs Building)
+  const WASTE_PRESETS = {
+    construction: {
+      id: 'construction',
+      label: 'פסולת בניין והריסה (אתר מורשה חיצוני בלבד)',
+      text: isSettlement
+        ? 'הקבלן מתחייב לפנות את כל פסולת הבנייה, ההריסה, שקי המלט ושאריות החומרים אך ורק לאתר הטמנה/מיחזור מורשה כדין מחוץ לגבולות היישוב. חל איסור מוחלט על השלכת פסולת בניין לפחי האשפה של היישוב או בשטחים הציבוריים.'
+        : 'הקבלן מתחייב לפנות את כל פסולת הבנייה, ההריסה, שקי המלט ושאריות החומרים אך ורק לאתר הטמנה/מיחזור מורשה כדין מחוץ לגבולות הבניין. חל איסור מוחלט על השלכת פסולת בניין לפחי האשפה של הבניין או בשטחים הציבוריים.'
+    },
+    garden: {
+      id: 'garden',
+      label: isSettlement ? 'גזם וגינון (נקודת איסוף מורשית ביישוב)' : 'גזם וגינון (נקודת איסוף מורשית בבניין)',
+      text: isSettlement
+        ? 'הקבלן מתחייב לרכז ולפנות את כל הגזם וענפי הגינון אך ורק אל נקודת הריכוז המורשית לפי הנחיות המזמין, ולהשאיר את השטח נקי ומסודר בסיום כל יום עבודה.'
+        : 'הקבלן מתחייב לרכז ולפנות את כל הגזם וענפי הגינון אך ורק אל נקודת הריכוז המורשית לפי הנחיות נציגות הבניין, ולהשאיר את השטח נקי ומסודר בסיום כל יום עבודה.'
+    },
+    general: {
+      id: 'general',
+      label: 'אחזקה ואירועים (החזרת המקום נקי ומסודר לפחים מורשים)',
+      text: 'בסיום כל יום עבודה ועם מסירת האתר, מתחייב הקבלן להחזיר את המקום נקי, מסודר ופנוי מכל ציוד, לכלוך או שאריות חומרים, ולפנות את האשפה לפחים המיועדים לכך בלבד.'
+    },
+    custom: {
+      id: 'custom',
+      label: 'נוסח מותאם אישית',
+      text: ''
+    }
+  };
+
+  const [wastePresetKey, setWastePresetKey] = useState<string>('construction');
+  const [wasteClause, setWasteClause] = useState<string>(WASTE_PRESETS.construction.text);
+  const [allowedWorkHours, setAllowedWorkHours] = useState<string>(
+    'בימים א\'-ה\' בין השעות 08:00 - 17:00, ובימי ו\' וערבי חג עד השעה 13:00'
+  );
+  const [workStartDate, setWorkStartDate] = useState<string>('');
+  const [workTargetEndDate, setWorkTargetEndDate] = useState<string>('');
+
+  // Sync waste clause when customer type (isSettlement) or preset changes, unless user typed custom text
+  useEffect(() => {
+    if (wastePresetKey !== 'custom' && WASTE_PRESETS[wastePresetKey as keyof typeof WASTE_PRESETS]) {
+      setWasteClause(WASTE_PRESETS[wastePresetKey as keyof typeof WASTE_PRESETS].text);
+    }
+  }, [isSettlement, wastePresetKey]);
+
+  const handleUpdatePhase = (index: number, field: keyof PaymentPhaseItem, value: any) => {
+    setPaymentPhases(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleAddPhase = () => {
+    setPaymentPhases(prev => {
+      const currentSum = prev.reduce((sum, p) => sum + (Number(p.percentage) || 0), 0);
+      const rem = Math.max(0, 100 - currentSum);
+      const nextNum = prev.length + 1;
+      return [
+        ...prev,
+        {
+          stageName: `שלב ${nextNum}`,
+          percentage: prev.length === 0 ? 100 : (rem > 0 ? rem : 10),
+          description: ''
+        }
+      ];
+    });
+  };
+
+  const handleRemovePhase = (index: number) => {
+    setPaymentPhases(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const totalPhasesPercentage = paymentPhases.reduce((sum, p) => sum + (Number(p.percentage) || 0), 0);
 
   // Attachments
   const [attachments, setAttachments] = useState<RfqAttachment[]>([]);
@@ -150,7 +261,6 @@ export default function NewRfqPage() {
   const [newVendorError, setNewVendorError] = useState('');
 
   // Customer Type Helpers
-  const isSettlement = tenantType?.toLowerCase() === 'municipality' || tenantType?.toLowerCase() === 'settlement';
   const locationFieldLabel = isSettlement ? 'מיקום מדויק בישוב' : 'מיקום מדויק בבניין';
   const locationFieldPlaceholder = isSettlement
     ? 'לדוגמה: ליד גן השעשועים המרכזי, רחוב הזית 4'
@@ -255,7 +365,7 @@ export default function NewRfqPage() {
         action: 'VENDOR_ADDED',
         actor: {
           uid: user?.uid || 'admin',
-          name: user?.displayName || user?.email || 'ועד הבית',
+          name: adminProfile?.fullName || user?.email?.split('@')[0] || 'ועד הבית',
           email: user?.email || undefined,
           type: 'admin'
         },
@@ -344,13 +454,13 @@ export default function NewRfqPage() {
     loadData();
   }, [tenantId]);
 
-  // 2. Auto-trigger ticket lookup if query parameter present
+  // 2. Auto-trigger ticket lookup if query parameter present (only when creating brand new RFQ, not when loading draft)
   useEffect(() => {
     const queryParam = searchParams.get('ticketNumber') || searchParams.get('ticket');
-    if (queryParam && tenantId) {
+    if (queryParam && tenantId && !draftId) {
       handleLookupTicket(queryParam);
     }
-  }, [tenantId]);
+  }, [tenantId, draftId]);
 
   // 3. Filter contractors based on active category
   const matchingVendors = vendors.filter(v => {
@@ -361,10 +471,85 @@ export default function NewRfqPage() {
     return hasCategory || hasLegacy;
   });
 
-  // Whenever matchingVendors change, auto-select all matching by default
+  // Whenever matchingVendors change, auto-select all matching by default (unless loading a draft with preserved selection)
   useEffect(() => {
+    if (draftId && draftLoadedRef.current) {
+      if (prevCategoryRef.current && prevCategoryRef.current !== category) {
+        prevCategoryRef.current = category;
+        setSelectedVendorIds(matchingVendors.map(v => v.id));
+      }
+      return;
+    }
+    prevCategoryRef.current = category;
     setSelectedVendorIds(matchingVendors.map(v => v.id));
-  }, [category, vendors]);
+  }, [category, vendors, draftId, matchingVendors.length]);
+
+  // 2b. Auto-load draft if draftId is present
+  useEffect(() => {
+    if (!draftId || !tenantId) return;
+
+    let isMounted = true;
+    getDoc(doc(db, "tenants", tenantId, "rfqs", draftId)).then(async snap => {
+      if (snap.exists() && isMounted) {
+        const d = snap.data();
+
+        // 1. Mark draft loaded immediately to protect vendor selection
+        draftLoadedRef.current = true;
+
+        // 2. Link ticket if linked to this draft, but strictly SKIP overwriting form fields!
+        if (d.ticketNumber) {
+          setTicketLookupNumber(String(d.ticketNumber));
+          await handleLookupTicket(String(d.ticketNumber), true);
+        } else if (d.ticketId) {
+          await handleLookupTicket(d.ticketId, true);
+        }
+
+        if (!isMounted) return;
+
+        // 3. Populate draft fields (guaranteed to reflect latest saved state)
+        if (d.title !== undefined) setTitle(d.title);
+        if (d.category) {
+          setCategoryPool(prev => prev.includes(d.category) ? prev : [d.category, ...prev]);
+          setCategory(d.category);
+          prevCategoryRef.current = d.category;
+        }
+        if (d.description !== undefined) setDescription(d.description);
+        if (d.location !== undefined) setLocation(d.location);
+        if (Array.isArray(d.attachments)) setAttachments(d.attachments);
+        if (d.createdAt) setLoadedDraftCreatedAt(d.createdAt);
+
+        if (d.paymentTerms) {
+          if (d.paymentTerms.mode) setPaymentMode(d.paymentTerms.mode);
+          if (d.paymentTerms.singleTermText) setSinglePaymentTerm(d.paymentTerms.singleTermText);
+          if (Array.isArray(d.paymentTerms.phases) && d.paymentTerms.phases.length > 0) {
+            setPaymentPhases(d.paymentTerms.phases);
+          }
+        }
+        if (d.wasteClause) setWasteClause(d.wasteClause);
+        if (d.allowedWorkHours) setAllowedWorkHours(d.allowedWorkHours);
+        if (d.workStartDate) setWorkStartDate(d.workStartDate);
+        if (d.workTargetEndDate) setWorkTargetEndDate(d.workTargetEndDate);
+
+        if (Array.isArray(d.dispatchedVendors) && d.dispatchedVendors.length > 0) {
+          setSelectedVendorIds(d.dispatchedVendors.map((v: any) => v.vendorId));
+        }
+
+        if (d.deadlineAt) {
+          setDeadlinePreset('custom');
+          try {
+            const dt = new Date(d.deadlineAt);
+            if (!isNaN(dt.getTime())) {
+              setCustomDeadline(dt.toISOString().slice(0, 16));
+            }
+          } catch (e) {}
+        }
+      }
+    }).catch(err => console.warn('Could not load draft RFQ:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [draftId, tenantId]);
 
   const handleSelectAllToggle = () => {
     if (selectedVendorIds.length === matchingVendors.length) {
@@ -381,7 +566,7 @@ export default function NewRfqPage() {
   };
 
   // Ticket Lookup Logic
-  const handleLookupTicket = async (numToSearch?: string) => {
+  const handleLookupTicket = async (numToSearch?: string, skipFieldsOverwrite = false) => {
     const rawVal = (numToSearch !== undefined ? numToSearch : ticketLookupNumber).trim();
     if (!rawVal || !tenantId) return;
 
@@ -420,20 +605,24 @@ export default function NewRfqPage() {
         return;
       }
 
-      // Auto-populate form
+      // Link ticket to RFQ
       setLinkedTicket(foundTicket);
-      if (foundTicket.category) {
-        setCategory(foundTicket.category);
-      }
-      if (foundTicket.summary) {
-        setTitle(foundTicket.summary);
-        setDescription(foundTicket.summary);
-      }
-      const locStr = [foundTicket.location, foundTicket.subLocation, foundTicket.floor]
-        .filter(Boolean)
-        .join(' - ');
-      if (locStr) {
-        setLocation(locStr);
+
+      // Only auto-populate form fields if not explicitly requested to skip (e.g. when loading a saved draft)
+      if (!skipFieldsOverwrite) {
+        if (foundTicket.category) {
+          setCategory(foundTicket.category);
+        }
+        if (foundTicket.summary) {
+          setTitle(foundTicket.summary);
+          setDescription(foundTicket.summary);
+        }
+        const locStr = [foundTicket.location, foundTicket.subLocation, foundTicket.floor]
+          .filter(Boolean)
+          .join(' - ');
+        if (locStr) {
+          setLocation(locStr);
+        }
       }
     } catch (err: any) {
       console.error("Ticket lookup error:", err);
@@ -581,6 +770,129 @@ export default function NewRfqPage() {
     return now.toISOString();
   };
 
+  // Save RFQ as Draft (Pillar 1)
+  const handleSaveDraft = async () => {
+    if (!tenantId) return;
+    setIsSavingDraft(true);
+    setFormError('');
+
+    try {
+      const deadlineIso = computeDeadlineIso();
+      const nowIso = new Date().toISOString();
+
+      const selectedVendorsList = vendors.filter(v => selectedVendorIds.includes(v.id));
+      const dispatchedRecords: DispatchedVendorRecord[] = selectedVendorsList.map(v => {
+        const tokenHash = btoa(`${tenantId}:${v.id}:${Date.now()}:${v.phone}`).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+        return {
+          vendorId: v.id,
+          vendorName: v.fullName,
+          phone: v.phone,
+          vendorType: v.vendorType || 'occasional',
+          companyId: v.companyId || '',
+          sentAt: nowIso,
+          tokenHash
+        };
+      });
+
+      let creatorName = adminProfile?.fullName || 'ועד הבית';
+      let creatorPhone: string | undefined = adminProfile?.mobile;
+      if (!adminProfile?.fullName && user?.uid && tenantId) {
+        try {
+          const uSnap = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
+          if (uSnap.exists()) {
+            const uData = uSnap.data();
+            const fullName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim();
+            if (fullName) creatorName = fullName;
+            if (uData.mobile || uData.phone) creatorPhone = uData.mobile || uData.phone;
+          }
+        } catch (e) {
+          console.warn('Could not fetch admin user details for RFQ creator:', e);
+        }
+      }
+
+      const draftTitle = title.trim() || `טיוטת מכרז - ${category}`;
+
+      const draftPayload: Record<string, any> = {
+        tenantId,
+        tenantName: tenantName || tenantId,
+        tenantType: tenantType || 'building',
+        title: draftTitle,
+        category,
+        description: description.trim(),
+        attachments: attachments || [],
+        targetCategory: category,
+        paymentTerms: {
+          mode: paymentMode,
+          ...(paymentMode === 'single' ? { singleTermText: singlePaymentTerm } : { phases: paymentPhases })
+        },
+        ...(wasteClause.trim() ? { wasteClause: wasteClause.trim() } : {}),
+        ...(allowedWorkHours.trim() ? { allowedWorkHours: allowedWorkHours.trim() } : {}),
+        ...(workStartDate ? { workStartDate } : {}),
+        ...(workTargetEndDate ? { workTargetEndDate } : {}),
+        dispatchedVendors: dispatchedRecords,
+        deadlineAt: deadlineIso,
+        status: 'draft',
+        createdBy: {
+          uid: user?.uid || 'admin',
+          name: creatorName,
+          ...(user?.email ? { email: user.email } : {}),
+          ...(creatorPhone ? { phone: creatorPhone } : {})
+        },
+        updatedAt: nowIso
+      };
+
+      if (linkedTicket?.id) {
+        draftPayload.ticketId = linkedTicket.id;
+      }
+      if (linkedTicket?.ticketNumber !== undefined && linkedTicket?.ticketNumber !== null) {
+        draftPayload.ticketNumber = linkedTicket.ticketNumber;
+      }
+      if (location.trim()) {
+        draftPayload.location = location.trim();
+      }
+      if (linkedTicket?.imageId) {
+        draftPayload.imageId = linkedTicket.imageId;
+      }
+      if (linkedTicket?.audioId) {
+        draftPayload.audioId = linkedTicket.audioId;
+      }
+
+      let savedDraftId = draftId;
+      if (draftId) {
+        await updateDoc(doc(db, "tenants", tenantId, "rfqs", draftId), draftPayload);
+      } else {
+        draftPayload.createdAt = nowIso;
+        const newDocRef = await addDoc(collection(db, "tenants", tenantId, "rfqs"), draftPayload);
+        savedDraftId = newDocRef.id;
+      }
+
+      await logAction({
+        tenantId,
+        action: 'RFQ_DRAFT_SAVED',
+        actor: {
+          uid: user?.uid || 'admin',
+          name: creatorName,
+          email: user?.email || undefined,
+          type: 'admin'
+        },
+        details: {
+          rfqId: savedDraftId,
+          title: draftTitle,
+          category,
+          isUpdate: Boolean(draftId)
+        }
+      });
+
+      // Redirect to quotes page with drafts tab open
+      navigate(`/admin/${tenantId}/quotes?tab=drafts&draftSaved=1`);
+    } catch (err: any) {
+      console.error("Error saving draft RFQ:", err);
+      setFormError("שגיאה בשמירת הטיוטה: " + (err.message || ""));
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
   // Submit & Dispatch RFQ
   const handleSubmitRfq = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -624,10 +936,10 @@ export default function NewRfqPage() {
         };
       });
 
-      // Grab work ordering contact info from adminUsers
-      let creatorName = user?.displayName || user?.email || 'ועד הבית';
-      let creatorPhone: string | undefined = undefined;
-      if (user?.uid && tenantId) {
+      // Grab work ordering contact info from adminUsers (Users tab)
+      let creatorName = adminProfile?.fullName || 'ועד הבית';
+      let creatorPhone: string | undefined = adminProfile?.mobile;
+      if (!adminProfile?.fullName && user?.uid && tenantId) {
         try {
           const uSnap = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
           if (uSnap.exists()) {
@@ -650,6 +962,14 @@ export default function NewRfqPage() {
         description: description.trim(),
         attachments: attachments || [],
         targetCategory: category,
+        paymentTerms: {
+          mode: paymentMode,
+          ...(paymentMode === 'single' ? { singleTermText: singlePaymentTerm } : { phases: paymentPhases })
+        },
+        ...(wasteClause.trim() ? { wasteClause: wasteClause.trim() } : {}),
+        ...(allowedWorkHours.trim() ? { allowedWorkHours: allowedWorkHours.trim() } : {}),
+        ...(workStartDate ? { workStartDate } : {}),
+        ...(workTargetEndDate ? { workTargetEndDate } : {}),
         dispatchedVendors: dispatchedRecords,
         deadlineAt: deadlineIso,
         status: 'open',
@@ -659,7 +979,7 @@ export default function NewRfqPage() {
           ...(user?.email ? { email: user.email } : {}),
           ...(creatorPhone ? { phone: creatorPhone } : {})
         },
-        createdAt: nowIso,
+        createdAt: loadedDraftCreatedAt || nowIso,
         updatedAt: nowIso
       };
 
@@ -679,11 +999,17 @@ export default function NewRfqPage() {
         rfqPayload.audioId = linkedTicket.audioId;
       }
 
-      const docRef = await addDoc(collection(db, "tenants", tenantId, "rfqs"), rfqPayload);
+      let publishedRfqId = draftId;
+      if (draftId) {
+        await updateDoc(doc(db, "tenants", tenantId, "rfqs", draftId), rfqPayload);
+      } else {
+        const docRef = await addDoc(collection(db, "tenants", tenantId, "rfqs"), rfqPayload);
+        publishedRfqId = docRef.id;
+      }
 
       // Audit Logs
       const auditDetails: Record<string, any> = {
-        rfqId: docRef.id,
+        rfqId: publishedRfqId,
         category,
         title: title.trim(),
         recipientCount: dispatchedRecords.length,
@@ -701,7 +1027,7 @@ export default function NewRfqPage() {
         action: 'RFQ_CREATED',
         actor: {
           uid: user?.uid || 'admin',
-          name: user?.displayName || user?.email || 'ועד הבית',
+          name: creatorName,
           email: user?.email || undefined,
           type: 'admin'
         },
@@ -713,12 +1039,12 @@ export default function NewRfqPage() {
         action: 'RFQ_BROADCAST_SENT',
         actor: {
           uid: user?.uid || 'admin',
-          name: user?.displayName || user?.email || 'ועד הבית',
+          name: creatorName,
           email: user?.email || undefined,
           type: 'admin'
         },
         details: {
-          rfqId: docRef.id,
+          rfqId: publishedRfqId,
           targetVendors: dispatchedRecords.map(d => ({ vendorId: d.vendorId, name: d.vendorName, phone: d.phone }))
         }
       });
@@ -730,10 +1056,10 @@ export default function NewRfqPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tenantId,
-            rfqId: docRef.id,
+            rfqId: publishedRfqId,
             actor: {
               uid: user?.uid || 'admin',
-              name: user?.displayName || user?.email || 'ועד הבית',
+              name: creatorName,
               email: user?.email || undefined
             }
           })
@@ -745,7 +1071,7 @@ export default function NewRfqPage() {
       }
 
       // Redirect to Active Quotes Page
-      navigate(`/admin/${tenantId}/quotes/active?newRfqId=${docRef.id}&sentCount=${dispatchedRecords.length}`);
+      navigate(`/admin/${tenantId}/quotes/active?newRfqId=${publishedRfqId}&sentCount=${dispatchedRecords.length}`);
     } catch (err: any) {
       console.error("Error creating RFQ:", err);
       setFormError(err.message || 'שגיאה ביצירת בקשת הצעת המחיר');
@@ -798,6 +1124,21 @@ export default function NewRfqPage() {
       </div>
 
       <form onSubmit={handleSubmitRfq} className="space-y-6">
+        {draftId && (
+          <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs md:text-sm font-bold flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-amber-100 text-amber-800 text-base">📝</span>
+              <span>אתה עורך כעת טיוטת מכרז שמורה. ניתן לשמור עדכונים כטיוטה או להפיץ לקבלנים.</span>
+            </div>
+            <Link
+              to={`/admin/${tenantId}/quotes?tab=drafts`}
+              className="text-amber-800 underline hover:text-amber-950 shrink-0 font-extrabold"
+            >
+              חזרה לרשימת הטיוטות
+            </Link>
+          </div>
+        )}
+
         {formError && (
           <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl text-sm font-bold flex items-center gap-2.5 animate-in fade-in">
             <AlertCircle size={20} className="shrink-0 text-red-500" />
@@ -1053,11 +1394,226 @@ export default function NewRfqPage() {
           </div>
         </div>
 
-        {/* Section 3: File Attachments */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm space-y-4">
+        {/* Section 3: Payment Terms, Waste Policy & Working Hours */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between">
             <label className="text-base font-black text-slate-800 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">3</span>
+              <span>תנאי ושלבי תשלום, פינוי פסולת ושעות עבודה</span>
+            </label>
+            <span className="text-xs text-blue-700 font-bold bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
+              {paymentMode === 'milestones' ? (paymentPhases.length > 0 ? `פריסה ל-${paymentPhases.length} שלבים` : 'שלבי ביצוע') : 'תשלום יחיד'}
+            </span>
+          </div>
+
+          {/* Mode Selector */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-6 border-b border-slate-100 pb-3 flex-wrap">
+              <span className="text-sm font-extrabold text-slate-700">אופן פריסת התשלום:</span>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-800 cursor-pointer">
+                <input
+                  type="radio"
+                  name="rfqPaymentMode"
+                  checked={paymentMode === 'milestones'}
+                  onChange={() => setPaymentMode('milestones')}
+                  className="accent-blue-600 w-4 h-4 cursor-pointer"
+                />
+                <span>שלבי ביצוע / אבני דרך</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-800 cursor-pointer">
+                <input
+                  type="radio"
+                  name="rfqPaymentMode"
+                  checked={paymentMode === 'single'}
+                  onChange={() => setPaymentMode('single')}
+                  className="accent-blue-600 w-4 h-4 cursor-pointer"
+                />
+                <span>תשלום יחיד בגמר העבודה</span>
+              </label>
+            </div>
+
+            {paymentMode === 'milestones' ? (
+              <div className="space-y-3 pt-1">
+                {/* Phases List */}
+                {paymentPhases.length === 0 ? (
+                  <div className="py-4 px-3 border border-dashed border-slate-200 rounded-xl text-center bg-slate-50/50">
+                    <p className="text-xs text-slate-500 font-medium">
+                      לא הוגדרו עדיין שלבי תשלום. לחץ על כפתור ״הוסף שלב תשלום״ להגדרת אבני דרך.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {paymentPhases.map((phase, idx) => (
+                      <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="text"
+                            value={phase.stageName}
+                            onChange={e => handleUpdatePhase(idx, 'stageName', e.target.value)}
+                            placeholder="שם השלב (לדוגמה: שלב 1 - גמר הריסות ופינוי)"
+                            className="flex-1 px-3 py-1.5 text-xs md:text-sm font-bold bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                          />
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-xs text-slate-500 font-bold">שיעור:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={phase.percentage}
+                              onChange={e => handleUpdatePhase(idx, 'percentage', Number(e.target.value))}
+                              className="w-16 px-2 py-1.5 text-xs md:text-sm font-bold text-center bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                            />
+                            <span className="text-xs font-bold text-slate-700">%</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhase(idx)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-white transition-colors cursor-pointer shrink-0"
+                            title="מחק שלב"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={phase.description || ''}
+                          onChange={e => handleUpdatePhase(idx, 'description', e.target.value)}
+                          placeholder="תיאור מהות השלב (לדוגמה: בסיום מלא של עבודות ההריסה ופינוי הפסולת)"
+                          className="w-full px-3 py-1 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Phase & Total Indicator */}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAddPhase}
+                    className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    <span>הוסף שלב תשלום</span>
+                  </button>
+
+                  {paymentPhases.length > 0 && (
+                    <div className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                      totalPhasesPercentage === 100
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-amber-100 text-amber-800 border border-amber-200'
+                    }`}>
+                      סה"כ: {totalPhasesPercentage}% {totalPhasesPercentage === 100 ? '✓' : '(מומלץ להגיע ל-100%)'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="pt-1">
+                <label className="block text-xs font-bold text-slate-600 mb-1">נוסח תנאי תשלום יחיד:</label>
+                <input
+                  type="text"
+                  value={singlePaymentTerm}
+                  onChange={e => setSinglePaymentTerm(e.target.value)}
+                  placeholder="לדוגמה: שוטף + 30 יום מגמר העבודה ומסירת האתר"
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs md:text-sm font-medium outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Waste Disposal Policy */}
+          <div className="pt-3 border-t border-slate-100 space-y-2.5">
+            <label className="block text-sm font-extrabold text-slate-700">
+              הנחיות פינוי פסולת וניקיון ({isSettlement ? 'מדיניות היישוב' : 'מדיניות הבניין'}):
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {Object.values(WASTE_PRESETS).map(preset => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    setWastePresetKey(preset.id);
+                    if (preset.id !== 'custom') {
+                      setWasteClause(preset.text);
+                    }
+                  }}
+                  className={`p-2.5 text-right rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    wastePresetKey === preset.id
+                      ? 'border-blue-600 bg-blue-50/70 text-blue-900 shadow-2xs'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <textarea
+              rows={2}
+              value={wasteClause}
+              onChange={e => {
+                setWasteClause(e.target.value);
+                setWastePresetKey('custom');
+              }}
+              placeholder="רשום כאן הנחיות ספציפיות לפינוי פסולת, מקום המכולה וכיוצ״ב..."
+              className="w-full border border-slate-200 rounded-xl p-2.5 text-xs md:text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800 font-medium leading-relaxed resize-none"
+            />
+          </div>
+
+          {/* Allowed Work Hours */}
+          <div className="pt-2 border-t border-slate-100">
+            <label className="block text-xs font-bold text-slate-600 mb-1">
+              שעות עבודה והרעשה מותרות באתר:
+            </label>
+            <input
+              type="text"
+              value={allowedWorkHours}
+              onChange={e => setAllowedWorkHours(e.target.value)}
+              placeholder="בימים א'-ה' בין השעות 08:00 - 17:00, ובימי ו' עד 13:00"
+              className="w-full border border-slate-200 rounded-xl p-2.5 text-xs md:text-sm font-medium outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800"
+            />
+          </div>
+
+          {/* Target Work Schedule / Dates */}
+          <div className="pt-2 border-t border-slate-100">
+            <span className="block text-xs font-extrabold text-slate-700 mb-2">
+              מועדי ביצוע מבוקשים (אופציונלי):
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  מועד תחילת עבודה מבוקש:
+                </label>
+                <input
+                  type="date"
+                  value={workStartDate}
+                  onChange={e => setWorkStartDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs md:text-sm font-medium outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  מועד סיום / מסירה מבוקש:
+                </label>
+                <input
+                  type="date"
+                  value={workTargetEndDate}
+                  onChange={e => setWorkTargetEndDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs md:text-sm font-medium outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              במידה ולא יוגדרו תאריכים מראש, ברירת המחדל בהסכם הינה תחילת עבודה תוך 3 ימי עסקים מחתימה ומשך ביצוע לפי הצעת הקבלן.
+            </p>
+          </div>
+        </div>
+
+        {/* Section 4: File Attachments */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <label className="text-base font-black text-slate-800 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">4</span>
               <span>מסמכים ומדיה מצורפים ({attachments.length} / {MAX_FILES})</span>
             </label>
             <span className="text-xs text-slate-500 font-bold">
@@ -1131,10 +1687,10 @@ export default function NewRfqPage() {
           )}
         </div>
 
-        {/* Section 4: Expiration / Validity */}
+        {/* Section 5: Expiration / Validity */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm space-y-4">
           <label className="text-base font-black text-slate-800 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">4</span>
+            <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">5</span>
             <span>מועד אחרון להגשת הצעות (תוקף הקישור לקבלנים)</span>
           </label>
 
@@ -1173,11 +1729,11 @@ export default function NewRfqPage() {
           )}
         </div>
 
-        {/* Section 5: Target Contractor Selection */}
+        {/* Section 6: Target Contractor Selection */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-base font-black text-slate-800 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">5</span>
+              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">6</span>
               <span>בחירת קבלנים לשליחה (תחום: {category})</span>
             </label>
 
@@ -1293,23 +1849,44 @@ export default function NewRfqPage() {
             ביטול
           </Link>
 
-          <button
-            type="submit"
-            disabled={submitting || selectedVendorIds.length === 0}
-            className="w-full md:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="animate-spin" size={18} />
-                <span>מפיץ בקשת הצעות מחיר...</span>
-              </>
-            ) : (
-              <>
-                <Share2 size={18} />
-                <span>שגר בקשת הצעת מחיר ל-{selectedVendorIds.length} קבלנים ב-WhatsApp 🚀</span>
-              </>
-            )}
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={isSavingDraft || submitting}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isSavingDraft ? (
+                <>
+                  <Loader2 className="animate-spin text-slate-500" size={18} />
+                  <span>שומר טיוטה...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={18} className="text-slate-500" />
+                  <span>{draftId ? 'עדכן טיוטה' : 'שמור כטיוטה'}</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="submit"
+              disabled={submitting || isSavingDraft || selectedVendorIds.length === 0}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-black shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="animate-spin" size={18} />
+                  <span>מפיץ בקשת הצעות מחיר...</span>
+                </>
+              ) : (
+                <>
+                  <Share2 size={18} />
+                  <span>שגר בקשת הצעת מחיר ל-{selectedVendorIds.length} קבלנים ב-WhatsApp 🚀</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
 

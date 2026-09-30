@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams, useLocation, useParams } from 'react-router-dom';
 import ResidentFlow from './pages/ResidentFlow';
 import LandingPage from './pages/LandingPage';
 import ResidentDashboard from './pages/ResidentDashboard';
@@ -12,11 +12,52 @@ import EnterpriseFleetDashboard from './pages/admin/EnterpriseFleetDashboard';
 import NewRfqPage from './pages/admin/NewRfqPage';
 import ActiveQuotesPage from './pages/admin/ActiveQuotesPage';
 import ContractorQuotePortal from './pages/ContractorQuotePortal';
+import RfqProductLandingPage from './pages/RfqProductLandingPage';
 
 import { AdminLayout } from './components/admin/AdminLayout';
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
 import { SuperAdminEnforcer } from './components/admin/SuperAdminEnforcer';
 import { useEffect } from 'react';
+
+function ScrollToTop() {
+    const { pathname, hash } = useLocation();
+
+    useEffect(() => {
+        if (hash) {
+            const element = document.getElementById(hash.replace('#', ''));
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+        }
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }, [pathname, hash]);
+
+    return null;
+}
+
+// Quick Short Redirect for WhatsApp Dynamic Button: /q/:slug -> /admin/:tenantId/quotes?rfqId=...
+function RfqQuickRedirect() {
+    const { slug } = useParams();
+    if (!slug) {
+        return <Navigate to="/" replace />;
+    }
+
+    const parts = slug.split('__');
+    const tenantId = parts[0];
+    const rfqId = parts[1];
+
+    if (!tenantId || !rfqId) {
+        return <Navigate to="/" replace />;
+    }
+
+    return (
+        <Navigate
+            to={`/admin/${tenantId}/quotes?rfqId=${rfqId}&modal=compare&alert=quote&tab=open`}
+            replace
+        />
+    );
+}
 
 // Wrapper to dynamically load LandingPage or ResidentFlow based on QR query params
 function HomeRoute() {
@@ -52,11 +93,20 @@ export default function App() {
     }, []);
 
     return (
-        <Routes>
+        <>
+            <ScrollToTop />
+            <Routes>
+            {/* WhatsApp Dynamic Button Short Redirect (Single Slug for Meta URL Validation) */}
+            <Route path="/q/:slug" element={<RfqQuickRedirect />} />
+
             {/* Resident facing UI -> strictly public */}
             <Route path="/" element={<HomeRoute />} />
             <Route path="/report/:tenantId" element={<ResidentFlow />} />
             <Route path="/report/:tenantId/dashboard" element={<ResidentDashboard />} />
+
+            {/* Dedicated Product Page for RFQ Procurement */}
+            <Route path="/rfq" element={<RfqProductLandingPage />} />
+            <Route path="/procurement" element={<Navigate to="/rfq" replace />} />
 
             {/* Contractor Facing RFQ Quoting Portal -> strictly public */}
             <Route path="/quote/:rfqId" element={<ContractorQuotePortal />} />
@@ -93,5 +143,6 @@ export default function App() {
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </>
     );
 }

@@ -116,6 +116,13 @@
                 }
             },
             {
+                "source": "/api/notifyQuoteSubmission",
+                "function": {
+                    "functionId": "notifyQuoteSubmission",
+                    "region": "us-central1"
+                }
+            },
+            {
                 "source": "/api/checkAuth",
                 "function": {
                     "functionId": "checkAuth",

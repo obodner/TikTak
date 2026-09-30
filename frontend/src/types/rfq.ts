@@ -14,7 +14,7 @@ export interface Vendor {
   updatedAt?: string;
 }
 
-export type RfqStatus = 'open' | 'awarded' | 'expired' | 'cancelled';
+export type RfqStatus = 'draft' | 'open' | 'awarded' | 'expired' | 'cancelled';
 
 export interface DispatchedVendorRecord {
   vendorId: string;
@@ -34,6 +34,30 @@ export interface RfqAttachment {
   mimeType?: string;
 }
 
+export interface PaymentPhaseItem {
+  stageName: string;
+  description?: string;
+  percentage: number;
+}
+
+export interface PaymentTermsConfig {
+  mode: 'single' | 'milestones';
+  singleTermText?: string;
+  phases?: PaymentPhaseItem[];
+}
+
+export interface ContractCustomizationData {
+  scopeText?: string;
+  workStartDate?: string;
+  workEndDate?: string;
+  customClauses?: Array<{ id: string; title: string; content: string }>;
+  paymentMode?: 'milestones' | 'single';
+  singlePaymentTerm?: string;
+  milestones?: any[];
+  wasteClauseText?: string;
+  updatedAt?: string;
+}
+
 export interface WorkQuoteRequest {
   id: string;
   tenantId: string;
@@ -51,6 +75,14 @@ export interface WorkQuoteRequest {
   imageId?: string;
   audioId?: string;
   attachments?: RfqAttachment[];
+  
+  // Payment terms, waste clause & working conditions
+  paymentTerms?: PaymentTermsConfig;
+  wasteClause?: string;
+  allowedWorkHours?: string;
+  workStartDate?: string;
+  workTargetEndDate?: string;
+  contractCustomizations?: ContractCustomizationData;
   
   // Recipient selection
   targetCategory: string;

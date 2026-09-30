@@ -4544,3 +4544,189 @@ export const dispatchRfqToVendors = onRequest({ cors: true, secrets: ["WHATSAPP_
   }
 });
 
+/**
+ * Push WhatsApp Notification to Admin upon Incoming Quote Submission
+ * Includes dynamic link button to view & compare quotes in Admin RFQs hub
+ */
+export const notifyQuoteSubmission = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      res.status(405).send({ error: "Method not allowed. Use POST." });
+      return;
+    }
+
+    const { tenantId, rfqId, submissionId } = req.body || {};
+    if (!tenantId || !rfqId || !submissionId) {
+      res.status(400).send({ error: "Missing required parameters (tenantId, rfqId, submissionId)" });
+      return;
+    }
+
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!token) {
+      res.status(500).send({ error: "WhatsApp access token not configured" });
+      return;
+    }
+
+    // 1. Fetch Tenant Document (Strict Multi-Tenancy Scoping)
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const tenantSnap = await tenantRef.get();
+    if (!tenantSnap.exists) {
+      res.status(404).send({ error: "Tenant not found" });
+      return;
+    }
+    const tenantData = tenantSnap.data() || {};
+    const phoneNumberId = tenantData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+    const tenantName = tenantData.name || tenantId;
+    const tenantAddress = tenantData.address || "";
+    const customerSiteStr = tenantAddress ? `${tenantName} (${tenantAddress})` : tenantName;
+
+    // 2. Fetch RFQ Document
+    const rfqRef = tenantRef.collection("rfqs").doc(rfqId);
+    const rfqSnap = await rfqRef.get();
+    if (!rfqSnap.exists) {
+      res.status(404).send({ error: "RFQ not found" });
+      return;
+    }
+    const rfqData = rfqSnap.data() || {};
+
+    // 3. Fetch Submission Document
+    const subRef = rfqRef.collection("submissions").doc(submissionId);
+    const subSnap = await subRef.get();
+    if (!subSnap.exists) {
+      res.status(404).send({ error: "Submission not found" });
+      return;
+    }
+    const subData = subSnap.data() || {};
+
+    // 4. Resolve Target Admin & Phone
+    let adminName = rfqData.createdBy?.name || "מנהל/ת המערכת";
+    let adminPhone = rfqData.createdBy?.phone || "";
+    const adminUid = rfqData.createdBy?.uid;
+
+    if (!adminPhone && adminUid) {
+      try {
+        const adminSnap = await tenantRef.collection("adminUsers").doc(adminUid).get();
+        if (adminSnap.exists) {
+          const aData = adminSnap.data() || {};
+          adminPhone = aData.mobile || aData.phone || "";
+          if (aData.firstName || aData.lastName) {
+            adminName = `${aData.firstName || ''} ${aData.lastName || ''}`.trim() || adminName;
+          }
+        }
+      } catch (adminErr) {
+        logger.warn(`Could not resolve admin phone for uid ${adminUid}:`, adminErr);
+      }
+    }
+
+    if (!adminPhone) {
+      adminPhone = tenantData.vaadPhone || tenantData.contactPhone || tenantData.phone || "";
+    }
+
+    let cleanPhone = String(adminPhone || "").replace(/\D/g, "");
+    if (cleanPhone.startsWith("0")) {
+      cleanPhone = "972" + cleanPhone.substring(1);
+    }
+
+    if (!cleanPhone || cleanPhone.length < 8) {
+      logger.warn(`No valid admin phone found for tenant ${tenantId}, RFQ #${rfqId}`);
+      res.status(400).send({ error: "No valid admin phone number found to notify" });
+      return;
+    }
+
+    // 5. Build Dynamic Link Button Suffix & Message Variables
+    const vendorName = subData.vendorName || "קבלן";
+    const priceNum = subData.price || 0;
+    const vatSuffix = subData.priceIncludesVat ? 'כולל מע"מ' : '+ מע"מ';
+    const priceFormatted = `₪${priceNum.toLocaleString()} (${vatSuffix})`;
+    const durationStr = subData.estimatedDuration || "לפי תיאום";
+    const titleWithNum = rfqData.ticketNumber ? `${rfqData.title} (#${rfqData.ticketNumber})` : rfqData.title;
+
+    // Dynamic Link Button Suffix (fills {{1}} in Meta template button URL: https://tiktak2026.web.app/q/{{1}})
+    const buttonSuffix = `${tenantId}__${rfqId}`;
+
+    const templateParams = [
+      sanitizeParam(adminName),
+      sanitizeParam(vendorName),
+      sanitizeParam(titleWithNum),
+      sanitizeParam(customerSiteStr),
+      sanitizeParam(priceFormatted),
+      sanitizeParam(durationStr)
+    ];
+
+    let metaMessageId: string | null = null;
+    let deliveryMethod = "template";
+
+    try {
+      // Attempt 1: Meta Template with Dynamic Link Button
+      const resp: any = await sendWhatsAppTemplate(
+        cleanPhone,
+        "admin_new_quote_alert",
+        "he",
+        templateParams,
+        phoneNumberId,
+        token,
+        buttonSuffix
+      );
+      metaMessageId = resp?.messages?.[0]?.id || null;
+      logger.info(`Successfully dispatched admin_new_quote_alert template to admin ${cleanPhone}`);
+    } catch (templateErr: any) {
+      logger.warn(`Template admin_new_quote_alert failed (${templateErr?.message}), falling back to direct formatted text...`);
+      deliveryMethod = "text_fallback";
+
+      const fallbackText =
+        `שלום ${adminName},\n` +
+        `🔔 *התקבלה הצעת מחיר חדשה ב-TikTak!*\n\n` +
+        `📋 *מכרז:* ${titleWithNum}\n` +
+        `🏢 *אתר:* ${customerSiteStr}\n` +
+        `🛠️ *קבלן:* ${vendorName}\n` +
+        `💰 *סכום ההצעה:* ${priceFormatted}\n` +
+        `⏱️ *משך ביצוע:* ${durationStr}\n` +
+        (subData.notes ? `💬 *הערות הקבלן:* ${subData.notes}\n` : '') +
+        `\n📊 *לצפייה בהצעה והשוואה במערכת:*\n` +
+        `https://tiktak2026.web.app/q/${buttonSuffix}`;
+
+      try {
+        const textResp: any = await sendWhatsAppText(cleanPhone, fallbackText, phoneNumberId, token);
+        metaMessageId = textResp?.messages?.[0]?.id || null;
+        logger.info(`Successfully dispatched fallback text quote notification to admin ${cleanPhone}`);
+      } catch (textErr: any) {
+        logger.error(`Failed to send WhatsApp quote notification to admin ${cleanPhone}:`, textErr);
+        throw textErr;
+      }
+    }
+
+    // 6. Record Audit Log
+    await recordAuditLog({
+      tenantId,
+      action: "QUOTE_NOTIFICATION_SENT",
+      level: "INFO",
+      actor: {
+        uid: "system",
+        name: "TikTak System",
+        type: "admin"
+      },
+      details: {
+        rfqId,
+        submissionId,
+        vendorName,
+        price: priceNum,
+        recipientName: adminName,
+        recipientPhone: cleanPhone,
+        deliveryMethod,
+        whatsappMessageId: metaMessageId
+      }
+    });
+
+    res.status(200).send({
+      success: true,
+      deliveryMethod,
+      metaMessageId,
+      recipient: cleanPhone
+    });
+  } catch (err: any) {
+    logger.error("Exception in notifyQuoteSubmission:", err);
+    res.status(500).send({ error: err.message || "Failed to notify admin" });
+  }
+});
+
+

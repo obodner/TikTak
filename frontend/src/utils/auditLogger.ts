@@ -1,5 +1,8 @@
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+
+// In-memory cache for admin user full names: `${tenantId}_${uid}` => `${firstName} ${lastName}`
+const adminNameCache = new Map<string, string>();
 
 export type AuditAction = 
   | 'TICKET_CREATED' 
@@ -35,13 +38,16 @@ export type AuditAction =
   | 'RFQ_CREATED'
   | 'RFQ_BROADCAST_SENT'
   | 'RFQ_WHATSAPP_DISPATCHED'
+  | 'RFQ_DRAFT_SAVED'
+  | 'RFQ_DRAFT_DELETED'
   | 'VENDOR_QUOTE_SUBMITTED'
   | 'VENDOR_QUOTE_UPDATED'
   | 'RFQ_AWARDED'
   | 'RFQ_CANCELLED'
   | 'RFQ_EXPIRED'
   | 'CONTRACTOR_AUTH_SUCCESS'
-  | 'CONTRACTOR_AUTH_FAILED';
+  | 'CONTRACTOR_AUTH_FAILED'
+  | 'QUOTE_NOTIFICATION_SENT';
 
 export interface AuditActor {
   uid: string;
@@ -66,6 +72,43 @@ export const logAction = async (params: {
 }) => {
   const { tenantId, action, actor, details = {}, changes = null, level = 'INFO' } = params;
 
+  // Resolve authoritative admin name from adminUsers collection (Users tab in settings)
+  let resolvedActorName = actor.name;
+  if (actor.type === 'admin' && actor.uid && actor.uid !== 'admin' && tenantId) {
+    const cacheKey = `${tenantId}_${actor.uid}`;
+    if (adminNameCache.has(cacheKey)) {
+      resolvedActorName = adminNameCache.get(cacheKey)!;
+    } else {
+      const sessionCached = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`tiktak_admin_name_${cacheKey}`) : null;
+      if (sessionCached) {
+        resolvedActorName = sessionCached;
+        adminNameCache.set(cacheKey, sessionCached);
+      } else {
+        try {
+          const uDoc = await getDoc(doc(db, "tenants", tenantId, "adminUsers", actor.uid));
+          if (uDoc.exists()) {
+            const uData = uDoc.data();
+            const fullName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim();
+            if (fullName) {
+              resolvedActorName = fullName;
+              adminNameCache.set(cacheKey, fullName);
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem(`tiktak_admin_name_${cacheKey}`, fullName);
+              }
+            }
+          }
+        } catch (e) {
+          // If Firestore read fails, fallback to provided name
+        }
+      }
+    }
+  }
+
+  const effectiveActor: AuditActor = {
+    ...actor,
+    name: resolvedActorName || actor.name
+  };
+
   // Set expireAt to 7 years from now
   const expireAt = new Date();
   expireAt.setFullYear(expireAt.getFullYear() + 7);
@@ -74,7 +117,7 @@ export const logAction = async (params: {
     tenantId, // Top-level for easy filtering
     action,
     level,
-    actor,
+    actor: effectiveActor,
     details,
     changes,
     metadata: {

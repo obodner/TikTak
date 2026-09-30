@@ -266,7 +266,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'NOTICE_BANNER_PINNED', 'NOTICE_BANNER_REMOVED', 'ANALYTICS_REPORT_EXPORTED',
         'RFQ_CREATED', 'RFQ_BROADCAST_SENT', 'RFQ_WHATSAPP_DISPATCHED', 'VENDOR_QUOTE_SUBMITTED', 'VENDOR_QUOTE_UPDATED',
         'RFQ_AWARDED', 'RFQ_CANCELLED', 'RFQ_EXPIRED',
-        'CONTRACTOR_AUTH_SUCCESS', 'CONTRACTOR_AUTH_FAILED'
+        'CONTRACTOR_AUTH_SUCCESS', 'CONTRACTOR_AUTH_FAILED', 'QUOTE_NOTIFICATION_SENT'
     ];
 
     const actionLabels: Record<string, { he: string; en: string }> = {
@@ -316,6 +316,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'RFQ_EXPIRED': { he: 'פקיעת תוקף בקשת הצעת מחיר', en: 'RFQ Expired' },
         'CONTRACTOR_AUTH_SUCCESS': { he: 'אימות קבלן מורשה מוצלח (Whitelist)', en: 'Contractor Whitelist Verified' },
         'CONTRACTOR_AUTH_FAILED': { he: 'ניסיון אימות קבלן נכשל (גישה חסומה 403)', en: 'Contractor Auth Blocked (403)' },
+        'QUOTE_NOTIFICATION_SENT': { he: 'התראת WhatsApp למנהל על הצעת מחיר', en: 'Quote WhatsApp Alert Sent' },
     };
 
     const statusMap: Record<string, { he: string; en: string }> = {
@@ -726,6 +727,18 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     ? `${actor} created work quote request (RFQ)${titleStr}${tRef}${countStr} in ${tenantName}`
                     : `${actor} פתח/ה בקשה להצעת מחיר (RFQ)${titleStr}${tRef}${countStr} בבניין ${tenantName}`;
             }
+            case 'RFQ_DRAFT_SAVED': {
+                const titleStr = log.details?.title ? ` "${log.details.title}"` : '';
+                return isEn
+                    ? `${actor} saved draft quote request (RFQ)${titleStr} in ${tenantName}`
+                    : `${actor} שמר/ה טיוטת מכרז${titleStr} בבניין ${tenantName}`;
+            }
+            case 'RFQ_DRAFT_DELETED': {
+                const titleStr = log.details?.title ? ` "${log.details.title}"` : '';
+                return isEn
+                    ? `${actor} deleted draft quote request (RFQ)${titleStr} in ${tenantName}`
+                    : `${actor} מחק/ה טיוטת מכרז${titleStr} בבניין ${tenantName}`;
+            }
             case 'RFQ_WHATSAPP_DISPATCHED':
             case 'RFQ_BROADCAST_SENT': {
                 const reqCount = log.details?.requestedCount;
@@ -805,6 +818,14 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `Blocked unauthorized access attempt (403)${tail} for contractor ${vName} in ${tenantName}`
                     : `נחסם ניסיון כניסה לא מורשה (403)${tail} עבור הקבלן ${vName} בבניין ${tenantName}`;
+            }
+            case 'QUOTE_NOTIFICATION_SENT': {
+                const vName = log.details?.vendorName || 'קבלן';
+                const price = log.details?.price ? ` (₪${log.details.price.toLocaleString()})` : '';
+                const recPhone = log.details?.recipientPhone ? ` (${log.details.recipientPhone})` : '';
+                return isEn
+                    ? `WhatsApp notification sent to admin${recPhone} for new quote by ${vName}${price} in ${tenantName}`
+                    : `התראת וואטסאפ נשלחה למנהל/ת המכרז${recPhone} על הצעת מחיר חדשה מאת ${vName}${price} בבניין ${tenantName}`;
             }
             default: {
                 const actionLabel = isEn

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -204,15 +203,6 @@ export default function LandingPage() {
             >
               {isRtl ? 'פיצ׳רים' : 'Features'}
             </button>
-            <Link
-              to="/rfq"
-              className="inline-flex items-center gap-1.5 hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 text-slate-700 font-medium hover:font-bold"
-            >
-              <span>{isRtl ? 'מכרזי קבלנים (RFQ)' : 'Contractor RFQs'}</span>
-              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded-full border border-emerald-200">
-                {isRtl ? 'חדש' : 'NEW'}
-              </span>
-            </Link>
             <button
               onClick={() => scrollToSection('about')}
               className={`hover:text-blue-600 transition-all cursor-pointer whitespace-nowrap py-1 ${activeSection === 'about' ? 'text-blue-600 font-black border-b-2 border-blue-600' : 'text-slate-600'
@@ -238,12 +228,6 @@ export default function LandingPage() {
 
           {/* Left CTAs & Language Switcher */}
           <div className="flex items-center gap-3 shrink-0">
-            <Link
-              to="/admin/login"
-              className="text-slate-600 hover:text-blue-600 font-bold text-xs md:text-sm px-2.5 py-2 transition-colors cursor-pointer whitespace-nowrap hidden sm:inline-block"
-            >
-              {isRtl ? 'כניסת מנהלים' : 'Admin Login'}
-            </Link>
             <button
               onClick={() => i18n.changeLanguage(isRtl ? 'en' : 'he')}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-700 hover:bg-slate-100 hover:border-slate-300 active:scale-95 transition-all cursor-pointer select-none"
@@ -801,32 +785,6 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-
-          {/* RFQ Spotlight Banner */}
-          <div className="mt-12 bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white rounded-3xl p-8 md:p-10 shadow-xl border border-blue-900/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden" dir={isRtl ? 'rtl' : 'ltr'}>
-            <div className="space-y-3 max-w-2xl text-right">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-xs font-bold">
-                <span>{isRtl ? 'חדש במערכת' : 'New Module'}</span>
-                <span>•</span>
-                <span>{isRtl ? 'מודול רכש ומכרזי קבלנים (RFQ)' : 'RFQ Contractor Procurement'}</span>
-              </div>
-              <h3 className="text-2xl md:text-3xl font-black">
-                {isRtl ? 'תקלה מורכבת דורשת קבלן? השוו הצעות מחיר וחתמו הסכם תוך 24 שעות' : 'Complex repair? Compare quotes and sign agreements within 24 hours'}
-              </h3>
-              <p className="text-slate-300 text-sm md:text-base leading-relaxed font-medium">
-                {isRtl ? 'הפכו תקלות יקרות למכרז שקוף: הזמנת ספקים לפורטל מאובטח, השוואת מחירים אוטומטית במטריצה שקופה, והפקת הסכם עבודה חתום דיגיטלית להגנה מלאה על תקציב הוועד.' : 'Turn expensive repairs into transparent tenders: invite vendors via instant links, compare prices side-by-side, and issue legally protected work orders.'}
-              </p>
-            </div>
-            <div className="shrink-0">
-              <Link
-                to="/rfq"
-                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-blue-500/25 transition-all active:scale-95 text-base whitespace-nowrap"
-              >
-                <span>{isRtl ? 'גלו את מערכת המכרזים' : 'Explore RFQ Module'}</span>
-                {isRtl ? <ArrowLeft size={18} /> : <ArrowRight size={18} />}
-              </Link>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -1239,36 +1197,6 @@ export default function LandingPage() {
             >
               {isRtl ? 'לשיחת ייעוץ והתאמה' : 'Contact Enterprise Sales'}
             </button>
-          </div>
-
-          {/* RFQ Add-on Note in Pricing */}
-          <div className="mt-8 bg-emerald-50/80 border border-emerald-200/90 rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm" dir={isRtl ? 'rtl' : 'ltr'}>
-            <div className="flex items-start md:items-center gap-4 text-right">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl shrink-0 font-bold">
-                📑
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider bg-emerald-200/70 text-emerald-900 px-2.5 py-0.5 rounded-full">
-                    {isRtl ? 'תוסף רכש שנתי' : 'Annual Add-on'}
-                  </span>
-                  <h5 className="font-black text-slate-900 text-lg">
-                    {isRtl ? 'מעוניינים גם במכרזי קבלנים והשוואת הצעות מחיר?' : 'Looking for Contractor RFQs & Price Comparisons?'}
-                  </h5>
-                </div>
-                <p className="text-slate-600 text-sm font-medium leading-relaxed">
-                  {isRtl
-                    ? 'מודול הרכש (RFQ) פועל כתוסף ייעודי עם בנק מכרזים שנתי גמיש החל מ-₪179 למכרז — כולל השוואת הצעות, חוזה חתום וצבירת יתרות ללא תפוגה.'
-                    : 'The RFQ module is an add-on with an annual credit bank starting at ₪179/RFQ — including quotes comparison, signed contracts & rollover.'}
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/rfq#pricing"
-              className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-3.5 rounded-xl transition-all shadow-md shadow-emerald-600/15 whitespace-nowrap active:scale-95 text-center"
-            >
-              {isRtl ? 'למחירון מכרזי קבלנים ←' : 'View RFQ Pricing ←'}
-            </Link>
           </div>
 
           <div className="mt-12 text-center">

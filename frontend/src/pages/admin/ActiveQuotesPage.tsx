@@ -7,7 +7,8 @@ import {
   orderBy,
   doc,
   getDoc,
-  updateDoc
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
@@ -33,11 +34,14 @@ import {
   Maximize2,
   AlertTriangle,
   RotateCcw,
-  FileCheck2
+  FileCheck2,
+  FileEdit,
+  Trash2
 } from 'lucide-react';
 import { WorkQuoteRequest, VendorQuoteSubmission, RfqStatus } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
 import WorkOrderContractModal from '../../components/admin/WorkOrderContractModal';
+import { ConfirmModal } from '../../components/admin/ConfirmModal';
 import { normalizePhone } from '../../utils/whatsapp';
 
 const AWARD_REASON_PRESETS = [
@@ -65,19 +69,33 @@ export default function ActiveQuotesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthState();
 
-  // URL Banner params
+  // URL Banner & Deep Link params
   const newRfqId = searchParams.get('newRfqId');
+  const rfqIdParam = searchParams.get('rfqId');
+  const targetRfqId = rfqIdParam || newRfqId;
+  const modalParam = searchParams.get('modal');
+  const isQuoteAlert = searchParams.get('alert') === 'quote' || modalParam === 'compare';
   const sentCount = searchParams.get('sentCount');
+  const draftSaved = searchParams.get('draftSaved');
 
   // State
   const [rfqs, setRfqs] = useState<WorkQuoteRequest[]>([]);
   const [submissionsByRfq, setSubmissionsByRfq] = useState<Record<string, VendorQuoteSubmission[]>>({});
   const [loading, setLoading] = useState(true);
   const [expandedRfqIds, setExpandedRfqIds] = useState<string[]>([]);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'has_quotes' | 'closed'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'closed' | 'drafts'>(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'drafts') return 'drafts';
+    if (tab === 'open' || tab === 'closed') return tab;
+    return 'all';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Draft deletion state
+  const [draftToDelete, setDraftToDelete] = useState<WorkQuoteRequest | null>(null);
+  const [isDeletingDraft, setIsDeletingDraft] = useState(false);
 
   // Month grouping collapse state
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<string[]>([]);
@@ -114,6 +132,30 @@ export default function ActiveQuotesPage() {
   const [statusChanging, setStatusChanging] = useState(false);
   const [dispatchingVendorId, setDispatchingVendorId] = useState<string | null>(null);
 
+  // Current logged in admin profile (from adminUsers collection / Users tab)
+  const [adminProfile, setAdminProfile] = useState<{
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    mobile?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!tenantId || !user?.uid) return;
+    getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid)).then(snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim();
+        setAdminProfile({
+          firstName: d.firstName,
+          lastName: d.lastName,
+          fullName: fullName || undefined,
+          mobile: d.mobile || d.phone
+        });
+      }
+    }).catch(e => console.warn('Could not load current admin profile:', e));
+  }, [tenantId, user?.uid]);
+
   // 1. Real-time listener for RFQ requests
   useEffect(() => {
     if (!tenantId) return;
@@ -131,9 +173,15 @@ export default function ActiveQuotesPage() {
       setRfqs(items);
       setLoading(false);
 
-      // Auto-expand newly created RFQ if present in query params
-      if (newRfqId && items.some(item => item.id === newRfqId)) {
-        setExpandedRfqIds(prev => Array.from(new Set([...prev, newRfqId])));
+      // Auto-open comparison modal & auto-expand target RFQ if present in query params
+      if (targetRfqId) {
+        const targetRfq = items.find(item => item.id === targetRfqId);
+        if (targetRfq) {
+          setExpandedRfqIds(prev => Array.from(new Set([...prev, targetRfqId])));
+          if (modalParam === 'compare' || isQuoteAlert) {
+            setComparisonModalRfq(targetRfq);
+          }
+        }
       }
     }, (err) => {
       console.error("Error loading RFQs:", err);
@@ -189,6 +237,18 @@ export default function ActiveQuotesPage() {
 
     return () => unsubscribe();
   }, [tenantId, newRfqId]);
+
+  // Auto-scroll to target RFQ card smoothly if specified in URL params
+  useEffect(() => {
+    if (!targetRfqId || loading) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`rfq-${targetRfqId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [targetRfqId, loading]);
 
   // 2. Fetch submissions for all RFQs
   useEffect(() => {
@@ -253,6 +313,23 @@ export default function ActiveQuotesPage() {
         color: 'text-amber-700 bg-amber-50 border-amber-200'
       };
     }
+  };
+
+  // Lifecycle helpers: check if RFQ is expired based on status or past deadline
+  const isRfqExpired = (rfq: WorkQuoteRequest) => {
+    if (rfq.status === 'expired') return true;
+    if (rfq.status === 'open' && rfq.deadlineAt) {
+      return new Date(rfq.deadlineAt).getTime() <= Date.now();
+    }
+    return false;
+  };
+
+  const isRfqOpen = (rfq: WorkQuoteRequest) => {
+    return rfq.status === 'open' && !isRfqExpired(rfq);
+  };
+
+  const isRfqClosed = (rfq: WorkQuoteRequest) => {
+    return rfq.status === 'awarded' || rfq.status === 'cancelled' || isRfqExpired(rfq);
   };
 
   // Helper: Copy contractor link
@@ -566,10 +643,16 @@ export default function ActiveQuotesPage() {
     try {
       const nowIso = new Date().toISOString();
       const rfqRef = doc(db, "tenants", tenantId, "rfqs", rfq.id);
-      await updateDoc(rfqRef, {
+      const updates: Record<string, any> = {
         status: newStatus,
         updatedAt: nowIso
-      });
+      };
+      if (newStatus === 'open' && isRfqExpired(rfq)) {
+        const extendedDate = new Date();
+        extendedDate.setDate(extendedDate.getDate() + 7);
+        updates.deadlineAt = extendedDate.toISOString();
+      }
+      await updateDoc(rfqRef, updates);
 
       // Audit Log
       await logAction({
@@ -597,14 +680,54 @@ export default function ActiveQuotesPage() {
     }
   };
 
+  // Sync active tab with URL searchParams if changed externally
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'drafts') setActiveFilter('drafts');
+    else if (tab === 'open' || tab === 'closed') setActiveFilter(tab);
+    else if (tab === 'all') setActiveFilter('all');
+  }, [searchParams]);
+
+  // Delete Draft RFQ
+  const handleDeleteDraft = async () => {
+    if (!tenantId || !draftToDelete) return;
+    setIsDeletingDraft(true);
+    try {
+      await deleteDoc(doc(db, "tenants", tenantId, "rfqs", draftToDelete.id));
+
+      await logAction({
+        tenantId,
+        action: 'RFQ_DRAFT_DELETED',
+        actor: {
+          uid: user?.uid || 'admin',
+          name: adminProfile?.fullName || user?.displayName || user?.email || 'ועד הבית',
+          email: user?.email || undefined,
+          type: 'admin'
+        },
+        details: {
+          draftId: draftToDelete.id,
+          title: draftToDelete.title,
+          category: draftToDelete.category,
+          ticketNumber: draftToDelete.ticketNumber
+        }
+      });
+
+      setRfqs(prev => prev.filter(r => r.id !== draftToDelete.id));
+      setDraftToDelete(null);
+    } catch (err: any) {
+      console.error("Error deleting draft RFQ:", err);
+      alert("שגיאה במחיקת הטיוטה: " + (err.message || ''));
+    } finally {
+      setIsDeletingDraft(false);
+    }
+  };
+
   // Filter & Search Logic
   const filteredRfqs = rfqs.filter(rfq => {
-    const subs = submissionsByRfq[rfq.id] || [];
-
     // Filter by Tab
-    if (activeFilter === 'open' && rfq.status !== 'open') return false;
-    if (activeFilter === 'has_quotes' && subs.length === 0) return false;
-    if (activeFilter === 'closed' && rfq.status !== 'awarded' && rfq.status !== 'cancelled' && rfq.status !== 'expired') return false;
+    if (activeFilter === 'drafts' && rfq.status !== 'draft') return false;
+    if (activeFilter === 'open' && !isRfqOpen(rfq)) return false;
+    if (activeFilter === 'closed' && !isRfqClosed(rfq)) return false;
 
     // Search query
     if (searchQuery.trim()) {
@@ -619,10 +742,10 @@ export default function ActiveQuotesPage() {
     return true;
   });
 
-  // Tab counters (Bug requirement #1)
-  const openCount = rfqs.filter(r => r.status === 'open').length;
-  const hasQuotesCount = rfqs.filter(r => (submissionsByRfq[r.id] || []).length > 0).length;
-  const closedCount = rfqs.filter(r => r.status === 'awarded' || r.status === 'cancelled' || r.status === 'expired').length;
+  // Tab counters
+  const openCount = rfqs.filter(r => isRfqOpen(r)).length;
+  const closedCount = rfqs.filter(r => isRfqClosed(r)).length;
+  const draftsCount = rfqs.filter(r => r.status === 'draft').length;
 
   // Month-Year Key Helper
   const getMonthYearKey = (isoString?: string) => {
@@ -692,8 +815,35 @@ export default function ActiveQuotesPage() {
         </Link>
       </div>
 
+      {/* Alert Notification Banner for Incoming Quote */}
+      {targetRfqId && isQuoteAlert && (
+        <div className="mt-4 p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between gap-3 animate-in fade-in shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <Receipt size={22} className="text-blue-600 shrink-0" />
+            <div>
+              <p className="text-sm font-extrabold">התקבלה הצעת מחיר חדשה עבור פנייה זו! 📥</p>
+              <p className="text-xs text-blue-700">
+                מסך השוואת ההצעות המלא נפתח אוטומטית. תוכל גם לצפות ולנהל את ההצעות ישירות מהכרטיס המורחב מטה.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              searchParams.delete('modal');
+              searchParams.delete('alert');
+              searchParams.delete('rfqId');
+              searchParams.delete('newRfqId');
+              setSearchParams(searchParams);
+            }}
+            className="text-xs font-bold text-blue-700 hover:text-blue-900 px-2 py-1 rounded-lg hover:bg-blue-100/50 cursor-pointer"
+          >
+            סגור הודעה
+          </button>
+        </div>
+      )}
+
       {/* Success Notification Banner after creation */}
-      {newRfqId && (
+      {newRfqId && !isQuoteAlert && (
         <div className="mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between gap-3 animate-in fade-in shadow-sm">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 size={22} className="text-emerald-600 shrink-0" />
@@ -717,23 +867,56 @@ export default function ActiveQuotesPage() {
         </div>
       )}
 
+      {/* Success Notification Banner after saving Draft */}
+      {draftSaved === '1' && (
+        <div className="mt-4 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-3 animate-in fade-in shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <FileEdit size={22} className="text-amber-600 shrink-0" />
+            <div>
+              <p className="text-sm font-extrabold">טיוטת המכרז נשמרה בהצלחה! 📝</p>
+              <p className="text-xs text-amber-700">
+                הטיוטה שמורה בבטחה ואינה גלויה לקבלנים. תוכל לחזור לערוך ולהפיץ אותה בכל עת, או למחוק אותה במידת הצורך.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              searchParams.delete('draftSaved');
+              setSearchParams(searchParams);
+            }}
+            className="text-xs font-bold text-amber-800 hover:text-amber-950 px-2 py-1 rounded-lg hover:bg-amber-100/50 cursor-pointer"
+          >
+            סגור הודעה
+          </button>
+        </div>
+      )}
+
       {/* Filter Tabs & Search Bar */}
       <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 p-1 bg-slate-100 border border-slate-200 rounded-xl w-full md:w-auto overflow-x-auto">
           {[
             { id: 'all', label: `כל הפניות (${rfqs.length})` },
-            { id: 'open', label: `פתוחות לקבלת הצעות (${openCount})` },
-            { id: 'has_quotes', label: `התקבלו הצעות (${hasQuotesCount}) 📥` },
+            { id: 'open', label: `הצעות פתוחות (${openCount})` },
             { id: 'closed', label: `הצעות שנסגרו / נבחרו (${closedCount}) 🏆` },
+            { id: 'drafts', label: `טיוטות (${draftsCount}) 📝` },
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveFilter(tab.id as any)}
-              className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeFilter === tab.id
+              onClick={() => {
+                setActiveFilter(tab.id as any);
+                if (tab.id === 'drafts') {
+                  searchParams.set('tab', 'drafts');
+                } else if (tab.id === 'all') {
+                  searchParams.delete('tab');
+                } else {
+                  searchParams.set('tab', tab.id);
+                }
+                setSearchParams(searchParams);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${activeFilter === tab.id
                   ? 'bg-white text-blue-600 shadow-sm font-black'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               {tab.label}
             </button>
@@ -810,9 +993,10 @@ export default function ActiveQuotesPage() {
         <div className="mt-6 space-y-6">
           {groupedRfqs.map(group => {
             const isGroupCollapsed = collapsedGroupKeys.includes(group.key);
-            const openInGroup = group.rfqs.filter(r => r.status === 'open').length;
-            const closedInGroup = group.rfqs.filter(r => r.status === 'awarded' || r.status === 'cancelled' || r.status === 'expired').length;
-            const hasQuotesInGroup = group.rfqs.filter(r => (submissionsByRfq[r.id] || []).length > 0).length;
+            const openInGroup = group.rfqs.filter(r => isRfqOpen(r)).length;
+            const closedInGroup = group.rfqs.filter(r => isRfqClosed(r)).length;
+            const hasQuotesInGroup = group.rfqs.filter(r => r.status !== 'draft' && (submissionsByRfq[r.id] || []).length > 0).length;
+            const draftsInGroup = group.rfqs.filter(r => r.status === 'draft').length;
 
             return (
               <div key={group.key} className="space-y-3">
@@ -838,13 +1022,18 @@ export default function ActiveQuotesPage() {
                   <div className="flex items-center gap-2">
                     {/* Quick badges for month */}
                     <div className="hidden sm:flex items-center gap-1.5 text-xs">
-                      {openInGroup > 0 && (
+                      {draftsInGroup > 0 && (
                         <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-bold">
+                          {draftsInGroup} טיוטות 📝
+                        </span>
+                      )}
+                      {openInGroup > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-bold">
                           {openInGroup} פתוחות
                         </span>
                       )}
                       {hasQuotesInGroup > 0 && (
-                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 font-bold">
                           {hasQuotesInGroup} עם הצעות 📥
                         </span>
                       )}
@@ -870,425 +1059,535 @@ export default function ActiveQuotesPage() {
                       const deadlineInfo = formatDeadline(rfq.deadlineAt);
 
                       return (
-              <div
-                key={rfq.id}
-                className={`bg-white border rounded-2xl shadow-sm transition-all overflow-hidden ${
-                  rfq.id === newRfqId ? 'ring-2 ring-blue-400 border-blue-300' : 'border-slate-200'
-                }`}
-              >
-                {/* RFQ Card Summary Header */}
-                <div
-                  onClick={() => toggleExpand(rfq.id)}
-                  className="p-5 md:p-6 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 select-none"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Ticket link badge */}
-                      {rfq.ticketNumber && (
-                        <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white text-xs font-black">
-                          #{rfq.ticketNumber}
-                        </span>
-                      )}
-
-                      {/* Category Pill */}
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-extrabold border border-slate-200">
-                        {rfq.category}
-                      </span>
-
-                      {/* Status Badge */}
-                      {rfq.status === 'awarded' ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black flex items-center gap-1">
-                            <Trophy size={13} className="text-amber-600" />
-                            <span>נבחרה הצעה זוכה: {rfq.awardedVendorName} (₪{rfq.awardedPrice?.toLocaleString()})</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenContractModal(rfq);
-                            }}
-                            className="px-2.5 py-0.5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
-                            title="צפה בהסכם העבודה ובהזמנה המחייבת"
-                          >
-                            <FileCheck2 size={12} />
-                            <span>הסכם עבודה (חוזה) 📄</span>
-                          </button>
-                        </div>
-                      ) : rfq.status === 'cancelled' ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
-                          בוטל / נסגר
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
-                          פתוח להצעות
-                        </span>
-                      )}
-
-                      {/* Deadline remaining badge */}
-                      {rfq.status === 'open' && (
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1 ${deadlineInfo.color}`}>
-                          <Clock size={12} />
-                          <span>{deadlineInfo.label}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    <h3 className="text-base md:text-lg font-black text-slate-900 leading-snug">
-                      {rfq.title}
-                    </h3>
-
-                    {rfq.location && (
-                      <p className="text-xs text-slate-500 font-medium">
-                        מיקום: {rfq.location}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Right side stats & toggle */}
-                  <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
-                    {/* Submissions Count Pill */}
-                    <div className={`px-3.5 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 ${
-                      submissions.length > 0
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                        : 'bg-amber-50 border-amber-200 text-amber-800'
-                    }`}>
-                      <span>
-                        {submissions.length > 0
-                          ? `התקבלו ${submissions.length} מתוך ${rfq.dispatchedVendors?.length || 0} הצעות 📥`
-                          : `ממתין להצעות (0/${rfq.dispatchedVendors?.length || 0}) ⏳`}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                      title={isExpanded ? 'צמצם פרטים' : 'הרחב פרטים והשוואת הצעות'}
-                    >
-                      {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expanded Details & Comparison Matrix */}
-                {isExpanded && (
-                  <div className="border-t border-slate-200 p-5 md:p-6 bg-slate-50/40 space-y-6 animate-in fade-in">
-                    {/* Job Scope & Files */}
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                        פרטי הבקשה והנחיות לביצוע
-                      </h4>
-                      <p className="text-xs md:text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line break-words">
-                        {rfq.description || 'ללא תיאור מורחב'}
-                      </p>
-
-                      {/* Attachments */}
-                      {rfq.attachments && rfq.attachments.length > 0 && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <span className="text-xs font-bold text-slate-500 block mb-2">מסמכים ומדיה שצורפו:</span>
-                          <div className="flex flex-wrap gap-2">
-                            {rfq.attachments.map((att, idx) => (
-                              <a
-                                key={idx}
-                                href={att.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg text-xs font-bold text-slate-700 hover:text-blue-700 transition-all shadow-2xs"
-                              >
-                                <Paperclip size={13} className="text-blue-500" />
-                                <span>{att.name}</span>
-                                <ExternalLink size={11} className="opacity-50" />
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Dispatched Contractors & Quotes Comparison Matrix */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                            <FileSpreadsheet size={18} className="text-blue-600" />
-                            <span>מטריצת השוואת הצעות מחיר מספקים</span>
-                          </h4>
-                          <span className="text-xs text-slate-400 font-bold">
-                            {rfq.dispatchedVendors?.length || 0} קבלנים ברשימת התפוצה
-                          </span>
-                        </div>
-
-                        {/* Full Screen Comparison Button (QA-110) */}
-                        <button
-                          type="button"
-                          onClick={() => setComparisonModalRfq(rfq)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all cursor-pointer border border-blue-200 shadow-2xs"
+                        <div
+                          key={rfq.id}
+                          id={`rfq-${rfq.id}`}
+                          className={`bg-white border rounded-2xl shadow-sm transition-all overflow-hidden ${rfq.id === targetRfqId ? 'ring-2 ring-blue-500 border-blue-400 shadow-md' : 'border-slate-200'
+                            }`}
                         >
-                          <Maximize2 size={13} />
-                          <span>תצוגה מלאה והשוואה מרוכזת</span>
-                        </button>
-                      </div>
+                          {/* RFQ Card Summary Header */}
+                          <div
+                            onClick={() => toggleExpand(rfq.id)}
+                            className="p-5 md:p-6 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 select-none"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Ticket link badge */}
+                                {rfq.ticketNumber && (
+                                  <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white text-xs font-black">
+                                    #{rfq.ticketNumber}
+                                  </span>
+                                )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {rfq.dispatchedVendors?.map(vendor => {
-                          const quote = submissions.find(s => s.vendorId === vendor.vendorId);
-                          const isAwardedWinner = rfq.awardedVendorId === vendor.vendorId;
+                                {/* Category Pill */}
+                                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-extrabold border border-slate-200">
+                                  {rfq.category}
+                                </span>
 
-                          return (
-                            <div
-                              key={vendor.vendorId}
-                              className={`p-4 rounded-xl border transition-all space-y-3 ${
-                                isAwardedWinner
-                                  ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-200'
-                                  : quote
-                                    ? 'bg-white border-blue-200 shadow-2xs'
-                                    : 'bg-white border-slate-200 opacity-90'
-                              }`}
-                            >
-                              {/* Contractor Header */}
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-black text-slate-900">{vendor.vendorName}</span>
-                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                                      vendor.vendorType === 'retainer'
-                                        ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                                    }`}>
-                                      {vendor.vendorType === 'retainer' ? 'קבוע 🏢' : 'מזדמן 🛠️'}
-                                    </span>
-                                  </div>
-                                  <span className="text-xs text-slate-500" dir="ltr">{vendor.phone}</span>
-                                </div>
-
-                                {isAwardedWinner ? (
+                                {/* Status Badge */}
+                                {rfq.status === 'draft' ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black flex items-center gap-1">
+                                    <FileEdit size={12} />
+                                    <span>טיוטה - טרם הופצה 📝</span>
+                                  </span>
+                                ) : rfq.status === 'awarded' ? (
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-black flex items-center gap-1 shadow-sm">
-                                      <Trophy size={13} />
-                                      <span>הצעה זוכה</span>
+                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black flex items-center gap-1">
+                                      <Trophy size={13} className="text-amber-600" />
+                                      <span>נבחרה הצעה זוכה: {rfq.awardedVendorName} (₪{rfq.awardedPrice?.toLocaleString()})</span>
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={() => handleOpenContractModal(rfq, quote)}
-                                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer"
-                                      title="צפה והדפס הסכם עבודה מחייב"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenContractModal(rfq);
+                                      }}
+                                      className="px-2.5 py-0.5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                                      title="צפה בהסכם העבודה ובהזמנה המחייבת"
                                     >
-                                      <FileCheck2 size={13} />
-                                      <span>הפק הסכם עבודה 📄</span>
+                                      <FileCheck2 size={12} />
+                                      <span>הסכם עבודה (חוזה) 📄</span>
                                     </button>
                                   </div>
-                                ) : quote ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
-                                    הוגשה הצעה ✓
+                                ) : rfq.status === 'cancelled' ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                                    בוטל / נסגר
+                                  </span>
+                                ) : isRfqExpired(rfq) ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200 text-xs font-bold flex items-center gap-1">
+                                    <Clock size={12} />
+                                    <span>פג תוקף (נסגר להצעות)</span>
                                   </span>
                                 ) : (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200 flex items-center gap-1">
-                                    <Clock size={11} className="text-slate-400" />
-                                    <span>שוגר ב-WhatsApp • ממתין להצעה</span>
+                                  <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
+                                    פתוח להצעות
+                                  </span>
+                                )}
+
+                                {/* Deadline remaining badge (only when open and NOT expired) */}
+                                {rfq.status === 'open' && !isRfqExpired(rfq) && (
+                                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1 ${deadlineInfo.color}`}>
+                                    <Clock size={12} />
+                                    <span>{deadlineInfo.label}</span>
                                   </span>
                                 )}
                               </div>
 
-                              {/* Quote Details if submitted */}
-                              {quote ? (
-                                <div className="space-y-3">
-                                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
-                                    <div className="flex items-baseline justify-between">
-                                      <span className="text-xs text-slate-500 font-bold">מחיר מוצע:</span>
-                                      <span className="text-lg font-black text-slate-900">
-                                        ₪{quote.price.toLocaleString()}
-                                        <span className="text-[10px] text-slate-400 font-normal mr-1">
-                                          {quote.priceIncludesVat ? '(כולל מע"מ)' : '+ מע"מ'}
-                                        </span>
-                                      </span>
-                                    </div>
+                              <h3 className="text-base md:text-lg font-black text-slate-900 leading-snug">
+                                {rfq.title}
+                              </h3>
 
-                                    {quote.estimatedDuration && (
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className="text-slate-500 font-bold">לוח זמנים משוער:</span>
-                                        <span className="font-extrabold text-slate-800">{quote.estimatedDuration}</span>
-                                      </div>
-                                    )}
+                              {rfq.location && (
+                                <p className="text-xs text-slate-500 font-medium">
+                                  מיקום: {rfq.location}
+                                </p>
+                              )}
+                            </div>
 
-                                    {quote.notes && (
-                                      <div className="pt-1 text-xs text-slate-600 italic border-t border-slate-200/60 whitespace-pre-line break-words">
-                                        "{quote.notes}"
-                                      </div>
-                                    )}
-
-                                    {quote.quoteDocumentUrl && (
-                                      <a
-                                        href={quote.quoteDocumentUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline pt-1"
-                                      >
-                                        <Paperclip size={12} />
-                                        <span>צפה במסמך ההצעה שצורף</span>
-                                      </a>
-                                    )}
-                                  </div>
-
-                                  {/* Actions Bar for contractor with submitted quote */}
-                                  <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
-                                    {/* Discussion / Coordination Button */}
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <a
-                                        href={buildVendorDiscussionWhatsAppUrl(rfq, vendor, quote)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                                          rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId
-                                            ? 'border-emerald-400 bg-emerald-100/90 hover:bg-emerald-200 text-emerald-950 font-black shadow-sm'
-                                            : 'border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 text-emerald-800'
-                                        }`}
-                                        title={
-                                          rfq.status === 'awarded'
-                                            ? (rfq.awardedVendorId === vendor.vendorId ? 'תיאום מועד ביצוע עם הקבלן הזוכה' : 'שיחה עם הקבלן ב-WhatsApp')
-                                            : 'פתח שיחה עם הקבלן ב-WhatsApp לבירור פרטי ההצעה'
-                                        }
-                                      >
-                                        <MessageCircle size={13} className={rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId ? 'text-emerald-700' : 'text-emerald-600'} />
-                                        <span>
-                                          {rfq.status === 'awarded'
-                                            ? (rfq.awardedVendorId === vendor.vendorId ? 'תיאום ביצוע עם הזוכה 📲' : 'שיחה עם הקבלן 💬')
-                                            : 'שיחה לבירור ההצעה 💬'}
-                                        </span>
-                                      </a>
-
-                                      {/* If awarded to this vendor: Quick access to Contract / Work Order */}
-                                      {rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleOpenContractModal(rfq, quote)}
-                                          className="px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                                          title="צפה בהסכם העבודה ובהזמנת העבודה החתומה (להדפסה / PDF)"
-                                        >
-                                          <FileCheck2 size={13} className="text-blue-600" />
-                                          <span>הסכם עבודה חתום 📄</span>
-                                        </button>
-                                      )}
-                                    </div>
-
-                                    {/* Award button if quote exists and not yet awarded */}
-                                    {rfq.status === 'open' && (
-                                      <button
-                                        type="button"
-                                        disabled={actionLoadingId === quote.id}
-                                        onClick={() => handleOpenAwardModal(rfq, quote)}
-                                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-                                      >
-                                        {actionLoadingId === quote.id ? (
-                                          <Loader2 size={13} className="animate-spin" />
-                                        ) : (
-                                          <Trophy size={13} />
-                                        )}
-                                        <span>בחר כהצעה זוכה 🏆</span>
-                                      </button>
-                                    )}
-                                  </div>
+                            {/* Right side stats & toggle */}
+                            <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+                              {/* Submissions Count Pill or Draft Action Controls */}
+                              {rfq.status === 'draft' ? (
+                                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                  <Link
+                                    to={`/admin/${tenantId}/quotes/new?draftId=${rfq.id}`}
+                                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                    title="המשך עריכת טיוטה"
+                                  >
+                                    <FileEdit size={13} />
+                                    <span>המשך עריכה</span>
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDraftToDelete(rfq)}
+                                    className="p-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors cursor-pointer"
+                                    title="מחק טיוטה לצמיתות"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
                                 </div>
                               ) : (
-                                /* Pending State: Clean info with automated WhatsApp resend & link copy */
-                                <div className="p-3 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 flex items-center justify-between text-xs gap-2 flex-wrap">
-                                  <div className="flex items-center gap-2">
-                                    {(vendor as any).whatsappSent ? (
-                                      <span className="text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                        <CheckCircle2 size={12} className="text-emerald-600" />
-                                        שוגר ב-WhatsApp
-                                      </span>
-                                    ) : (
-                                      <span className="text-amber-700 font-bold flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                        טרם שוגר ב-WhatsApp
-                                      </span>
-                                    )}
-                                    <span className="text-slate-500 font-medium hidden sm:inline">
-                                      ממתין להצעת מחיר
+                                <div className={`px-3.5 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 ${submissions.length > 0
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                                  }`}>
+                                  <span>
+                                    {submissions.length > 0
+                                      ? `התקבלו ${submissions.length} מתוך ${rfq.dispatchedVendors?.length || 0} הצעות 📥`
+                                      : `ממתין להצעות (0/${rfq.dispatchedVendors?.length || 0}) ⏳`}
+                                  </span>
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                title={isExpanded ? 'צמצם פרטים' : 'הרחב פרטים והשוואת הצעות'}
+                              >
+                                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Expanded Details & Comparison Matrix */}
+                          {isExpanded && (
+                            <div className="border-t border-slate-200 p-5 md:p-6 bg-slate-50/40 space-y-6 animate-in fade-in">
+                              {/* Job Scope & Files */}
+                              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">
+                                  פרטי הבקשה והנחיות לביצוע
+                                </h4>
+                                <p className="text-xs md:text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line break-words">
+                                  {rfq.description || 'ללא תיאור מורחב'}
+                                </p>
+
+                                {/* Attachments */}
+                                {rfq.attachments && rfq.attachments.length > 0 && (
+                                  <div className="pt-2 border-t border-slate-100">
+                                    <span className="text-xs font-bold text-slate-500 block mb-2">מסמכים ומדיה שצורפו:</span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {rfq.attachments.map((att, idx) => (
+                                        <a
+                                          key={idx}
+                                          href={att.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg text-xs font-bold text-slate-700 hover:text-blue-700 transition-all shadow-2xs"
+                                        >
+                                          <Paperclip size={13} className="text-blue-500" />
+                                          <span>{att.name}</span>
+                                          <ExternalLink size={11} className="opacity-50" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Dispatched Contractors & Quotes Comparison Matrix */}
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                                      <FileSpreadsheet size={18} className="text-blue-600" />
+                                      <span>מטריצת השוואת הצעות מחיר מספקים</span>
+                                    </h4>
+                                    <span className="text-xs text-slate-400 font-bold">
+                                      {rfq.dispatchedVendors?.length || 0} קבלנים ברשימת התפוצה
                                     </span>
                                   </div>
 
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      disabled={dispatchingVendorId === `${rfq.id}-${vendor.vendorId}`}
-                                      onClick={() => handleResendWhatsApp(rfq, vendor)}
-                                      className="px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                                      title="שגר תבנית WhatsApp רשמית לקבלן"
-                                    >
-                                      {dispatchingVendorId === `${rfq.id}-${vendor.vendorId}` ? (
-                                        <Loader2 size={12} className="animate-spin text-blue-600" />
-                                      ) : (
-                                        <Send size={12} />
-                                      )}
-                                      <span>שלח ב-WhatsApp</span>
-                                    </button>
-
-                                    <a
-                                      href={buildVendorWhatsAppUrl(rfq, vendor)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="p-1 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
-                                      title="פתח שיחה ישירה ב-WhatsApp (ידני)"
-                                    >
-                                      <MessageCircle size={15} />
-                                    </a>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCopyContractorLink(rfq.id, vendor.vendorId, vendor.tokenHash)}
-                                      className="text-slate-400 hover:text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0 px-2 py-1 rounded hover:bg-white"
-                                      title="העתק קישור ישיר להגשה (למקרה שהקבלן מבקש שוב)"
-                                    >
-                                      {copiedTokenId === `${rfq.id}-${vendor.vendorId}` ? (
-                                        <>
-                                          <Check size={13} className="text-emerald-600 stroke-[3]" />
-                                          <span className="text-emerald-700">הועתק!</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Copy size={13} />
-                                          <span>העתק קישור</span>
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
+                                  {/* Full Screen Comparison Button (QA-110) */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setComparisonModalRfq(rfq)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all cursor-pointer border border-blue-200 shadow-2xs"
+                                  >
+                                    <Maximize2 size={13} />
+                                    <span>תצוגה מלאה והשוואה מרוכזת</span>
+                                  </button>
                                 </div>
-                              )}
+
+                                {/* Awarded Winner & Reasoning Banner (if awarded) */}
+                                {(rfq.status === 'awarded' || rfq.awardedVendorId) && (
+                                  <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-xl flex items-start gap-3 shadow-2xs text-right">
+                                    <div className="p-2 bg-emerald-600 text-white rounded-lg shrink-0 mt-0.5 shadow-sm">
+                                      <Trophy size={18} />
+                                    </div>
+                                    <div className="space-y-1 flex-1">
+                                      <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-xs font-black text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-md border border-emerald-300/60">
+                                            הצעה זוכה • החלטת ועד הבית
+                                          </span>
+                                          <span className="text-xs font-extrabold text-slate-800">
+                                            הקבלן שנבחר: <strong className="text-emerald-950 font-black">{rfq.awardedVendorName || 'קבלן זוכה'}</strong>
+                                            {rfq.awardedPrice && ` (₪${rfq.awardedPrice.toLocaleString()})`}
+                                          </span>
+                                        </div>
+                                        {(rfq.awardReasoning?.awardedAt || rfq.awardedAt) && (
+                                          <span className="text-[11px] text-slate-500 font-bold">
+                                            תאריך אישור: {new Date(rfq.awardReasoning?.awardedAt || rfq.awardedAt || '').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {rfq.awardReasoning ? (
+                                        <div className="text-xs text-slate-800 pt-0.5">
+                                          <span className="text-emerald-950 font-black">נימוק בחירת הקבלן לפרוטוקול: </span>
+                                          <span className="text-slate-900 font-bold">{rfq.awardReasoning.reasonType}</span>
+                                          {rfq.awardReasoning.note && (
+                                            <span className="text-slate-700 font-medium mr-1.5 bg-white px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                                              "{rfq.awardReasoning.note}"
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="text-xs text-slate-500 italic">
+                                          לא תועד נימוק מפורט לבחירה זו
+                                        </div>
+                                      )}
+
+                                      {rfq.awardReasoning?.awardedBy && (
+                                        <div className="text-[11px] text-slate-500 font-medium">
+                                          נרשם ואושר ע"י: {rfq.awardReasoning.awardedBy}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {rfq.dispatchedVendors?.map(vendor => {
+                                    const quote = submissions.find(s => s.vendorId === vendor.vendorId);
+                                    const isAwardedWinner = rfq.awardedVendorId === vendor.vendorId;
+
+                                    return (
+                                      <div
+                                        key={vendor.vendorId}
+                                        className={`p-4 rounded-xl border transition-all space-y-3 ${isAwardedWinner
+                                            ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-200'
+                                            : quote
+                                              ? 'bg-white border-blue-200 shadow-2xs'
+                                              : 'bg-white border-slate-200 opacity-90'
+                                          }`}
+                                      >
+                                        {/* Contractor Header */}
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-black text-slate-900">{vendor.vendorName}</span>
+                                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${vendor.vendorType === 'retainer'
+                                                  ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                }`}>
+                                                {vendor.vendorType === 'retainer' ? 'קבוע 🏢' : 'מזדמן 🛠️'}
+                                              </span>
+                                            </div>
+                                            <span className="text-xs text-slate-500" dir="ltr">{vendor.phone}</span>
+                                          </div>
+
+                                          {isAwardedWinner ? (
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-black flex items-center gap-1 shadow-sm">
+                                                <Trophy size={13} />
+                                                <span>הצעה זוכה</span>
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOpenContractModal(rfq, quote)}
+                                                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                                                title="צפה והדפס הסכם עבודה מחייב"
+                                              >
+                                                <FileCheck2 size={13} />
+                                                <span>הפק הסכם עבודה 📄</span>
+                                              </button>
+                                            </div>
+                                          ) : quote ? (
+                                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
+                                              הוגשה הצעה ✓
+                                            </span>
+                                          ) : (
+                                            <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200 flex items-center gap-1">
+                                              <Clock size={11} className="text-slate-400" />
+                                              <span>שוגר ב-WhatsApp • ממתין להצעה</span>
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        {/* Quote Details if submitted */}
+                                        {quote ? (
+                                          <div className="space-y-3">
+                                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                                              <div className="flex items-baseline justify-between">
+                                                <span className="text-xs text-slate-500 font-bold">מחיר מוצע:</span>
+                                                <span className="text-lg font-black text-slate-900">
+                                                  ₪{quote.price.toLocaleString()}
+                                                  <span className="text-[10px] text-slate-400 font-normal mr-1">
+                                                    {quote.priceIncludesVat ? '(כולל מע"מ)' : '+ מע"מ'}
+                                                  </span>
+                                                </span>
+                                              </div>
+
+                                              {quote.estimatedDuration && (
+                                                <div className="flex items-center justify-between text-xs">
+                                                  <span className="text-slate-500 font-bold">לוח זמנים משוער:</span>
+                                                  <span className="font-extrabold text-slate-800">{quote.estimatedDuration}</span>
+                                                </div>
+                                              )}
+
+                                              {quote.notes && (
+                                                <div className="pt-1 text-xs text-slate-600 italic border-t border-slate-200/60 whitespace-pre-line break-words">
+                                                  "{quote.notes}"
+                                                </div>
+                                              )}
+
+                                              {quote.quoteDocumentUrl && (
+                                                <a
+                                                  href={quote.quoteDocumentUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline pt-1"
+                                                >
+                                                  <Paperclip size={12} />
+                                                  <span>צפה במסמך ההצעה שצורף</span>
+                                                </a>
+                                              )}
+                                            </div>
+
+                                            {/* Award Reasoning Badge on Winning Contractor Card */}
+                                            {isAwardedWinner && rfq.awardReasoning && (
+                                              <div className="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-lg text-xs space-y-0.5 text-right">
+                                                <div className="font-black text-emerald-950 flex items-center gap-1">
+                                                  <CheckCircle2 size={13} className="text-emerald-700 shrink-0" />
+                                                  <span>נימוק הבחירה: {rfq.awardReasoning.reasonType}</span>
+                                                </div>
+                                                {rfq.awardReasoning.note && (
+                                                  <div className="text-emerald-900 font-medium text-[11px] pr-4 italic">
+                                                    "{rfq.awardReasoning.note}"
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {/* Actions Bar for contractor with submitted quote */}
+                                            <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                                              {/* Discussion / Coordination Button */}
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <a
+                                                  href={buildVendorDiscussionWhatsAppUrl(rfq, vendor, quote)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors ${rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId
+                                                      ? 'border-emerald-400 bg-emerald-100/90 hover:bg-emerald-200 text-emerald-950 font-black shadow-sm'
+                                                      : 'border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 text-emerald-800'
+                                                    }`}
+                                                  title={
+                                                    rfq.status === 'awarded'
+                                                      ? (rfq.awardedVendorId === vendor.vendorId ? 'תיאום מועד ביצוע עם הקבלן הזוכה' : 'שיחה עם הקבלן ב-WhatsApp')
+                                                      : 'פתח שיחה עם הקבלן ב-WhatsApp לבירור פרטי ההצעה'
+                                                  }
+                                                >
+                                                  <MessageCircle size={13} className={rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId ? 'text-emerald-700' : 'text-emerald-600'} />
+                                                  <span>
+                                                    {rfq.status === 'awarded'
+                                                      ? (rfq.awardedVendorId === vendor.vendorId ? 'תיאום ביצוע עם הזוכה 📲' : 'שיחה עם הקבלן 💬')
+                                                      : 'שיחה לבירור ההצעה 💬'}
+                                                  </span>
+                                                </a>
+
+                                                {/* If awarded to this vendor: Quick access to Contract / Work Order */}
+                                                {rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleOpenContractModal(rfq, quote)}
+                                                    className="px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                    title="צפה בהסכם העבודה ובהזמנת העבודה החתומה (להדפסה / PDF)"
+                                                  >
+                                                    <FileCheck2 size={13} className="text-blue-600" />
+                                                    <span>הסכם עבודה חתום 📄</span>
+                                                  </button>
+                                                )}
+                                              </div>
+
+                                              {/* Award button if quote exists and not yet awarded */}
+                                              {rfq.status === 'open' && (
+                                                <button
+                                                  type="button"
+                                                  disabled={actionLoadingId === quote.id}
+                                                  onClick={() => handleOpenAwardModal(rfq, quote)}
+                                                  className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                                                >
+                                                  {actionLoadingId === quote.id ? (
+                                                    <Loader2 size={13} className="animate-spin" />
+                                                  ) : (
+                                                    <Trophy size={13} />
+                                                  )}
+                                                  <span>בחר כהצעה זוכה 🏆</span>
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          /* Pending State: Clean info with automated WhatsApp resend & link copy */
+                                          <div className="p-3 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 flex items-center justify-between text-xs gap-2 flex-wrap">
+                                            <div className="flex items-center gap-2">
+                                              {(vendor as any).whatsappSent ? (
+                                                <span className="text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                  <CheckCircle2 size={12} className="text-emerald-600" />
+                                                  שוגר ב-WhatsApp
+                                                </span>
+                                              ) : (
+                                                <span className="text-amber-700 font-bold flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                                  טרם שוגר ב-WhatsApp
+                                                </span>
+                                              )}
+                                              <span className="text-slate-500 font-medium hidden sm:inline">
+                                                ממתין להצעת מחיר
+                                              </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                              <button
+                                                type="button"
+                                                disabled={dispatchingVendorId === `${rfq.id}-${vendor.vendorId}`}
+                                                onClick={() => handleResendWhatsApp(rfq, vendor)}
+                                                className="px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                                                title="שגר תבנית WhatsApp רשמית לקבלן"
+                                              >
+                                                {dispatchingVendorId === `${rfq.id}-${vendor.vendorId}` ? (
+                                                  <Loader2 size={12} className="animate-spin text-blue-600" />
+                                                ) : (
+                                                  <Send size={12} />
+                                                )}
+                                                <span>שלח ב-WhatsApp</span>
+                                              </button>
+
+                                              <a
+                                                href={buildVendorWhatsAppUrl(rfq, vendor)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-1 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                                title="פתח שיחה ישירה ב-WhatsApp (ידני)"
+                                              >
+                                                <MessageCircle size={15} />
+                                              </a>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => handleCopyContractorLink(rfq.id, vendor.vendorId, vendor.tokenHash)}
+                                                className="text-slate-400 hover:text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0 px-2 py-1 rounded hover:bg-white"
+                                                title="העתק קישור ישיר להגשה (למקרה שהקבלן מבקש שוב)"
+                                              >
+                                                {copiedTokenId === `${rfq.id}-${vendor.vendorId}` ? (
+                                                  <>
+                                                    <Check size={13} className="text-emerald-600 stroke-[3]" />
+                                                    <span className="text-emerald-700">הועתק!</span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Copy size={13} />
+                                                    <span>העתק קישור</span>
+                                                  </>
+                                                )}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Bottom RFQ controls */}
+                              <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-200">
+                                <span>נוצר על ידי {rfq.createdBy?.name || 'ועד הבית'} ב-{new Date(rfq.createdAt).toLocaleDateString('he-IL')}</span>
+
+                                <div className="flex items-center gap-2">
+                                  {rfq.status === 'draft' ? (
+                                    <div className="flex items-center gap-3">
+                                      <Link
+                                        to={`/admin/${tenantId}/quotes/new?draftId=${rfq.id}`}
+                                        className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <FileEdit size={13} />
+                                        <span>המשך עריכת טיוטה</span>
+                                      </Link>
+                                      <span className="text-slate-300">|</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDraftToDelete(rfq)}
+                                        className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <Trash2 size={13} />
+                                        <span>מחק טיוטה לצמיתות</span>
+                                      </button>
+                                    </div>
+                                  ) : isRfqOpen(rfq) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenStatusConfirmModal(rfq, 'cancelled')}
+                                      className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+                                    >
+                                      סגור וסיים בקשה זו
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenStatusConfirmModal(rfq, 'open')}
+                                      className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+                                    >
+                                      פתח מחדש לקבלת הצעות
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Bottom RFQ controls */}
-                    <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-200">
-                      <span>נוצר על ידי {rfq.createdBy?.name || 'ועד הבית'} ב-{new Date(rfq.createdAt).toLocaleDateString('he-IL')}</span>
-
-                      <div className="flex items-center gap-2">
-                        {rfq.status === 'open' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenStatusConfirmModal(rfq, 'cancelled')}
-                            className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
-                          >
-                            סגור וסיים בקשה זו
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenStatusConfirmModal(rfq, 'open')}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
-                          >
-                            פתח מחדש לקבלת הצעות
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1395,11 +1694,10 @@ export default function ActiveQuotesPage() {
                       key={preset}
                       type="button"
                       onClick={() => setAwardModalData(prev => prev ? { ...prev, awardReason: preset } : null)}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                        isSelected
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${isSelected
                           ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-black'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {preset}
                     </button>
@@ -1516,6 +1814,55 @@ export default function ActiveQuotesPage() {
                 )}
               </div>
 
+              {/* Awarded Winner & Committee Reasoning Banner (in Modal) */}
+              {(comparisonModalRfq.status === 'awarded' || comparisonModalRfq.awardedVendorId) && (
+                <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-2xl flex items-start gap-3 shadow-xs text-right">
+                  <div className="p-2.5 bg-emerald-600 text-white rounded-xl shrink-0 mt-0.5 shadow-sm">
+                    <Trophy size={20} />
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-black text-emerald-900 bg-emerald-200/80 px-2.5 py-0.5 rounded-md border border-emerald-300/60">
+                          הצעה זוכה • החלטת ועד הבית
+                        </span>
+                        <span className="text-xs font-extrabold text-slate-800">
+                          הקבלן שנבחר: <strong className="text-emerald-950 font-black">{comparisonModalRfq.awardedVendorName || 'קבלן זוכה'}</strong>
+                          {comparisonModalRfq.awardedPrice && ` (₪${comparisonModalRfq.awardedPrice.toLocaleString()})`}
+                        </span>
+                      </div>
+                      {(comparisonModalRfq.awardReasoning?.awardedAt || comparisonModalRfq.awardedAt) && (
+                        <span className="text-[11px] text-slate-500 font-bold">
+                          תאריך אישור: {new Date(comparisonModalRfq.awardReasoning?.awardedAt || comparisonModalRfq.awardedAt || '').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+
+                    {comparisonModalRfq.awardReasoning ? (
+                      <div className="text-xs text-slate-800 pt-0.5">
+                        <span className="text-emerald-950 font-black">נימוק בחירת הקבלן לפרוטוקול: </span>
+                        <span className="text-slate-900 font-bold">{comparisonModalRfq.awardReasoning.reasonType}</span>
+                        {comparisonModalRfq.awardReasoning.note && (
+                          <span className="text-slate-700 font-medium mr-1.5 bg-white px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                            "{comparisonModalRfq.awardReasoning.note}"
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-500 italic">
+                        לא תועד נימוק מפורט לבחירה זו
+                      </div>
+                    )}
+
+                    {comparisonModalRfq.awardReasoning?.awardedBy && (
+                      <div className="text-[11px] text-slate-500 font-medium">
+                        נרשם ואושר ע"י: {comparisonModalRfq.awardReasoning.awardedBy}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Submissions Matrix Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {comparisonModalRfq.dispatchedVendors?.map(vendor => {
@@ -1526,23 +1873,21 @@ export default function ActiveQuotesPage() {
                   return (
                     <div
                       key={vendor.vendorId}
-                      className={`p-4 rounded-2xl border transition-all space-y-3 ${
-                        isWinner
+                      className={`p-4 rounded-2xl border transition-all space-y-3 ${isWinner
                           ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-300'
                           : quote
                             ? 'bg-white border-blue-200 shadow-sm'
                             : 'bg-slate-50/60 border-slate-200 opacity-80'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-black text-slate-900">{vendor.vendorName}</span>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                              vendor.vendorType === 'retainer'
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${vendor.vendorType === 'retainer'
                                 ? 'bg-blue-100 text-blue-800 border-blue-200'
                                 : 'bg-slate-100 text-slate-600 border-slate-200'
-                            }`}>
+                              }`}>
                               {vendor.vendorType === 'retainer' ? 'ריטיינר 🏢' : 'מזדמן 🛠️'}
                             </span>
                           </div>
@@ -1612,6 +1957,21 @@ export default function ActiveQuotesPage() {
                             )}
                           </div>
 
+                          {/* Award Reasoning on Winner in Modal */}
+                          {isWinner && comparisonModalRfq.awardReasoning && (
+                            <div className="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-xl text-xs space-y-0.5 text-right">
+                              <div className="font-black text-emerald-950 flex items-center gap-1">
+                                <CheckCircle2 size={13} className="text-emerald-700 shrink-0" />
+                                <span>נימוק הבחירה: {comparisonModalRfq.awardReasoning.reasonType}</span>
+                              </div>
+                              {comparisonModalRfq.awardReasoning.note && (
+                                <div className="text-emerald-900 font-medium text-[11px] pr-4 italic">
+                                  "{comparisonModalRfq.awardReasoning.note}"
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {comparisonModalRfq.status === 'open' && !isWinner && (
                             <button
                               type="button"
@@ -1656,11 +2016,10 @@ export default function ActiveQuotesPage() {
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-right animate-in zoom-in-95 duration-200" dir="rtl">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className={`p-3 rounded-2xl ${
-                  statusConfirmModal.newStatus === 'cancelled'
+                <div className={`p-3 rounded-2xl ${statusConfirmModal.newStatus === 'cancelled'
                     ? 'bg-red-50 text-red-600 border border-red-100'
                     : 'bg-blue-50 text-blue-600 border border-blue-100'
-                }`}>
+                  }`}>
                   {statusConfirmModal.newStatus === 'cancelled' ? (
                     <AlertTriangle size={24} />
                   ) : (
@@ -1733,11 +2092,10 @@ export default function ActiveQuotesPage() {
                 type="button"
                 onClick={handleConfirmStatusChange}
                 disabled={statusChanging}
-                className={`px-5 py-2.5 rounded-xl text-xs font-black text-white flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50 ${
-                  statusConfirmModal.newStatus === 'cancelled'
+                className={`px-5 py-2.5 rounded-xl text-xs font-black text-white flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50 ${statusConfirmModal.newStatus === 'cancelled'
                     ? 'bg-red-600 hover:bg-red-700 active:scale-95'
                     : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
-                }`}
+                  }`}
               >
                 {statusChanging ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -1760,8 +2118,22 @@ export default function ActiveQuotesPage() {
           rfq={contractModalData.rfq}
           submission={contractModalData.submission}
           tenantInfo={tenantInfo}
-          currentAdminName={user?.displayName || user?.email || undefined}
-          currentAdminPhone={user?.phoneNumber || undefined}
+          currentAdminName={adminProfile?.fullName || user?.displayName || user?.email || undefined}
+          currentAdminPhone={adminProfile?.mobile || user?.phoneNumber || undefined}
+        />
+      )}
+
+      {/* Delete Draft Confirmation Modal */}
+      {draftToDelete && (
+        <ConfirmModal
+          isOpen={Boolean(draftToDelete)}
+          onClose={() => !isDeletingDraft && setDraftToDelete(null)}
+          onConfirm={handleDeleteDraft}
+          title="מחיקת טיוטת מכרז"
+          message={`האם אתה בטוח שברצונך למחוק את טיוטת המכרז "${draftToDelete.title}"? הטופס והנתונים שהוזנו יימחקו לצמיתות ולא ניתן יהיה לשחזרם.`}
+          confirmLabel={isDeletingDraft ? "מוחק..." : "כן, מחק טיוטה"}
+          cancelLabel="ביטול"
+          type="danger"
         />
       )}
     </div>

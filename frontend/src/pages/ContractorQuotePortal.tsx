@@ -25,7 +25,9 @@ import {
   Calendar,
   Lock,
   Trophy,
-  FileCheck2
+  FileCheck2,
+  Coins,
+  Truck
 } from 'lucide-react';
 import { WorkQuoteRequest, VendorQuoteSubmission, DispatchedVendorRecord } from '../types/rfq';
 import { logAction } from '../utils/auditLogger';
@@ -746,6 +748,19 @@ export default function ContractorQuotePortal() {
         navigator.vibrate([40, 60, 40]);
       }
 
+      // Server-side Push WhatsApp Notification to Admin (Pillar 1)
+      fetch('/api/notifyQuoteSubmission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: resolvedTenantId,
+          rfqId: rfq.id,
+          submissionId: submissionDocId
+        })
+      }).catch(pushErr => {
+        console.warn("Background admin WhatsApp notification error:", pushErr);
+      });
+
       setExistingSubmission(payload);
       setSubmittedSuccessfully(true);
       setShowSuccessModal(true);
@@ -1088,6 +1103,76 @@ export default function ContractorQuotePortal() {
           )}
         </div>
 
+        {/* Requested Payment Terms & Site Conditions Card */}
+        {(rfq.paymentTerms || rfq.wasteClause || rfq.allowedWorkHours) && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-3.5">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
+                <Coins size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  תנאי תשלום ודרישות המזמין
+                </h3>
+                <span className="text-xs text-slate-400 font-medium">הנחיות מחייבות להגשת הצעת המחיר</span>
+              </div>
+            </div>
+
+            {/* Payment Terms */}
+            {rfq.paymentTerms && (
+              <div className="space-y-2">
+                <span className="text-xs font-extrabold text-slate-700 block">
+                  {rfq.paymentTerms.mode === 'milestones'
+                    ? `פריסת תשלום מבוקשת לפי שלבי ביצוע (${rfq.paymentTerms.phases?.length || 0} שלבים):`
+                    : 'תנאי תשלום מבוקשים:'}
+                </span>
+
+                {rfq.paymentTerms.mode === 'milestones' && rfq.paymentTerms.phases && rfq.paymentTerms.phases.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {rfq.paymentTerms.phases.map((phase, pIdx) => (
+                      <div key={pIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 truncate">{phase.stageName}</div>
+                          {phase.description && (
+                            <div className="text-[11px] text-slate-500 font-medium truncate">{phase.description}</div>
+                          )}
+                        </div>
+                        <span className="font-black text-blue-700 shrink-0 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-200">
+                          {phase.percentage}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                    {rfq.paymentTerms.singleTermText || 'שוטף + 30 יום מגמר העבודה ומסירת האתר'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Waste Policy */}
+            {rfq.wasteClause && (
+              <div className="pt-2 border-t border-slate-100 space-y-1">
+                <span className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                  <Truck size={14} className="text-blue-600" />
+                  <span>הנחיות פינוי פסולת וניקיון:</span>
+                </span>
+                <p className="text-xs text-slate-700 bg-amber-50/60 border border-amber-200/70 p-2.5 rounded-xl leading-relaxed font-medium">
+                  {rfq.wasteClause}
+                </p>
+              </div>
+            )}
+
+            {/* Allowed Work Hours */}
+            {rfq.allowedWorkHours && (
+              <div className="pt-1 text-xs text-slate-600">
+                <strong>שעות עבודה מותרות באתר:</strong> {rfq.allowedWorkHours}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 2. Interactive Contractor Quote Submission Form */}
         {!isClosed && !isExpired && (
           <form onSubmit={handleSubmitQuote} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-5">
@@ -1401,7 +1486,7 @@ export default function ContractorQuotePortal() {
               priceIncludesVat: true,
               totalPriceWithVat: rfq.awardedPrice || 0,
               estimatedDuration: 'לפי תיאום',
-              notes: rfq.awardReasoning?.reasonType || '',
+              notes: '',
               status: 'accepted',
               submittedAt: rfq.awardedAt || new Date().toISOString()
             }
