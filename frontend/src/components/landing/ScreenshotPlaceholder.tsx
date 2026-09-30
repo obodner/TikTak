@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Image, Sparkles, AlertCircle } from 'lucide-react';
 
 interface ScreenshotPlaceholderProps {
   src: string;
   alt: string;
-  aspectRatio?: '16/9' | '4/3' | '9/16' | '16/10';
+  aspectRatio?: '16/9' | '4/3' | '9/16' | '16/10' | '1/1' | 'auto';
   className?: string;
   title: string;
   badge?: string;
   filename: string;
-  mockType: 'rfq-matrix' | 'contract' | 'contractor-portal' | 'bi-analytics' | 'whatsapp-notification' | 'general';
+  mockType: 'new-rfq' | 'rfq-matrix' | 'contract' | 'contractor-portal' | 'bi-analytics' | 'whatsapp-notification' | 'general';
+  onClick?: () => void;
+  objectFit?: 'cover' | 'contain';
 }
 
 export default function ScreenshotPlaceholder({
@@ -20,31 +22,74 @@ export default function ScreenshotPlaceholder({
   title,
   badge = 'תצוגת מערכת חיה',
   filename,
-  mockType
+  mockType,
+  onClick,
+  objectFit = 'cover'
 }: ScreenshotPlaceholderProps) {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Handle cached images that are already complete on mount
+  useEffect(() => {
+    setHasError(false);
+    if (imgRef.current && imgRef.current.complete) {
+      if (imgRef.current.naturalWidth > 0) {
+        setIsLoaded(true);
+      } else if (imgRef.current.src) {
+        setHasError(true);
+      }
+    }
+  }, [src]);
 
   return (
     <div
-      className={`relative w-full rounded-2xl overflow-hidden border border-slate-200 shadow-xl bg-slate-900 group select-none ${className}`}
+      onClick={onClick}
+      className={`relative w-full rounded-2xl overflow-hidden border border-slate-200/90 shadow-xl bg-slate-50 group select-none ${
+        onClick ? 'cursor-zoom-in' : ''
+      } ${className}`}
       style={{ aspectRatio }}
     >
+      {/* Zoom badge on hover */}
+      {onClick && !hasError && isLoaded && (
+        <div className="absolute top-3 left-3 bg-slate-900/80 hover:bg-slate-900 text-white text-[11px] font-black px-3 py-1 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 shadow-md z-10 pointer-events-none">
+          <span>🔍</span>
+          <span>לחץ להגדלה</span>
+        </div>
+      )}
+
+      {/* Loading Skeleton */}
+      {!isLoaded && !hasError && (
+        <div className="absolute inset-0 bg-slate-100/90 animate-pulse flex flex-col items-center justify-center gap-2 text-slate-400 z-0">
+          <div className="w-7 h-7 rounded-full border-2 border-slate-300 border-t-emerald-600 animate-spin" />
+          <span className="text-[11px] font-bold text-slate-500">טוען תצוגת מסך...</span>
+        </div>
+      )}
+
       {/* Real image if exists */}
       {!hasError && (
         <img
+          ref={imgRef}
           src={src}
           alt={alt}
-          onLoad={() => setIsLoaded(true)}
-          onError={() => setHasError(true)}
-          className={`w-full h-full object-cover object-top transition-opacity duration-300 ${
-            isLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'
+          onLoad={() => {
+            setIsLoaded(true);
+            setHasError(false);
+          }}
+          onError={() => {
+            setHasError(true);
+            setIsLoaded(false);
+          }}
+          className={`w-full h-full relative z-[1] ${
+            objectFit === 'contain' ? 'object-contain object-center bg-slate-100/40' : 'object-cover object-top'
+          } ${onClick ? 'group-hover:scale-[1.01]' : ''} transition-opacity duration-300 ${
+            isLoaded ? 'opacity-100' : 'opacity-0'
           }`}
         />
       )}
 
-      {/* High-Fidelity Mockup Placeholder if image not yet present */}
-      {(hasError || !isLoaded) && (
+      {/* High-Fidelity Mockup Placeholder ONLY if image failed to load */}
+      {hasError && (
         <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 p-4 md:p-6 flex flex-col justify-between text-white overflow-hidden relative font-sans" dir="rtl">
           {/* Top Window Bar */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-700/60 shrink-0">

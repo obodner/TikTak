@@ -32,6 +32,7 @@ export default function LandingPage() {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   const [isDashboardLightboxOpen, setIsDashboardLightboxOpen] = useState(false);
   const [isDashboardZoomed, setIsDashboardZoomed] = useState(false);
+  const [dashboardPreviewTab, setDashboardPreviewTab] = useState<'operations' | 'bi'>('operations');
   const [activeSection, setActiveSection] = useState<string>('');
 
   // Scroll Spy Hook
@@ -664,6 +665,34 @@ export default function LandingPage() {
 
             {/* Right Column: Beautiful Desktop Browser Dashboard Snippet */}
             <div className="lg:col-span-7 space-y-6">
+              {/* Dashboard View Switcher */}
+              <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 rounded-2xl w-fit text-xs font-bold shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setDashboardPreviewTab('operations')}
+                  className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    dashboardPreviewTab === 'operations'
+                      ? 'bg-white text-blue-700 shadow-sm font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>🖥️</span>
+                  <span>{isRtl ? 'ניהול תקלות ובקלוג משימות' : 'Operations & Backlog'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDashboardPreviewTab('bi')}
+                  className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    dashboardPreviewTab === 'bi'
+                      ? 'bg-white text-blue-700 shadow-sm font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>📊</span>
+                  <span>{isRtl ? 'דוחות ובקרה ניהולית (BI)' : 'Executive BI Analytics'}</span>
+                </button>
+              </div>
+
               <div className="bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden">
                 {/* Browser Top Bar */}
                 <div className="bg-slate-50 border-b border-slate-200 py-3.5 px-6 flex items-center gap-2">
@@ -673,38 +702,67 @@ export default function LandingPage() {
                     <div className="w-3 h-3 rounded-full bg-green-400" />
                   </div>
                   <div className="bg-slate-200/60 rounded-lg px-4 py-0.5 text-[10px] text-slate-500 font-bold tracking-tight mx-auto select-none">
-                    dashboard.tiktak2026.web.app
+                    {dashboardPreviewTab === 'operations' ? 'dashboard.tiktak2026.web.app' : 'analytics.tiktak2026.web.app'}
                   </div>
                 </div>
 
                 {/* Dashboard Screen Image */}
                 <div
-                  className="w-full aspect-[16/9] overflow-hidden select-none bg-slate-100 cursor-zoom-in"
+                  className="w-full aspect-[16/9] overflow-hidden select-none bg-slate-100 cursor-zoom-in relative group"
                   onClick={() => setIsDashboardLightboxOpen(true)}
                 >
-                  <img src="/admin_dashboard_preview.png" alt="TikTak Admin Dashboard" className="w-full h-full object-cover object-top hover:scale-[1.01] transition-transform duration-500" />
+                  <div className="absolute top-3 left-3 bg-slate-900/80 hover:bg-slate-900 text-white text-[11px] font-black px-3 py-1 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 shadow-md z-10 pointer-events-none">
+                    <span>🔍</span>
+                    <span>{isRtl ? 'לחץ להגדלה' : 'Click to zoom'}</span>
+                  </div>
+                  <img
+                    src={dashboardPreviewTab === 'operations' ? '/admin_dashboard_preview.png' : '/admin_bi_preview.png?v=3'}
+                    alt={dashboardPreviewTab === 'operations' ? 'TikTak Admin Dashboard' : 'TikTak Executive BI Analytics'}
+                    className="w-full h-full object-cover object-top hover:scale-[1.01] transition-transform duration-500"
+                  />
                 </div>
               </div>
 
               {/* Supporting Bullet Points */}
-              <ul className="space-y-3 text-slate-600 font-semibold pr-2">
-                <li className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
-                  <span>{t('landing_mgr_bullet1') || 'כל הדיווחים מרוכזים במקום אחד בזמן אמת'}</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
-                  <span>{t('landing_mgr_bullet2') || 'תיעדוף חכם ואוטומטי לפי רמות דחיפות וקטגוריות'}</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
-                  <span>{t('landing_mgr_bullet3') || 'ערוץ תקשורת ישיר ועדכוני סטטוס אוטומטיים מול התושב המדווח'}</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
-                  <span>{t('landing_mgr_bullet4') || (isRtl ? 'לוח בקלוג משימות (Tasks Backlog) למעקב ומיון משימות נדחות לפי דחיפות וחשיבות' : 'Tasks Backlog board for triaging and tracking deferred tasks by urgency & priority')}</span>
-                </li>
-              </ul>
+              {dashboardPreviewTab === 'operations' ? (
+                <ul className="space-y-3 text-slate-600 font-semibold pr-2">
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{t('landing_mgr_bullet1') || 'כל הדיווחים מרוכזים במקום אחד בזמן אמת'}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{t('landing_mgr_bullet2') || 'תיעדוף חכם ואוטומטי לפי רמות דחיפות וקטגוריות'}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{t('landing_mgr_bullet3') || 'ערוץ תקשורת ישיר ועדכוני סטטוס אוטומטיים מול התושב המדווח'}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{t('landing_mgr_bullet4') || (isRtl ? 'לוח בקלוג משימות (Tasks Backlog) למעקב ומיון משימות נדחות לפי דחיפות וחשיבות' : 'Tasks Backlog board for triaging and tracking deferred tasks by urgency & priority')}</span>
+                  </li>
+                </ul>
+              ) : (
+                <ul className="space-y-3 text-slate-600 font-semibold pr-2">
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{isRtl ? 'דשבורד מנהלים אינטראקטיבי למעקב ביצועים וזמני סגירת קריאות' : 'Executive BI dashboard for KPI tracking & resolution times'}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{isRtl ? 'פילוח תקלות לפי קטגוריות, קומות ואזורים לזיהוי בעיות שורש חוזרות' : 'Fault distribution by category, floors, and areas to prevent repeat failures'}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{isRtl ? 'ניתוח תקציבי, חיסכון בעלויות תחזוקה והשוואת מחירי ספקים' : 'Budget analytics, maintenance cost reductions, and vendor benchmarking'}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs select-none">✓</div>
+                    <span>{isRtl ? 'ייצוא דוחות מסודרים לאסיפת הדיירים, לרואה החשבון ולפרוטוקול הוועד' : 'Exportable reports for annual tenant meetings, auditing, and accounting'}</span>
+                  </li>
+                </ul>
+              )}
             </div>
           </div>
         </div>
@@ -1504,8 +1562,8 @@ export default function LandingPage() {
             </button>
             <div className={`p-4 ${isDashboardZoomed ? 'block text-center min-w-max' : 'flex items-center justify-center min-h-[80vh]'}`}>
               <img
-                src="/admin_dashboard_preview.png"
-                alt="TikTak Admin Dashboard Full Size"
+                src={dashboardPreviewTab === 'operations' ? '/admin_dashboard_preview.png' : '/admin_bi_preview.png?v=3'}
+                alt={dashboardPreviewTab === 'operations' ? 'TikTak Admin Dashboard Full Size' : 'TikTak Executive BI Analytics Full Size'}
                 onClick={() => setIsDashboardZoomed(!isDashboardZoomed)}
                 className={`transition-all duration-300 select-none ${isDashboardZoomed
                   ? 'max-w-none w-[1800px] h-auto cursor-zoom-out mx-auto block'
