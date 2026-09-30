@@ -670,11 +670,10 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={() => setDashboardPreviewTab('operations')}
-                  className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
-                    dashboardPreviewTab === 'operations'
+                  className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${dashboardPreviewTab === 'operations'
                       ? 'bg-white text-blue-700 shadow-sm font-black'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   <span>🖥️</span>
                   <span>{isRtl ? 'ניהול תקלות ובקלוג משימות' : 'Operations & Backlog'}</span>
@@ -682,11 +681,10 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={() => setDashboardPreviewTab('bi')}
-                  className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
-                    dashboardPreviewTab === 'bi'
+                  className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${dashboardPreviewTab === 'bi'
                       ? 'bg-white text-blue-700 shadow-sm font-black'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   <span>📊</span>
                   <span>{isRtl ? 'דוחות ובקרה ניהולית (BI)' : 'Executive BI Analytics'}</span>
