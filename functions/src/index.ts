@@ -4510,26 +4510,6 @@ export const dispatchRfqToVendors = onRequest({ cors: true, secrets: ["WHATSAPP_
       updatedAt: new Date().toISOString()
     });
 
-    // 7. Record Audit Log
-    await recordAuditLog({
-      tenantId,
-      action: "RFQ_WHATSAPP_DISPATCHED",
-      level: "INFO",
-      actor: {
-        uid: actor?.uid || "admin",
-        name: actor?.name || creatorName,
-        email: actor?.email || undefined,
-        type: "admin"
-      },
-      details: {
-        rfqId,
-        title: rfqData.title,
-        requestedCount: targetVendors.length,
-        successCount: results.filter(r => r.success).length,
-        results
-      }
-    });
-
     const successCount = results.filter(r => r.success).length;
 
     res.status(200).send({
@@ -4599,23 +4579,51 @@ export const notifyQuoteSubmission = onRequest({ cors: true, secrets: ["WHATSAPP
     const subData = subSnap.data() || {};
 
     // 4. Resolve Target Admin & Phone
-    let adminName = rfqData.createdBy?.name || "מנהל/ת המערכת";
+    let adminName = rfqData.createdBy?.name || "";
     let adminPhone = rfqData.createdBy?.phone || "";
     const adminUid = rfqData.createdBy?.uid;
 
-    if (!adminPhone && adminUid) {
+    // Check specific admin user by UID first from tenant's adminUsers collection
+    if (adminUid && adminUid !== 'admin') {
       try {
         const adminSnap = await tenantRef.collection("adminUsers").doc(adminUid).get();
         if (adminSnap.exists) {
           const aData = adminSnap.data() || {};
-          adminPhone = aData.mobile || aData.phone || "";
-          if (aData.firstName || aData.lastName) {
-            adminName = `${aData.firstName || ''} ${aData.lastName || ''}`.trim() || adminName;
+          const resolvedFullName = aData.fullName || aData.name || `${aData.firstName || ''} ${aData.lastName || ''}`.trim();
+          if (resolvedFullName && resolvedFullName !== 'ועד הבית' && resolvedFullName !== 'ועד בית') {
+            adminName = resolvedFullName;
+          }
+          if (!adminPhone && (aData.mobile || aData.phone)) {
+            adminPhone = aData.mobile || aData.phone;
           }
         }
       } catch (adminErr) {
-        logger.warn(`Could not resolve admin phone for uid ${adminUid}:`, adminErr);
+        logger.warn(`Could not resolve admin from adminUsers for uid ${adminUid}:`, adminErr);
       }
+
+      // Check root users collection if name is still generic
+      if (!adminName || adminName === 'ועד הבית' || adminName === 'ועד בית' || adminName === 'מנהל/ת המערכת') {
+        try {
+          const rootUserSnap = await db.collection("users").doc(adminUid).get();
+          if (rootUserSnap.exists) {
+            const uData = rootUserSnap.data() || {};
+            const rootName = uData.fullName || uData.displayName || uData.name || `${uData.firstName || ''} ${uData.lastName || ''}`.trim();
+            if (rootName && rootName !== 'ועד הבית' && rootName !== 'ועד בית') {
+              adminName = rootName;
+            }
+            if (!adminPhone && (uData.mobile || uData.phone)) {
+              adminPhone = uData.mobile || uData.phone;
+            }
+          }
+        } catch (uErr) {
+          logger.warn(`Could not resolve admin from users for uid ${adminUid}:`, uErr);
+        }
+      }
+    }
+
+    // Fallbacks if name or phone are still empty
+    if (!adminName || adminName === 'ועד הבית' || adminName === 'ועד בית') {
+      adminName = tenantData.contactPerson || tenantData.adminName || tenantData.name || "ועד הבית";
     }
 
     if (!adminPhone) {
@@ -4637,7 +4645,8 @@ export const notifyQuoteSubmission = onRequest({ cors: true, secrets: ["WHATSAPP
     const vendorName = subData.vendorName || "קבלן";
     const priceNum = subData.price || 0;
     const vatSuffix = subData.priceIncludesVat ? 'כולל מע"מ' : '+ מע"מ';
-    const priceFormatted = `₪${priceNum.toLocaleString()} (${vatSuffix})`;
+    // Meta approved template admin_new_quote_alert has "💰 סכום: ₪{{5}}", so {{5}} must NOT include the leading ₪ sign to prevent "₪₪".
+    const priceFormatted = `${priceNum.toLocaleString()} (${vatSuffix})`;
     const durationStr = subData.estimatedDuration || "לפי תיאום";
     const titleWithNum = rfqData.ticketNumber ? `${rfqData.title} (#${rfqData.ticketNumber})` : rfqData.title;
 
@@ -4679,7 +4688,7 @@ export const notifyQuoteSubmission = onRequest({ cors: true, secrets: ["WHATSAPP
         `📋 *מכרז:* ${titleWithNum}\n` +
         `🏢 *אתר:* ${customerSiteStr}\n` +
         `🛠️ *קבלן:* ${vendorName}\n` +
-        `💰 *סכום ההצעה:* ${priceFormatted}\n` +
+        `💰 *סכום ההצעה:* ₪${priceFormatted}\n` +
         `⏱️ *משך ביצוע:* ${durationStr}\n` +
         (subData.notes ? `💬 *הערות הקבלן:* ${subData.notes}\n` : '') +
         `\n📊 *לצפייה בהצעה והשוואה במערכת:*\n` +

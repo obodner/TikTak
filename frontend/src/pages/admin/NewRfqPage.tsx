@@ -86,6 +86,22 @@ const BLOCKED_EXTENSIONS = [
 const MAX_FILES = 3;
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
+function generateSecureTokenHash(seed: string): string {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return (crypto.randomUUID().replace(/-/g, '') + Math.random().toString(36).substring(2)).slice(0, 32);
+    }
+    const bytes = new TextEncoder().encode(seed + ':' + Date.now() + ':' + Math.random());
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+  } catch {
+    return (Math.random().toString(36).substring(2) + Date.now().toString(36) + Math.random().toString(36).substring(2)).slice(0, 32);
+  }
+}
+
 export default function NewRfqPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
@@ -105,12 +121,16 @@ export default function NewRfqPage() {
     getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid)).then(snap => {
       if (snap.exists()) {
         const d = snap.data();
-        const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim();
+        const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.fullName || d.name || user?.displayName;
         setAdminProfile({
           firstName: d.firstName,
           lastName: d.lastName,
           fullName: fullName || undefined,
           mobile: d.mobile || d.phone
+        });
+      } else if (user?.displayName) {
+        setAdminProfile({
+          fullName: user.displayName
         });
       }
     }).catch(e => console.warn('Could not load current admin profile:', e));
@@ -782,7 +802,7 @@ export default function NewRfqPage() {
 
       const selectedVendorsList = vendors.filter(v => selectedVendorIds.includes(v.id));
       const dispatchedRecords: DispatchedVendorRecord[] = selectedVendorsList.map(v => {
-        const tokenHash = btoa(`${tenantId}:${v.id}:${Date.now()}:${v.phone}`).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+        const tokenHash = generateSecureTokenHash(`${tenantId}:${v.id}:${v.phone}`);
         return {
           vendorId: v.id,
           vendorName: v.fullName,
@@ -794,20 +814,33 @@ export default function NewRfqPage() {
         };
       });
 
-      let creatorName = adminProfile?.fullName || 'ועד הבית';
+      let creatorName = adminProfile?.fullName || user?.displayName || '';
       let creatorPhone: string | undefined = adminProfile?.mobile;
-      if (!adminProfile?.fullName && user?.uid && tenantId) {
+      if (!creatorName && user?.uid && tenantId) {
         try {
           const uSnap = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
           if (uSnap.exists()) {
             const uData = uSnap.data();
-            const fullName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim();
+            const fullName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim() || uData.fullName || uData.name;
             if (fullName) creatorName = fullName;
             if (uData.mobile || uData.phone) creatorPhone = uData.mobile || uData.phone;
           }
         } catch (e) {
           console.warn('Could not fetch admin user details for RFQ creator:', e);
         }
+      }
+      if (!creatorName && user?.uid) {
+        try {
+          const rootSnap = await getDoc(doc(db, "users", user.uid));
+          if (rootSnap.exists()) {
+            const rData = rootSnap.data();
+            const rName = rData.fullName || rData.displayName || rData.name || `${rData.firstName || ''} ${rData.lastName || ''}`.trim();
+            if (rName) creatorName = rName;
+          }
+        } catch (e) {}
+      }
+      if (!creatorName) {
+        creatorName = user?.displayName || user?.email?.split('@')[0] || 'ועד הבית';
       }
 
       const draftTitle = title.trim() || `טיוטת מכרז - ${category}`;
@@ -924,7 +957,7 @@ export default function NewRfqPage() {
 
       const dispatchedRecords = selectedVendorsList.map(v => {
         // Generate pseudo-token hash for security verification
-        const tokenHash = btoa(`${tenantId}:${v.id}:${Date.now()}:${v.phone}`).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+        const tokenHash = generateSecureTokenHash(`${tenantId}:${v.id}:${v.phone}`);
         return {
           vendorId: v.id,
           vendorName: v.fullName,
@@ -937,20 +970,33 @@ export default function NewRfqPage() {
       });
 
       // Grab work ordering contact info from adminUsers (Users tab)
-      let creatorName = adminProfile?.fullName || 'ועד הבית';
+      let creatorName = adminProfile?.fullName || user?.displayName || '';
       let creatorPhone: string | undefined = adminProfile?.mobile;
-      if (!adminProfile?.fullName && user?.uid && tenantId) {
+      if (!creatorName && user?.uid && tenantId) {
         try {
           const uSnap = await getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid));
           if (uSnap.exists()) {
             const uData = uSnap.data();
-            const fullName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim();
+            const fullName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim() || uData.fullName || uData.name;
             if (fullName) creatorName = fullName;
             if (uData.mobile || uData.phone) creatorPhone = uData.mobile || uData.phone;
           }
         } catch (e) {
           console.warn('Could not fetch admin user details for RFQ creator:', e);
         }
+      }
+      if (!creatorName && user?.uid) {
+        try {
+          const rootSnap = await getDoc(doc(db, "users", user.uid));
+          if (rootSnap.exists()) {
+            const rData = rootSnap.data();
+            const rName = rData.fullName || rData.displayName || rData.name || `${rData.firstName || ''} ${rData.lastName || ''}`.trim();
+            if (rName) creatorName = rName;
+          }
+        } catch (e) {}
+      }
+      if (!creatorName) {
+        creatorName = user?.displayName || user?.email?.split('@')[0] || 'ועד הבית';
       }
 
       const rfqPayload: Record<string, any> = {
@@ -1045,6 +1091,12 @@ export default function NewRfqPage() {
         },
         details: {
           rfqId: publishedRfqId,
+          title: title.trim(),
+          rfqTitle: title.trim(),
+          ticketNumber: linkedTicket?.ticketNumber,
+          totalRecipients: dispatchedRecords.length,
+          requestedCount: dispatchedRecords.length,
+          successCount: dispatchedRecords.length,
           targetVendors: dispatchedRecords.map(d => ({ vendorId: d.vendorId, name: d.vendorName, phone: d.phone }))
         }
       });

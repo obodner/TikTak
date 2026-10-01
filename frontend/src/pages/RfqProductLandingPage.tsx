@@ -117,10 +117,11 @@ export default function RfqProductLandingPage() {
 
             <Link
               to="/"
-              className="text-xs font-bold text-slate-500 hover:text-blue-600 flex items-center gap-1.5 transition-colors hidden sm:flex"
+              className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1.5 transition-colors px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white sm:border-transparent sm:bg-transparent hover:bg-slate-100"
             >
               {isRtl ? <ArrowRight size={14} /> : <ArrowLeft size={14} />}
-              <span>{isRtl ? 'חזרה לדף הבית (דיווחי תקלות)' : 'Back to Home (Incident Reporting)'}</span>
+              <span className="hidden sm:inline">{isRtl ? 'חזרה לדף הבית (דיווחי תקלות)' : 'Back to Home (Incident Reporting)'}</span>
+              <span className="sm:hidden font-black text-slate-700">{isRtl ? 'דף הבית' : 'Home'}</span>
             </Link>
           </div>
 

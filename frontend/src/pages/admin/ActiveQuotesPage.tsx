@@ -238,9 +238,28 @@ export default function ActiveQuotesPage() {
     return () => unsubscribe();
   }, [tenantId, newRfqId]);
 
-  // Auto-scroll to target RFQ card smoothly if specified in URL params
+  // Auto-expand and scroll to target RFQ card smoothly if specified in URL params
   useEffect(() => {
     if (!targetRfqId || loading) return;
+
+    // Expand the target RFQ card (single-accordion behavior)
+    setExpandedRfqIds([targetRfqId]);
+
+    // Un-collapse any month group containing this RFQ
+    setCollapsedGroupKeys(prev => prev.filter(k => !k.includes(targetRfqId)));
+
+    // Ensure filter tab displays this RFQ if it belongs to a specific status
+    const target = rfqs.find(r => r.id === targetRfqId);
+    if (target) {
+      if (target.status === 'draft') {
+        setActiveFilter('drafts');
+      } else if (target.status === 'open') {
+        setActiveFilter('open');
+      } else if (target.status === 'awarded' || target.status === 'cancelled' || isRfqExpired(target)) {
+        setActiveFilter('closed');
+      }
+    }
+
     const timer = setTimeout(() => {
       const el = document.getElementById(`rfq-${targetRfqId}`);
       if (el) {
@@ -248,7 +267,7 @@ export default function ActiveQuotesPage() {
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [targetRfqId, loading]);
+  }, [targetRfqId, loading, rfqs]);
 
   // 2. Fetch submissions for all RFQs
   useEffect(() => {
@@ -280,11 +299,9 @@ export default function ActiveQuotesPage() {
     };
   }, [tenantId, rfqs]);
 
-  // Toggle card expansion
+  // Toggle card expansion (single-accordion: only one card can be expanded at a time)
   const toggleExpand = (rfqId: string) => {
-    setExpandedRfqIds(prev =>
-      prev.includes(rfqId) ? prev.filter(id => id !== rfqId) : [...prev, rfqId]
-    );
+    setExpandedRfqIds(prev => (prev.includes(rfqId) ? [] : [rfqId]));
   };
 
   // Helper: Format deadline & calculate remaining hours/days

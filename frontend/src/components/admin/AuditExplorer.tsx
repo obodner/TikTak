@@ -29,7 +29,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastDoc, setLastDoc] = useState<any>(null);
-    const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
+    const [tenants, setTenants] = useState<{ id: string; name: string; type?: string }[]>([]);
     const [showRaw, setShowRaw] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [showExportModal, setShowExportModal] = useState(false);
@@ -350,7 +350,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
     const fetchTenants = async () => {
         try {
             const snap = await getDocs(collection(db, 'tenants'));
-            setTenants(snap.docs.map(d => ({ id: d.id, name: d.data().name })));
+            setTenants(snap.docs.map(d => ({ id: d.id, name: d.data().name, type: d.data().type })));
         } catch (err) {
             console.error('Failed to fetch tenants:', err);
         }
@@ -409,6 +409,30 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         });
     };
 
+    function formatTenantLocation(name: string, type?: string, en?: boolean): string {
+        const cleanName = (name || '').trim();
+        if (!cleanName || cleanName === 'Unknown' || cleanName === 'general') return '';
+        if (en) return `in ${cleanName}`;
+        const isSettlement = type === 'settlement' || type === 'municipality' || type === 'community'
+            || cleanName.startsWith('ישוב') || cleanName.startsWith('יישוב') || cleanName.startsWith('קיבוץ') || cleanName.startsWith('מועצה');
+        
+        if (isSettlement) {
+            if (cleanName.startsWith('ישוב') || cleanName.startsWith('יישוב') || cleanName.startsWith('קיבוץ') || cleanName.startsWith('מועצה')) {
+                return `ב${cleanName}`;
+            }
+            return `ביישוב ${cleanName}`;
+        }
+        return `בבניין ${cleanName}`;
+    }
+
+    function formatTenantSettings(name: string, type?: string, en?: boolean): string {
+        const cleanName = (name || '').trim();
+        if (en) return `building settings for ${cleanName}`;
+        const isSettlement = type === 'settlement' || type === 'municipality' || type === 'community'
+            || cleanName.startsWith('ישוב') || cleanName.startsWith('יישוב') || cleanName.startsWith('קיבוץ') || cleanName.startsWith('מועצה');
+        return isSettlement ? `הגדרות היישוב עבור ${cleanName}` : `הגדרות הבניין עבור ${cleanName}`;
+    }
+
     function getHumanReadable(log: AuditLog) {
         let actor = log.actor?.name || log.actor?.email || 'Unknown';
         if (actor.toLowerCase() === 'system' || actor === 'Admin' || actor === 'system') {
@@ -417,21 +441,24 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             actor = actor.split('@')[0];
         }
         const logTenantId = log.tenantId || log.metadata?.tenantId;
-        const tenantName = tenants.find(t => t.id === logTenantId)?.name || logTenantId || 'Unknown';
+        const tenant = tenants.find(t => t.id === logTenantId);
+        const tenantName = tenant?.name || logTenantId || 'Unknown';
+        const locName = formatTenantLocation(tenantName, tenant?.type, isEn);
+        const locStr = locName ? ` ${locName}` : '';
 
         switch (log.action) {
             case 'TICKET_CREATED':
                 const createRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 const summaryText = log.details.summary ? `: ${log.details.summary}` : '';
                 return isEn
-                    ? `${actor} reported a new ${log.details.category} issue ${createRef} in ${tenantName}${summaryText}`
-                    : `${actor} דיווח על תקלה חדשה ${createRef} (${log.details.category}) בבניין ${tenantName}${summaryText}`;
+                    ? `${actor} reported a new ${log.details.category} issue ${createRef}${locStr}${summaryText}`
+                    : `${actor} דיווח על תקלה חדשה ${createRef} (${log.details.category})${locStr}${summaryText}`;
             case 'TICKET_STATUS_UPDATE': {
                 const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 const formattedNewStatus = formatStatus(log.details.newStatus);
                 return isEn
-                    ? `${actor} updated ticket ${ticketRef} status to ${formattedNewStatus} in ${tenantName}`
-                    : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${formattedNewStatus} בבניין ${tenantName}`;
+                    ? `${actor} updated ticket ${ticketRef} status to ${formattedNewStatus}${locStr}`
+                    : `${actor} עדכן סטטוס של פנייה ${ticketRef} ל-${formattedNewStatus}${locStr}`;
             }
             case 'QUOTA_NON_BILLABLE_FLAGGED': {
                 const qRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
@@ -439,8 +466,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 const reasonStr = log.details?.reason ? ` (${log.details.reason})` : '';
                 return isEn
-                    ? `Ticket ${qRef} flagged as non-billable quota deduction${reasonStr} in ${tenantName}`
-                    : `זיכוי מכסה: פנייה ${qRef} סומנה כפטורה מחיוב במכסה${reasonStr} בבניין ${tenantName}`;
+                    ? `Ticket ${qRef} flagged as non-billable quota deduction${reasonStr}${locStr}`
+                    : `זיכוי מכסה: פנייה ${qRef} סומנה כפטורה מחיוב במכסה${reasonStr}${locStr}`;
             }
             case 'QUOTA_ALERT_DISPATCHED': {
                 const threshold = log.details?.threshold || '';
@@ -548,8 +575,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;
             case 'CONFIGURATION_UPDATE':
                 return isEn
-                    ? `${actor} updated building settings for ${tenantName}`
-                    : `${actor} עדכן את הגדרות הבניין עבור ${tenantName}`;
+                    ? `${actor} updated ${formatTenantSettings(tenantName, tenant?.type, true)}`
+                    : `${actor} עדכן את ${formatTenantSettings(tenantName, tenant?.type, false)}`;
             case 'QUICKTAP_CONFIG_UPDATE':
                 const itemsCount = log.details.quickTapItemsCount !== undefined ? ` (${log.details.quickTapItemsCount} כפתורים)` : '';
                 return isEn
@@ -596,8 +623,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const isReset = log.details.actionName === 'resetPassword';
                 if (isReset) {
                     return isEn
-                        ? `${actor} requested password reset for ${target} in ${tenantName}`
-                        : `${actor} ביקש איפוס סיסמה עבור ${target} בבניין ${tenantName}`;
+                        ? `${actor} requested password reset for ${target}${locStr}`
+                        : `${actor} ביקש איפוס סיסמה עבור ${target}${locStr}`;
                 }
                 
                 let changeStr = '';
@@ -621,8 +648,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 }
                 
                 return isEn
-                    ? `${actor} updated user ${target} in ${tenantName}${changeStr}`
-                    : `${actor} עדכן את משתמש הניהול ${target} בבניין ${tenantName}${changeStr}`;
+                    ? `${actor} updated user ${target}${locStr}${changeStr}`
+                    : `${actor} עדכן את משתמש הניהול ${target}${locStr}${changeStr}`;
             }
             case 'VENDOR_ADDED': {
                 const vName = log.details?.fullName || log.details?.vendorId || '';
@@ -666,25 +693,27 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             case 'RESIDENT_METOO_INCREMENTED': {
                 const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn
-                    ? `Resident joined ticket ${ticketRef} ("Add me") in ${tenantName}`
-                    : `תושב הצטרף לפנייה ${ticketRef} ("תוסיף אותי") בבניין ${tenantName}`;
+                    ? `Resident joined ticket ${ticketRef} ("Add me")${locStr}`
+                    : `תושב הצטרף לפנייה ${ticketRef} ("תוסיף אותי")${locStr}`;
             }
             case 'RESIDENT_METOO_REMOVED': {
                 const ticketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
                 return isEn
-                    ? `Resident removed addition from ticket ${ticketRef} in ${tenantName}`
-                    : `תושב ביטל הצטרפות לפנייה ${ticketRef} בבניין ${tenantName}`;
+                    ? `Resident removed addition from ticket ${ticketRef}${locStr}`
+                    : `תושב ביטל הצטרפות לפנייה ${ticketRef}${locStr}`;
             }
             case 'SUPPORT_INQUIRY_SUBMITTED': {
                 const bName = log.details?.tenantName || (tenantName !== 'general' && tenantName !== 'Unknown' ? tenantName : '');
-                const bNameStr = bName ? (isEn ? ` for ${bName}` : ` בבניין ${bName}`) : '';
+                const bNameLoc = bName ? formatTenantLocation(bName, tenant?.type, isEn) : '';
+                const bNameStr = bNameLoc ? ` ${bNameLoc}` : '';
                 return isEn
                     ? `${actor} opened a support call${bNameStr}`
                     : `${actor} פתח/ה פניית תמיכה${bNameStr}`;
             }
             case 'SUPPORT_INQUIRY_CLOSED': {
                 const bName = log.details?.tenantName || (tenantName !== 'general' && tenantName !== 'Unknown' ? tenantName : '');
-                const bNameStr = bName ? (isEn ? ` for ${bName}` : ` בבניין ${bName}`) : '';
+                const bNameLoc = bName ? formatTenantLocation(bName, tenant?.type, isEn) : '';
+                const bNameStr = bNameLoc ? ` ${bNameLoc}` : '';
                 const caller = log.details?.callerName ? (isEn ? ` from ${log.details.callerName}` : ` מאת ${log.details.callerName}`) : '';
                 return isEn
                     ? `${actor} closed/addressed support call${caller}${bNameStr}`
@@ -692,7 +721,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             }
             case 'SUPPORT_INQUIRY_REOPENED': {
                 const bName = log.details?.tenantName || (tenantName !== 'general' && tenantName !== 'Unknown' ? tenantName : '');
-                const bNameStr = bName ? (isEn ? ` for ${bName}` : ` בבניין ${bName}`) : '';
+                const bNameLoc = bName ? formatTenantLocation(bName, tenant?.type, isEn) : '';
+                const bNameStr = bNameLoc ? ` ${bNameLoc}` : '';
                 const caller = log.details?.callerName ? ` (${log.details.callerName})` : '';
                 return isEn
                     ? `${actor} reopened support call${caller}${bNameStr}`
@@ -702,14 +732,14 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const loc = log.details?.location ? (isEn ? ` for "${log.details.location}"` : ` במיקום "${log.details.location}"`) : '';
                 const msg = log.details?.message ? `: "${log.details.message}"` : '';
                 return isEn
-                    ? `${actor} pinned an in-app notice banner${loc} in ${tenantName}${msg}`
-                    : `${actor} הצמיד/ה באנר הודעה לדיירים${loc} בבניין ${tenantName}${msg}`;
+                    ? `${actor} pinned an in-app notice banner${loc}${locStr}${msg}`
+                    : `${actor} הצמיד/ה באנר הודעה לדיירים${loc}${locStr}${msg}`;
             }
             case 'NOTICE_BANNER_REMOVED': {
                 const loc = log.details?.previousLocation ? (isEn ? ` from "${log.details.previousLocation}"` : ` ממיקום "${log.details.previousLocation}"`) : '';
                 return isEn
-                    ? `${actor} removed the in-app notice banner${loc} in ${tenantName}`
-                    : `${actor} הסיר/ה את באנר ההודעה לדיירים${loc} בבניין ${tenantName}`;
+                    ? `${actor} removed the in-app notice banner${loc}${locStr}`
+                    : `${actor} הסיר/ה את באנר ההודעה לדיירים${loc}${locStr}`;
             }
             case 'ANALYTICS_REPORT_EXPORTED': {
                 const total = log.details?.totalTickets !== undefined ? (isEn ? ` (${log.details.totalTickets} tickets)` : ` (${log.details.totalTickets} פניות)`) : '';
@@ -724,20 +754,20 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const countStr = log.details?.recipientCount ? (isEn ? ` (${log.details.recipientCount} contractors)` : ` (${log.details.recipientCount} קבלנים בתפוצה)`) : '';
                 const titleStr = log.details?.title ? ` "${log.details.title}"` : '';
                 return isEn
-                    ? `${actor} created work quote request (RFQ)${titleStr}${tRef}${countStr} in ${tenantName}`
-                    : `${actor} פתח/ה בקשה להצעת מחיר (RFQ)${titleStr}${tRef}${countStr} בבניין ${tenantName}`;
+                    ? `${actor} created work quote request (RFQ)${titleStr}${tRef}${countStr}${locStr}`
+                    : `${actor} פתח/ה בקשה להצעת מחיר (RFQ)${titleStr}${tRef}${countStr}${locStr}`;
             }
             case 'RFQ_DRAFT_SAVED': {
                 const titleStr = log.details?.title ? ` "${log.details.title}"` : '';
                 return isEn
-                    ? `${actor} saved draft quote request (RFQ)${titleStr} in ${tenantName}`
-                    : `${actor} שמר/ה טיוטת מכרז${titleStr} בבניין ${tenantName}`;
+                    ? `${actor} saved draft quote request (RFQ)${titleStr}${locStr}`
+                    : `${actor} שמר/ה טיוטת מכרז${titleStr}${locStr}`;
             }
             case 'RFQ_DRAFT_DELETED': {
                 const titleStr = log.details?.title ? ` "${log.details.title}"` : '';
                 return isEn
-                    ? `${actor} deleted draft quote request (RFQ)${titleStr} in ${tenantName}`
-                    : `${actor} מחק/ה טיוטת מכרז${titleStr} בבניין ${tenantName}`;
+                    ? `${actor} deleted draft quote request (RFQ)${titleStr}${locStr}`
+                    : `${actor} מחק/ה טיוטת מכרז${titleStr}${locStr}`;
             }
             case 'RFQ_WHATSAPP_DISPATCHED':
             case 'RFQ_BROADCAST_SENT': {
@@ -761,8 +791,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     ? (isEn ? ` (Ticket #${log.details.ticketNumber})` : ` (קריאה #${log.details.ticketNumber})`)
                     : '';
                 return isEn
-                    ? `${actor} dispatched quote request (RFQ) via WhatsApp ${countStr}${titleStr}${tRef} in ${tenantName}`
-                    : `${actor} שיגר/ה בקשת הצעת מחיר (RFQ) בוואטסאפ ${countStr}${titleStr}${tRef} בבניין ${tenantName}`;
+                    ? `${actor} dispatched quote request (RFQ) via WhatsApp ${countStr}${titleStr}${tRef}${locStr}`
+                    : `${actor} שיגר/ה בקשת הצעת מחיר (RFQ) בוואטסאפ ${countStr}${titleStr}${tRef}${locStr}`;
             }
             case 'VENDOR_QUOTE_SUBMITTED': {
                 const vName = log.details?.vendorName || log.actor?.name || actor;
@@ -770,8 +800,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const vat = log.details?.priceIncludesVat ? (isEn ? ' (incl. VAT)' : ' (כולל מע"מ)') : (isEn ? ' (+ VAT)' : ' (+ מע"מ)');
                 const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
                 return isEn
-                    ? `Contractor ${vName} submitted price quote${price}${vat} for${rfqTitle} in ${tenantName}`
-                    : `הקבלן ${vName} הגיש הצעת מחיר${price}${vat} עבור${rfqTitle} בבניין ${tenantName}`;
+                    ? `Contractor ${vName} submitted price quote${price}${vat} for${rfqTitle}${locStr}`
+                    : `הקבלן ${vName} הגיש הצעת מחיר${price}${vat} עבור${rfqTitle}${locStr}`;
             }
             case 'VENDOR_QUOTE_UPDATED': {
                 const vName = log.details?.vendorName || log.actor?.name || actor;
@@ -779,8 +809,8 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const vat = log.details?.priceIncludesVat ? (isEn ? ' (incl. VAT)' : ' (כולל מע"מ)') : (isEn ? ' (+ VAT)' : ' (+ מע"מ)');
                 const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
                 return isEn
-                    ? `Contractor ${vName} updated price quote${price}${vat} for${rfqTitle} in ${tenantName}`
-                    : `הקבלן ${vName} עדכן את הצעת המחיר${price}${vat} עבור${rfqTitle} בבניין ${tenantName}`;
+                    ? `Contractor ${vName} updated price quote${price}${vat} for${rfqTitle}${locStr}`
+                    : `הקבלן ${vName} עדכן את הצעת המחיר${price}${vat} עבור${rfqTitle}${locStr}`;
             }
             case 'RFQ_AWARDED': {
                 const winner = log.details?.winningVendorName || log.details?.vendorName || (isEn ? 'Contractor' : 'הקבלן');
@@ -790,14 +820,14 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
                 const reasonStr = log.details?.awardReason ? (isEn ? ` (Reason: ${log.details.awardReason})` : ` (נימוק: ${log.details.awardReason})`) : '';
                 return isEn
-                    ? `${actor} approved winning quote by ${winner}${price} for${rfqTitle} in ${tenantName}${reasonStr}`
-                    : `${actor} אישר/ה את הצעתו של ${winner}${price} כהצעה הזוכה עבור${rfqTitle} בבניין ${tenantName}${reasonStr}`;
+                    ? `${actor} approved winning quote by ${winner}${price} for${rfqTitle}${locStr}${reasonStr}`
+                    : `${actor} אישר/ה את הצעתו של ${winner}${price} כהצעה הזוכה עבור${rfqTitle}${locStr}${reasonStr}`;
             }
             case 'RFQ_CANCELLED': {
                 const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
                 return isEn
-                    ? `${actor} cancelled work quote request${rfqTitle} in ${tenantName}`
-                    : `${actor} סגר/ביטל את הבקשה להצעת מחיר${rfqTitle} בבניין ${tenantName}`;
+                    ? `${actor} cancelled work quote request${rfqTitle}${locStr}`
+                    : `${actor} סגר/ביטל את הבקשה להצעת מחיר${rfqTitle}${locStr}`;
             }
             case 'RFQ_EXPIRED': {
                 const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
@@ -809,23 +839,23 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const vName = log.actor?.name || log.details?.vendorName || actor;
                 const rfqRef = log.details?.rfqId ? ` (פנייה #${log.details.rfqId.slice(0, 6)})` : '';
                 return isEn
-                    ? `Contractor ${vName} verified identity successfully via whitelist${rfqRef} in ${tenantName}`
-                    : `הקבלן ${vName} אימת/ה זהות בהצלחה מול רשימת המורשים (Whitelist)${rfqRef} בבניין ${tenantName}`;
+                    ? `Contractor ${vName} verified identity successfully via whitelist${rfqRef}${locStr}`
+                    : `הקבלן ${vName} אימת/ה זהות בהצלחה מול רשימת המורשים (Whitelist)${rfqRef}${locStr}`;
             }
             case 'CONTRACTOR_AUTH_FAILED': {
                 const vName = log.details?.vendorName || actor || 'Unknown';
                 const tail = log.details?.enteredPhoneTail ? ` (סיומת ${log.details.enteredPhoneTail})` : '';
                 return isEn
-                    ? `Blocked unauthorized access attempt (403)${tail} for contractor ${vName} in ${tenantName}`
-                    : `נחסם ניסיון כניסה לא מורשה (403)${tail} עבור הקבלן ${vName} בבניין ${tenantName}`;
+                    ? `Blocked unauthorized access attempt (403)${tail} for contractor ${vName}${locStr}`
+                    : `נחסם ניסיון כניסה לא מורשה (403)${tail} עבור הקבלן ${vName}${locStr}`;
             }
             case 'QUOTE_NOTIFICATION_SENT': {
                 const vName = log.details?.vendorName || 'קבלן';
                 const price = log.details?.price ? ` (₪${log.details.price.toLocaleString()})` : '';
                 const recPhone = log.details?.recipientPhone ? ` (${log.details.recipientPhone})` : '';
                 return isEn
-                    ? `WhatsApp notification sent to admin${recPhone} for new quote by ${vName}${price} in ${tenantName}`
-                    : `התראת וואטסאפ נשלחה למנהל/ת המכרז${recPhone} על הצעת מחיר חדשה מאת ${vName}${price} בבניין ${tenantName}`;
+                    ? `WhatsApp notification sent to admin${recPhone} for new quote by ${vName}${price}${locStr}`
+                    : `התראת וואטסאפ נשלחה למנהל/ת המכרז${recPhone} על הצעת מחיר חדשה מאת ${vName}${price}${locStr}`;
             }
             default: {
                 const actionLabel = isEn

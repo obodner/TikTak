@@ -43,17 +43,38 @@ function RfqQuickRedirect() {
         return <Navigate to="/" replace />;
     }
 
-    const parts = slug.split('__');
-    const tenantId = parts[0];
-    const rfqId = parts[1];
+    // Clean any stray Meta template placeholders like {{1}} or %7B%7B1%7D%7D from slug
+    let cleanSlug = decodeURIComponent(slug);
+    try {
+        cleanSlug = decodeURIComponent(cleanSlug);
+    } catch {
+        // already decoded
+    }
+    cleanSlug = cleanSlug
+        .replace(/\{\{\d+\}\}/g, '')
+        .replace(/%7B%7B\d+%7D%7D/gi, '')
+        .trim();
 
-    if (!tenantId || !rfqId) {
+    const parts = cleanSlug.split('__');
+    const tenantId = parts[0]?.trim();
+    const rfqId = parts[1]?.trim();
+
+    if (!tenantId) {
         return <Navigate to="/" replace />;
+    }
+
+    if (!rfqId) {
+        return (
+            <Navigate
+                to={`/admin/${tenantId}/quotes/active?modal=compare&alert=quote&tab=open`}
+                replace
+            />
+        );
     }
 
     return (
         <Navigate
-            to={`/admin/${tenantId}/quotes?rfqId=${rfqId}&modal=compare&alert=quote&tab=open`}
+            to={`/admin/${tenantId}/quotes/active?rfqId=${rfqId}&modal=compare&alert=quote&tab=open`}
             replace
         />
     );
@@ -85,6 +106,12 @@ function AdminIndexRedirect() {
     return <Navigate to={`dashboard${search ? `?${search}` : ''}`} replace />;
 }
 
+function AdminQuotesIndexRedirect() {
+    const [searchParams] = useSearchParams();
+    const search = searchParams.toString();
+    return <Navigate to={`active${search ? `?${search}` : ''}`} replace />;
+}
+
 export default function App() {
     useEffect(() => {
         if (!sessionStorage.getItem('tiktak_session_id')) {
@@ -98,6 +125,7 @@ export default function App() {
             <Routes>
             {/* WhatsApp Dynamic Button Short Redirect (Single Slug for Meta URL Validation) */}
             <Route path="/q/:slug" element={<RfqQuickRedirect />} />
+            <Route path="/q/:slug/*" element={<RfqQuickRedirect />} />
 
             {/* Resident facing UI -> strictly public */}
             <Route path="/" element={<HomeRoute />} />
@@ -135,7 +163,7 @@ export default function App() {
                 <Route path="backlog" element={<TasksBacklog />} />
                 <Route path="analytics" element={<AdminAnalytics />} />
                 <Route path="fleet" element={<EnterpriseFleetDashboard />} />
-                <Route path="quotes" element={<Navigate to="active" replace />} />
+                <Route path="quotes" element={<AdminQuotesIndexRedirect />} />
                 <Route path="quotes/new" element={<NewRfqPage />} />
                 <Route path="quotes/active" element={<ActiveQuotesPage />} />
             </Route>

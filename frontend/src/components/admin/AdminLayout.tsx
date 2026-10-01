@@ -51,6 +51,23 @@ export function AdminLayout() {
     }
   }, [tenantId]);
 
+  // Guard against stray Meta template placeholders in tenantId (e.g. demo{{1}})
+  useEffect(() => {
+    if (tenantId && (tenantId.includes('{{') || tenantId.includes('}}') || tenantId.includes('%7B') || tenantId.includes('%7D'))) {
+      let clean = decodeURIComponent(tenantId);
+      try {
+        clean = decodeURIComponent(clean);
+      } catch {
+        // ignore
+      }
+      clean = clean.replace(/\{\{\d+\}\}/g, '').replace(/%7B%7B\d+%7D%7D/gi, '').trim();
+      if (clean && clean !== tenantId) {
+        const cleanPath = location.pathname.replace(tenantId, clean);
+        navigate(`${cleanPath}${location.search}`, { replace: true });
+      }
+    }
+  }, [tenantId, location, navigate]);
+
   // Determine current active tab from pathname
   const getCurrentPage = (): 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics' | 'quotes' => {
     const path = location.pathname;

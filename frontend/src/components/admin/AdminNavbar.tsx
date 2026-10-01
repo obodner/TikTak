@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { 
@@ -18,7 +18,10 @@ import {
   Boxes,
   Users2,
   Sliders,
-  BarChart3
+  BarChart3,
+  Receipt,
+  FilePlus,
+  FileSpreadsheet
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
@@ -60,10 +63,43 @@ export function AdminNavbar({
   onSelectTicket
 }: AdminNavbarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [isSettingsAccordionOpen, setIsSettingsAccordionOpen] = useState(currentPage === 'settings');
+
+  const isQuotesActive = currentPage === 'quotes' || location.pathname.includes('/quotes');
+  const [isQuotesAccordionOpen, setIsQuotesAccordionOpen] = useState(isQuotesActive);
+
+  useEffect(() => {
+    if (currentPage === 'settings') {
+      setIsSettingsAccordionOpen(true);
+    }
+  }, [currentPage]);
+
+  useEffect(() => {
+    if (isQuotesActive) {
+      setIsQuotesAccordionOpen(true);
+    }
+  }, [isQuotesActive]);
+
+  const quotesSubItems = [
+    {
+      id: 'new',
+      label: isEn ? 'New Quote Request' : 'בקשת הצעה חדשה',
+      path: `/admin/${tenantId}/quotes/new`,
+      icon: FilePlus,
+      isActive: location.pathname.includes('/quotes/new'),
+    },
+    {
+      id: 'active',
+      label: isEn ? 'Received Quotes & Tracking' : 'הצעות מחיר שהתקבלו',
+      path: `/admin/${tenantId}/quotes/active`,
+      icon: FileSpreadsheet,
+      isActive: location.pathname.includes('/quotes/active') || location.pathname.endsWith('/quotes'),
+    }
+  ];
 
   const settingsSubItems = [
     {
@@ -100,7 +136,7 @@ export function AdminNavbar({
   };
 
   const navItems: {
-    id: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics';
+    id: 'dashboard' | 'backlog' | 'analytics' | 'quotes' | 'settings' | 'fleet';
     label: string;
     path: string;
     icon: typeof LayoutDashboard;
@@ -125,6 +161,12 @@ export function AdminNavbar({
       label: isEn ? 'Analytics & BI' : 'סטטיסטיקה ודוחות',
       path: `/admin/${tenantId}/analytics`,
       icon: BarChart3,
+    },
+    {
+      id: 'quotes',
+      label: isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר (RFQ)',
+      path: `/admin/${tenantId}/quotes/active`,
+      icon: Receipt,
     },
     {
       id: 'settings',
@@ -368,6 +410,70 @@ export function AdminNavbar({
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentPage === item.id;
+                if (item.id === 'quotes') {
+                  return (
+                    <div key={item.id} className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsQuotesAccordionOpen(prev => !prev)}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold transition-all ${
+                          isQuotesActive
+                            ? 'bg-slate-800 text-white'
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        }`}
+                        data-testid="navbar-quotes-accordion-trigger"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Receipt
+                            size={20}
+                            className={`shrink-0 transition-transform duration-300 ease-out ${
+                              isQuotesAccordionOpen ? 'text-blue-400 scale-105' : ''
+                            }`}
+                          />
+                          <span>{item.label}</span>
+                        </div>
+                        <ChevronDown
+                          size={18}
+                          className={`transition-transform duration-300 ease-out text-slate-400 ${
+                            isQuotesAccordionOpen ? 'transform rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {/* Rolling Sub-items list */}
+                      <div
+                        className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${
+                          isQuotesAccordionOpen
+                            ? 'grid-rows-[1fr] opacity-100'
+                            : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                        }`}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div className="space-y-1 ps-4 border-s border-slate-800 ms-6 me-2 py-1">
+                            {quotesSubItems.map((sub) => {
+                              const SubIcon = sub.icon;
+                              return (
+                                <Link
+                                  key={sub.id}
+                                  to={sub.path}
+                                  onClick={() => setIsMobileMenuOpen(false)}
+                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                                    sub.isActive
+                                      ? 'bg-blue-600 text-white font-bold'
+                                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                                  }`}
+                                >
+                                  <SubIcon size={16} className="shrink-0" />
+                                  <span>{sub.label}</span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 if (item.id === 'settings') {
                   return (

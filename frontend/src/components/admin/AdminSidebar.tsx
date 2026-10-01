@@ -373,7 +373,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                     }`}
-                  title={isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר'}
+                  title={isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר (RFQ)'}
                   aria-expanded={isQuotesFlyoutOpen}
                   data-testid="sidebar-quotes-flyout-trigger"
                 >
@@ -392,7 +392,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   >
                     <div className="px-3 py-1.5 border-b border-slate-800 mb-1">
                       <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">
-                        {isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר מספקים'}
+                        {isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר מספקים (RFQ)'}
                       </span>
                     </div>
                     <div className="space-y-1">
@@ -435,7 +435,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       className={`shrink-0 transition-transform duration-300 ease-out ${isQuotesAccordionOpen ? 'text-blue-400 scale-105' : 'group-hover:scale-105'
                         }`}
                     />
-                    <span className="truncate">{isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר'}</span>
+                    <span className="truncate">{isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר (RFQ)'}</span>
                   </div>
                   <ChevronDown
                     size={16}

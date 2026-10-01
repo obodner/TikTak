@@ -3919,24 +3919,6 @@ exports.dispatchRfqToVendors = (0, https_1.onRequest)({ cors: true, secrets: ["W
             lastDispatchedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         });
-        await recordAuditLog({
-            tenantId,
-            action: "RFQ_WHATSAPP_DISPATCHED",
-            level: "INFO",
-            actor: {
-                uid: actor?.uid || "admin",
-                name: actor?.name || creatorName,
-                email: actor?.email || undefined,
-                type: "admin"
-            },
-            details: {
-                rfqId,
-                title: rfqData.title,
-                requestedCount: targetVendors.length,
-                successCount: results.filter(r => r.success).length,
-                results
-            }
-        });
         const successCount = results.filter(r => r.success).length;
         res.status(200).send({
             success: successCount > 0,
@@ -3991,23 +3973,47 @@ exports.notifyQuoteSubmission = (0, https_1.onRequest)({ cors: true, secrets: ["
             return;
         }
         const subData = subSnap.data() || {};
-        let adminName = rfqData.createdBy?.name || "מנהל/ת המערכת";
+        let adminName = rfqData.createdBy?.name || "";
         let adminPhone = rfqData.createdBy?.phone || "";
         const adminUid = rfqData.createdBy?.uid;
-        if (!adminPhone && adminUid) {
+        if (adminUid && adminUid !== 'admin') {
             try {
                 const adminSnap = await tenantRef.collection("adminUsers").doc(adminUid).get();
                 if (adminSnap.exists) {
                     const aData = adminSnap.data() || {};
-                    adminPhone = aData.mobile || aData.phone || "";
-                    if (aData.firstName || aData.lastName) {
-                        adminName = `${aData.firstName || ''} ${aData.lastName || ''}`.trim() || adminName;
+                    const resolvedFullName = aData.fullName || aData.name || `${aData.firstName || ''} ${aData.lastName || ''}`.trim();
+                    if (resolvedFullName && resolvedFullName !== 'ועד הבית' && resolvedFullName !== 'ועד בית') {
+                        adminName = resolvedFullName;
+                    }
+                    if (!adminPhone && (aData.mobile || aData.phone)) {
+                        adminPhone = aData.mobile || aData.phone;
                     }
                 }
             }
             catch (adminErr) {
-                logger.warn(`Could not resolve admin phone for uid ${adminUid}:`, adminErr);
+                logger.warn(`Could not resolve admin from adminUsers for uid ${adminUid}:`, adminErr);
             }
+            if (!adminName || adminName === 'ועד הבית' || adminName === 'ועד בית' || adminName === 'מנהל/ת המערכת') {
+                try {
+                    const rootUserSnap = await db.collection("users").doc(adminUid).get();
+                    if (rootUserSnap.exists) {
+                        const uData = rootUserSnap.data() || {};
+                        const rootName = uData.fullName || uData.displayName || uData.name || `${uData.firstName || ''} ${uData.lastName || ''}`.trim();
+                        if (rootName && rootName !== 'ועד הבית' && rootName !== 'ועד בית') {
+                            adminName = rootName;
+                        }
+                        if (!adminPhone && (uData.mobile || uData.phone)) {
+                            adminPhone = uData.mobile || uData.phone;
+                        }
+                    }
+                }
+                catch (uErr) {
+                    logger.warn(`Could not resolve admin from users for uid ${adminUid}:`, uErr);
+                }
+            }
+        }
+        if (!adminName || adminName === 'ועד הבית' || adminName === 'ועד בית') {
+            adminName = tenantData.contactPerson || tenantData.adminName || tenantData.name || "ועד הבית";
         }
         if (!adminPhone) {
             adminPhone = tenantData.vaadPhone || tenantData.contactPhone || tenantData.phone || "";
@@ -4024,7 +4030,7 @@ exports.notifyQuoteSubmission = (0, https_1.onRequest)({ cors: true, secrets: ["
         const vendorName = subData.vendorName || "קבלן";
         const priceNum = subData.price || 0;
         const vatSuffix = subData.priceIncludesVat ? 'כולל מע"מ' : '+ מע"מ';
-        const priceFormatted = `₪${priceNum.toLocaleString()} (${vatSuffix})`;
+        const priceFormatted = `${priceNum.toLocaleString()} (${vatSuffix})`;
         const durationStr = subData.estimatedDuration || "לפי תיאום";
         const titleWithNum = rfqData.ticketNumber ? `${rfqData.title} (#${rfqData.ticketNumber})` : rfqData.title;
         const buttonSuffix = `${tenantId}__${rfqId}`;
@@ -4051,7 +4057,7 @@ exports.notifyQuoteSubmission = (0, https_1.onRequest)({ cors: true, secrets: ["
                 `📋 *מכרז:* ${titleWithNum}\n` +
                 `🏢 *אתר:* ${customerSiteStr}\n` +
                 `🛠️ *קבלן:* ${vendorName}\n` +
-                `💰 *סכום ההצעה:* ${priceFormatted}\n` +
+                `💰 *סכום ההצעה:* ₪${priceFormatted}\n` +
                 `⏱️ *משך ביצוע:* ${durationStr}\n` +
                 (subData.notes ? `💬 *הערות הקבלן:* ${subData.notes}\n` : '') +
                 `\n📊 *לצפייה בהצעה והשוואה במערכת:*\n` +
