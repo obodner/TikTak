@@ -18,7 +18,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   categories = []
 }) => {
   return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto">
+    <div className="flex flex-col gap-6 max-w-5xl w-full mx-auto">
       <div className="flex flex-col gap-6">
         <UserManagement
           tenantId={tenantId}

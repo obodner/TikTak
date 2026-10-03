@@ -47,7 +47,10 @@ export type AuditAction =
   | 'RFQ_EXPIRED'
   | 'CONTRACTOR_AUTH_SUCCESS'
   | 'CONTRACTOR_AUTH_FAILED'
-  | 'QUOTE_NOTIFICATION_SENT';
+  | 'QUOTE_NOTIFICATION_SENT'
+  | 'VENDORS_BULK_IMPORTED'
+  | 'TAG_MERGED'
+  | 'TAG_DELETED';
 
 export interface AuditActor {
   uid: string;

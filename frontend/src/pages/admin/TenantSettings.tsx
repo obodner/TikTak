@@ -365,7 +365,7 @@ export default function TenantSettings() {
         </div>
       </div>
 
-      <main className="max-w-4xl mx-auto p-4 md:p-6 mt-6 md:mt-8">
+      <main className="max-w-5xl mx-auto p-4 md:p-6 mt-6 md:mt-8">
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 font-medium mb-6 text-sm">
             {error}

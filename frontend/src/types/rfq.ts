@@ -1,5 +1,14 @@
 export type VendorType = 'retainer' | 'occasional';
 
+export interface VendorRatingSummary {
+  averageScore: number;     // 1.0 - 5.0
+  totalReviews: number;     // Count of reviews
+  rehireCount: number;      // Count of wouldRehire = true
+  rehirePercentage: number; // 0 - 100%
+  topTags: string[];        // Top frequent tags
+  lastRatedAt: string;      // ISO String
+}
+
 export interface Vendor {
   id: string;
   fullName: string;
@@ -12,9 +21,22 @@ export interface Vendor {
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+  ratingSummary?: VendorRatingSummary;
 }
 
-export type RfqStatus = 'draft' | 'open' | 'awarded' | 'expired' | 'cancelled';
+export type RfqStatus = 'draft' | 'open' | 'awarded' | 'completed' | 'expired' | 'cancelled';
+
+export interface RfqRating {
+  stars: number; // 1 to 5
+  wouldRehire: boolean;
+  tags: string[];
+  comment?: string;
+  ratedAt: string; // ISO String
+  ratedBy: {
+    uid: string;
+    name: string;
+  };
+}
 
 export interface DispatchedVendorRecord {
   vendorId: string;
@@ -106,6 +128,14 @@ export interface WorkQuoteRequest {
     awardedBy: string;
   };
   
+  // Completion and rating metadata
+  completedAt?: string;
+  completedBy?: {
+    uid: string;
+    name: string;
+  };
+  rating?: RfqRating;
+
   createdBy: {
     uid: string;
     name: string;
@@ -114,6 +144,23 @@ export interface WorkQuoteRequest {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VendorReviewRecord {
+  id: string; // rfqId
+  rfqId: string;
+  rfqTitle: string;
+  rfqCategory?: string;
+  awardedPrice?: number;
+  stars: number;
+  wouldRehire: boolean;
+  tags: string[];
+  comment?: string;
+  ratedAt: string;
+  ratedBy: {
+    uid: string;
+    name: string;
+  };
 }
 
 export type QuoteSubmissionStatus = 'submitted' | 'accepted' | 'declined';

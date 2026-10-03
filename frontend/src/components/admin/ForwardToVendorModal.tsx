@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Share2, X, Send, Phone, AlertCircle, MessageSquare, Briefcase, UserCheck } from 'lucide-react';
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, getDocs, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import heMessages from '../../locales/he.json';
 import enMessages from '../../locales/en.json';
@@ -76,10 +76,18 @@ export const ForwardToVendorModal: React.FC<ForwardToVendorModalProps> = ({
 
   useEffect(() => {
     if (!isOpen || !tenantId) return;
-    const activeTenantId = tenantId;
     async function loadSavedVendors() {
       try {
-        const q = query(collection(db, "tenants", activeTenantId, "vendors"));
+        const activeTenantId = tenantId as string;
+        let vendorTenantId: string = activeTenantId;
+        const tDoc = await getDoc(doc(db, "tenants", activeTenantId));
+        if (tDoc.exists()) {
+          const tData = tDoc.data();
+          if (tData?.usesParentPool && tData?.parentEnterpriseId) {
+            vendorTenantId = tData.parentEnterpriseId;
+          }
+        }
+        const q = query(collection(db, "tenants", vendorTenantId, "vendors"));
         const snap = await getDocs(q);
         const list: VendorItem[] = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as VendorItem));
         setSavedVendors(list);

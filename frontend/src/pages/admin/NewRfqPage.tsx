@@ -34,7 +34,8 @@ import {
   Play,
   Pause,
   ExternalLink,
-  Save
+  Save,
+  Star
 } from 'lucide-react';
 import { Vendor, VendorType, RfqAttachment, DispatchedVendorRecord, PaymentPhaseItem } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
@@ -435,6 +436,7 @@ export default function NewRfqPage() {
         // Load Tenant
         const tenantSnap = await getDoc(doc(db, "tenants", tenantId as string));
         let tenantCategories: string[] = [];
+        let vendorTenantId = tenantId as string;
         if (tenantSnap.exists()) {
           const tData = tenantSnap.data();
           setTenantName(tData.name || tenantId);
@@ -463,10 +465,26 @@ export default function NewRfqPage() {
             ...(Array.isArray(tData.config?.categories) ? tData.config.categories : []),
             ...(Array.isArray(tData.categories) ? tData.categories : [])
           ];
+
+          // Fleet Child Inheritance: Resolve parentEnterpriseId for vendors and categories
+          if (tData.usesParentPool && tData.parentEnterpriseId) {
+            vendorTenantId = tData.parentEnterpriseId;
+            try {
+              const parentDoc = await getDoc(doc(db, "tenants", vendorTenantId));
+              if (parentDoc.exists()) {
+                const pData = parentDoc.data();
+                if (Array.isArray(pData.config?.categories)) {
+                  tenantCategories = [...tenantCategories, ...pData.config.categories];
+                }
+              }
+            } catch (pErr) {
+              console.warn("Could not load parent tenant categories for RFQ:", pErr);
+            }
+          }
         }
 
-        // Load Vendors
-        const vendorsSnap = await getDocs(collection(db, "tenants", tenantId as string, "vendors"));
+        // Load Vendors (using fleet master pool if child building)
+        const vendorsSnap = await getDocs(collection(db, "tenants", vendorTenantId, "vendors"));
         const vList: Vendor[] = vendorsSnap.docs.map(d => {
           const vData = d.data();
           let resolvedCats: string[] = Array.isArray(vData.categories) ? vData.categories : [];
@@ -482,7 +500,8 @@ export default function NewRfqPage() {
             companyId: vData.companyId || undefined,
             categories: resolvedCats,
             vendorType: (vData.vendorType as VendorType) || 'occasional',
-            notes: vData.notes
+            notes: vData.notes,
+            ratingSummary: vData.ratingSummary || undefined
           };
         });
         setVendors(vList);
@@ -1981,6 +2000,29 @@ export default function NewRfqPage() {
                             }`}>
                               {vendor.vendorType === 'retainer' ? 'קבוע 🏢' : 'מזדמן 🛠️'}
                             </span>
+
+                            {/* Live Reputation Summary Badge */}
+                            {vendor.ratingSummary && vendor.ratingSummary.totalReviews > 0 ? (
+                              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                vendor.ratingSummary.averageScore < 3.0 || vendor.ratingSummary.rehirePercentage < 50
+                                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                  : 'bg-amber-50/70 text-amber-900 border-amber-200'
+                              }`}>
+                                {vendor.ratingSummary.averageScore < 3.0 && <span className="text-amber-600 text-xs">⚠️</span>}
+                                <Star size={11} className="fill-amber-400 text-amber-500" />
+                                <span className="font-black">{vendor.ratingSummary.averageScore.toFixed(1)}</span>
+                                <span className="text-slate-400 text-[10px]">({vendor.ratingSummary.totalReviews})</span>
+                                <span className={`text-[10px] font-black mr-0.5 ${
+                                  vendor.ratingSummary.rehirePercentage >= 70 ? 'text-emerald-700' : 'text-slate-600'
+                                }`}>
+                                  • {vendor.ratingSummary.rehirePercentage}% Rehire
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                טרם דורג
+                              </span>
+                            )}
                           </div>
                           <span className="text-xs text-slate-500 font-medium" dir="ltr">{vendor.phone}</span>
                         </div>

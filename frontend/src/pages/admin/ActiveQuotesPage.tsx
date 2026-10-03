@@ -36,12 +36,15 @@ import {
   RotateCcw,
   FileCheck2,
   FileEdit,
-  Trash2
+  Trash2,
+  Star
 } from 'lucide-react';
-import { WorkQuoteRequest, VendorQuoteSubmission, RfqStatus } from '../../types/rfq';
+import { WorkQuoteRequest, VendorQuoteSubmission, RfqStatus, RfqRating } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
 import WorkOrderContractModal from '../../components/admin/WorkOrderContractModal';
 import { ConfirmModal } from '../../components/admin/ConfirmModal';
+import { RfqRatingModal } from '../../components/admin/RfqRatingModal';
+import { markRfqCompleted } from '../../utils/vendorReviewService';
 import { normalizePhone } from '../../utils/whatsapp';
 
 const AWARD_REASON_PRESETS = [
@@ -83,10 +86,10 @@ export default function ActiveQuotesPage() {
   const [submissionsByRfq, setSubmissionsByRfq] = useState<Record<string, VendorQuoteSubmission[]>>({});
   const [loading, setLoading] = useState(true);
   const [expandedRfqIds, setExpandedRfqIds] = useState<string[]>([]);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'closed' | 'drafts'>(() => {
+  const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'awarded' | 'closed' | 'drafts'>(() => {
     const tab = searchParams.get('tab');
     if (tab === 'drafts') return 'drafts';
-    if (tab === 'open' || tab === 'closed') return tab;
+    if (tab === 'open' || tab === 'awarded' || tab === 'closed') return tab;
     return 'all';
   });
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,6 +134,11 @@ export default function ActiveQuotesPage() {
   } | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
   const [dispatchingVendorId, setDispatchingVendorId] = useState<string | null>(null);
+
+  // Contractor Rating & RFQ Completion State
+  const [ratingModalRfq, setRatingModalRfq] = useState<WorkQuoteRequest | null>(null);
+  const [isMarkingCompletedId, setIsMarkingCompletedId] = useState<string | null>(null);
+  const [ticketsMap, setTicketsMap] = useState<Record<string, { status: string; closureReason?: string; ticketNumber?: number }>>({});
 
   // Current logged in admin profile (from adminUsers collection / Users tab)
   const [adminProfile, setAdminProfile] = useState<{
@@ -238,6 +246,53 @@ export default function ActiveQuotesPage() {
     return () => unsubscribe();
   }, [tenantId, newRfqId]);
 
+  // Real-time listener to linked tickets to detect if any linked ticket is closed
+  useEffect(() => {
+    if (!tenantId) return;
+    const ticketsCol = collection(db, "tenants", tenantId, "tickets");
+    const unsub = onSnapshot(ticketsCol, (snap) => {
+      const map: Record<string, { status: string; closureReason?: string; ticketNumber?: number }> = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        map[d.id] = {
+          status: data.status,
+          closureReason: data.closureReason,
+          ticketNumber: data.ticketNumber
+        };
+        if (data.ticketNumber !== undefined && data.ticketNumber !== null) {
+          const numStr = String(data.ticketNumber).replace('#', '').trim();
+          map[`num-${numStr}`] = {
+            status: data.status,
+            closureReason: data.closureReason,
+            ticketNumber: data.ticketNumber
+          };
+          map[numStr] = {
+            status: data.status,
+            closureReason: data.closureReason,
+            ticketNumber: data.ticketNumber
+          };
+        }
+      });
+      setTicketsMap(map);
+    }, err => console.warn('Could not load tickets map in ActiveQuotesPage:', err));
+
+    return () => unsub();
+  }, [tenantId]);
+
+  // Helper: check if linked ticket is closed/resolved
+  const isLinkedTicketClosed = (rfq: WorkQuoteRequest) => {
+    let t = rfq.ticketId ? ticketsMap[rfq.ticketId] : null;
+    if (!t && rfq.ticketNumber !== undefined && rfq.ticketNumber !== null) {
+      const numStr = String(rfq.ticketNumber).replace('#', '').trim();
+      t = ticketsMap[`num-${numStr}`] || ticketsMap[numStr] || ticketsMap[rfq.ticketNumber as any];
+    }
+    return t ? (t.status === 'resolved' || t.status === 'dismissed' || t.status === 'closed') : false;
+  };
+
+  const isRfqJobCompleted = (rfq: WorkQuoteRequest) => {
+    return rfq.status === 'completed' || (rfq.status === 'awarded' && isLinkedTicketClosed(rfq));
+  };
+
   // Auto-expand and scroll to target RFQ card smoothly if specified in URL params
   useEffect(() => {
     if (!targetRfqId || loading) return;
@@ -253,9 +308,11 @@ export default function ActiveQuotesPage() {
     if (target) {
       if (target.status === 'draft') {
         setActiveFilter('drafts');
-      } else if (target.status === 'open') {
+      } else if (isRfqOpen(target)) {
         setActiveFilter('open');
-      } else if (target.status === 'awarded' || target.status === 'cancelled' || isRfqExpired(target)) {
+      } else if (isRfqAwarded(target)) {
+        setActiveFilter('awarded');
+      } else if (isRfqClosed(target)) {
         setActiveFilter('closed');
       }
     }
@@ -342,11 +399,20 @@ export default function ActiveQuotesPage() {
   };
 
   const isRfqOpen = (rfq: WorkQuoteRequest) => {
-    return rfq.status === 'open' && !isRfqExpired(rfq);
+    return rfq.status === 'open' && !isRfqExpired(rfq) && !isLinkedTicketClosed(rfq);
+  };
+
+  const isRfqAwarded = (rfq: WorkQuoteRequest) => {
+    return rfq.status === 'awarded' && !isLinkedTicketClosed(rfq);
   };
 
   const isRfqClosed = (rfq: WorkQuoteRequest) => {
-    return rfq.status === 'awarded' || rfq.status === 'cancelled' || isRfqExpired(rfq);
+    return (
+      rfq.status === 'completed' ||
+      (rfq.status === 'awarded' && isLinkedTicketClosed(rfq)) ||
+      rfq.status === 'cancelled' ||
+      isRfqExpired(rfq)
+    );
   };
 
   // Helper: Copy contractor link
@@ -697,11 +763,53 @@ export default function ActiveQuotesPage() {
     }
   };
 
+  // Mark RFQ work completed and trigger Snap & Score rating
+  const handleMarkRfqCompleted = async (rfq: WorkQuoteRequest) => {
+    if (!tenantId) return;
+    setIsMarkingCompletedId(rfq.id);
+    try {
+      const adminObj = {
+        uid: user?.uid || 'admin',
+        name: adminProfile?.fullName || user?.displayName || user?.email || 'ועד הבית'
+      };
+      const res = await markRfqCompleted({
+        tenantId,
+        rfqId: rfq.id,
+        admin: adminObj
+      });
+
+      const updatedRfq: WorkQuoteRequest = {
+        ...rfq,
+        status: 'completed',
+        completedAt: res.completedAt,
+        completedBy: adminObj
+      };
+
+      setRfqs(prev => prev.map(item => item.id === rfq.id ? updatedRfq : item));
+      // Automatically pop up the Snap & Score micro-survey
+      setRatingModalRfq(updatedRfq);
+    } catch (err: any) {
+      console.error("Error marking RFQ as completed:", err);
+      alert("שגיאה בסימון העבודה כהושלמה: " + (err.message || ''));
+    } finally {
+      setIsMarkingCompletedId(null);
+    }
+  };
+
+  const handleOpenRatingModal = (rfq: WorkQuoteRequest) => {
+    setRatingModalRfq(rfq);
+  };
+
+  const handleRatingSuccess = (updatedRating: RfqRating) => {
+    if (!ratingModalRfq) return;
+    setRfqs(prev => prev.map(item => item.id === ratingModalRfq.id ? { ...item, rating: updatedRating } : item));
+  };
+
   // Sync active tab with URL searchParams if changed externally
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab === 'drafts') setActiveFilter('drafts');
-    else if (tab === 'open' || tab === 'closed') setActiveFilter(tab);
+    else if (tab === 'open' || tab === 'awarded' || tab === 'closed') setActiveFilter(tab);
     else if (tab === 'all') setActiveFilter('all');
   }, [searchParams]);
 
@@ -744,6 +852,7 @@ export default function ActiveQuotesPage() {
     // Filter by Tab
     if (activeFilter === 'drafts' && rfq.status !== 'draft') return false;
     if (activeFilter === 'open' && !isRfqOpen(rfq)) return false;
+    if (activeFilter === 'awarded' && !isRfqAwarded(rfq)) return false;
     if (activeFilter === 'closed' && !isRfqClosed(rfq)) return false;
 
     // Search query
@@ -761,6 +870,7 @@ export default function ActiveQuotesPage() {
 
   // Tab counters
   const openCount = rfqs.filter(r => isRfqOpen(r)).length;
+  const awardedCount = rfqs.filter(r => isRfqAwarded(r)).length;
   const closedCount = rfqs.filter(r => isRfqClosed(r)).length;
   const draftsCount = rfqs.filter(r => r.status === 'draft').length;
 
@@ -914,7 +1024,8 @@ export default function ActiveQuotesPage() {
           {[
             { id: 'all', label: `כל הפניות (${rfqs.length})` },
             { id: 'open', label: `הצעות פתוחות (${openCount})` },
-            { id: 'closed', label: `הצעות שנסגרו / נבחרו (${closedCount}) 🏆` },
+            { id: 'awarded', label: `נבחרו / בביצוע (${awardedCount}) 🏆` },
+            { id: 'closed', label: `הושלמו ונסגרו (${closedCount}) ✓` },
             { id: 'drafts', label: `טיוטות (${draftsCount}) 📝` },
           ].map(tab => (
             <button
@@ -1011,6 +1122,7 @@ export default function ActiveQuotesPage() {
           {groupedRfqs.map(group => {
             const isGroupCollapsed = collapsedGroupKeys.includes(group.key);
             const openInGroup = group.rfqs.filter(r => isRfqOpen(r)).length;
+            const awardedInGroup = group.rfqs.filter(r => isRfqAwarded(r)).length;
             const closedInGroup = group.rfqs.filter(r => isRfqClosed(r)).length;
             const hasQuotesInGroup = group.rfqs.filter(r => r.status !== 'draft' && (submissionsByRfq[r.id] || []).length > 0).length;
             const draftsInGroup = group.rfqs.filter(r => r.status === 'draft').length;
@@ -1054,9 +1166,14 @@ export default function ActiveQuotesPage() {
                           {hasQuotesInGroup} עם הצעות 📥
                         </span>
                       )}
+                      {awardedInGroup > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-bold">
+                          {awardedInGroup} בביצוע 🏆
+                        </span>
+                      )}
                       {closedInGroup > 0 && (
                         <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                          {closedInGroup} סגורות / נבחרו 🏆
+                          {closedInGroup} הושלמו / נסגרו ✓
                         </span>
                       )}
                     </div>
@@ -1107,12 +1224,81 @@ export default function ActiveQuotesPage() {
                                     <FileEdit size={12} />
                                     <span>טיוטה - טרם הופצה 📝</span>
                                   </span>
+                                ) : isRfqJobCompleted(rfq) ? (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black flex items-center gap-1">
+                                      <CheckCircle2 size={13} className="text-emerald-600" />
+                                      <span>
+                                        {isLinkedTicketClosed(rfq) && rfq.status === 'awarded'
+                                          ? `פנייה #${rfq.ticketNumber || ''} נסגרה • העבודה הושלמה (${rfq.awardedVendorName})`
+                                          : `העבודה הושלמה בהצלחה (${rfq.awardedVendorName})`}
+                                      </span>
+                                    </span>
+                                    {rfq.rating ? (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 text-xs font-extrabold flex items-center gap-1">
+                                        <Star size={12} className="fill-amber-400 text-amber-500" />
+                                        <span>{rfq.rating.stars}/5</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRatingModal(rfq);
+                                          }}
+                                          className="mr-1 underline hover:text-amber-800 cursor-pointer font-bold"
+                                        >
+                                          (ערוך)
+                                        </button>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenRatingModal(rfq);
+                                        }}
+                                        className="px-2.5 py-0.5 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                                        title="הפנייה נסגרה. דרג את ביצועי הקבלן כעת"
+                                      >
+                                        <Star size={12} className="fill-white" />
+                                        <span>דרג קבלן ⭐</span>
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenContractModal(rfq);
+                                      }}
+                                      className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                      title="צפה בהסכם העבודה ובהזמנה המחייבת"
+                                    >
+                                      <FileCheck2 size={12} />
+                                      <span>הסכם עבודה 📄</span>
+                                    </button>
+                                  </div>
                                 ) : rfq.status === 'awarded' ? (
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black flex items-center gap-1">
                                       <Trophy size={13} className="text-amber-600" />
                                       <span>נבחרה הצעה זוכה: {rfq.awardedVendorName} (₪{rfq.awardedPrice?.toLocaleString()})</span>
                                     </span>
+                                    <button
+                                      type="button"
+                                      disabled={isMarkingCompletedId === rfq.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMarkRfqCompleted(rfq);
+                                      }}
+                                      className="px-2.5 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                                      title="סמן עבודה זו כהושלמה ודרג את ביצועי הקבלן"
+                                    >
+                                      {isMarkingCompletedId === rfq.id ? (
+                                        <Loader2 size={12} className="animate-spin" />
+                                      ) : (
+                                        <CheckCircle2 size={12} />
+                                      )}
+                                      <span>סמן עבודה כהושלמה ✓</span>
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -1265,17 +1451,25 @@ export default function ActiveQuotesPage() {
                                   </button>
                                 </div>
 
-                                {/* Awarded Winner & Reasoning Banner (if awarded) */}
-                                {(rfq.status === 'awarded' || rfq.awardedVendorId) && (
-                                  <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-xl flex items-start gap-3 shadow-2xs text-right">
+                                {/* Awarded Winner & Reasoning Banner (if awarded or completed) */}
+                                {(rfq.status === 'awarded' || rfq.status === 'completed' || rfq.awardedVendorId) && (
+                                  <div className={`p-4 rounded-xl flex items-start gap-3 shadow-2xs text-right border ${
+                                    rfq.status === 'completed'
+                                      ? 'bg-emerald-50/90 border-emerald-300'
+                                      : 'bg-emerald-50/90 border-emerald-300'
+                                  }`}>
                                     <div className="p-2 bg-emerald-600 text-white rounded-lg shrink-0 mt-0.5 shadow-sm">
-                                      <Trophy size={18} />
+                                      {isRfqJobCompleted(rfq) ? <CheckCircle2 size={18} /> : <Trophy size={18} />}
                                     </div>
                                     <div className="space-y-1 flex-1">
                                       <div className="flex items-center justify-between flex-wrap gap-2">
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <span className="text-xs font-black text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-md border border-emerald-300/60">
-                                            הצעה זוכה • החלטת ועד הבית
+                                            {isRfqJobCompleted(rfq)
+                                              ? (isLinkedTicketClosed(rfq) && rfq.status === 'awarded'
+                                                  ? `פנייה #${rfq.ticketNumber || ''} נסגרה • עבודה הושלמה ✓`
+                                                  : 'עבודה הושלמה ✓')
+                                              : 'הצעה זוכה • החלטת ועד הבית'}
                                           </span>
                                           <span className="text-xs font-extrabold text-slate-800">
                                             הקבלן שנבחר: <strong className="text-emerald-950 font-black">{rfq.awardedVendorName || 'קבלן זוכה'}</strong>
@@ -1310,6 +1504,62 @@ export default function ActiveQuotesPage() {
                                           נרשם ואושר ע"י: {rfq.awardReasoning.awardedBy}
                                         </div>
                                       )}
+
+                                      {/* Completion & Rating Actions Row */}
+                                      <div className="pt-2 mt-2 border-t border-emerald-200/60 flex items-center justify-between flex-wrap gap-2">
+                                        {rfq.status === 'awarded' && !isLinkedTicketClosed(rfq) && (
+                                          <button
+                                            type="button"
+                                            disabled={isMarkingCompletedId === rfq.id}
+                                            onClick={() => handleMarkRfqCompleted(rfq)}
+                                            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                                            title="סמן שהעבודה בשטח הושלמה ודרג את ביצועי הקבלן"
+                                          >
+                                            {isMarkingCompletedId === rfq.id ? (
+                                              <Loader2 size={13} className="animate-spin" />
+                                            ) : (
+                                              <CheckCircle2 size={13} className="stroke-[3]" />
+                                            )}
+                                            <span>סמן עבודה כהושלמה ✓</span>
+                                          </button>
+                                        )}
+
+                                        {isRfqJobCompleted(rfq) && (
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            {rfq.rating ? (
+                                              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-amber-300 text-amber-950 text-xs font-black shadow-2xs">
+                                                <Star size={13} className="fill-amber-400 text-amber-500" />
+                                                <span>דירוג: {rfq.rating.stars}/5</span>
+                                                {rfq.rating.wouldRehire && <span className="text-emerald-700 text-[11px] mr-1">👍 יזמין שוב</span>}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleOpenRatingModal(rfq)}
+                                                  className="mr-1 underline hover:text-amber-800 cursor-pointer text-[11px]"
+                                                >
+                                                  (ערוך דירוג)
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOpenRatingModal(rfq)}
+                                                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                                              >
+                                                <Star size={13} className="fill-white" />
+                                                <span>דרג ביצוע קבלן כעת ⭐</span>
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {(rfq.completedAt || (isLinkedTicketClosed(rfq) && rfq.status === 'awarded')) && (
+                                          <span className="text-[11px] text-emerald-800 font-medium mr-auto">
+                                            {rfq.completedAt
+                                              ? `הושלם בתאריך: ${new Date(rfq.completedAt).toLocaleDateString('he-IL')}`
+                                              : `העבודה הושלמה עם סגירת פנייה #${rfq.ticketNumber || ''}`}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                 )}
@@ -1453,17 +1703,48 @@ export default function ActiveQuotesPage() {
                                                   </span>
                                                 </a>
 
-                                                {/* If awarded to this vendor: Quick access to Contract / Work Order */}
-                                                {rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId && (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => handleOpenContractModal(rfq, quote)}
-                                                    className="px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                                                    title="צפה בהסכם העבודה ובהזמנת העבודה החתומה (להדפסה / PDF)"
-                                                  >
-                                                    <FileCheck2 size={13} className="text-blue-600" />
-                                                    <span>הסכם עבודה חתום 📄</span>
-                                                  </button>
+                                                {/* If awarded/completed to this vendor: Quick access to Contract, Completion & Rating */}
+                                                {(rfq.status === 'awarded' || rfq.status === 'completed') && rfq.awardedVendorId === vendor.vendorId && (
+                                                  <>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleOpenContractModal(rfq, quote)}
+                                                      className="px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                      title="צפה בהסכם העבודה ובהזמנת העבודה החתומה (להדפסה / PDF)"
+                                                    >
+                                                      <FileCheck2 size={13} className="text-blue-600" />
+                                                      <span>הסכם עבודה חתום 📄</span>
+                                                    </button>
+
+                                                    {rfq.status === 'awarded' && !isLinkedTicketClosed(rfq) && (
+                                                      <button
+                                                        type="button"
+                                                        disabled={isMarkingCompletedId === rfq.id}
+                                                        onClick={() => handleMarkRfqCompleted(rfq)}
+                                                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                                                        title="סמן שהעבודה הושלמה ודרג את הקבלן"
+                                                      >
+                                                        {isMarkingCompletedId === rfq.id ? (
+                                                          <Loader2 size={13} className="animate-spin" />
+                                                        ) : (
+                                                          <CheckCircle2 size={13} className="stroke-[3]" />
+                                                        )}
+                                                        <span>סמן עבודה כהושלמה ✓</span>
+                                                      </button>
+                                                    )}
+
+                                                    {isRfqJobCompleted(rfq) && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleOpenRatingModal(rfq)}
+                                                        className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                                        title={rfq.rating ? "ערוך דירוג קבלן" : "דרג את ביצועי הקבלן בעבודה זו"}
+                                                      >
+                                                        <Star size={13} className="fill-white" />
+                                                        <span>{rfq.rating ? `דירוג: ${rfq.rating.stars}/5 ⭐` : 'דרג קבלן ⭐'}</span>
+                                                      </button>
+                                                    )}
+                                                  </>
                                                 )}
                                               </div>
 
@@ -2151,6 +2432,20 @@ export default function ActiveQuotesPage() {
           confirmLabel={isDeletingDraft ? "מוחק..." : "כן, מחק טיוטה"}
           cancelLabel="ביטול"
           type="danger"
+        />
+      )}
+
+      {/* Contractor Snap & Score Rating Modal */}
+      {ratingModalRfq && (
+        <RfqRatingModal
+          isOpen={Boolean(ratingModalRfq)}
+          onClose={() => setRatingModalRfq(null)}
+          rfq={ratingModalRfq}
+          currentAdmin={{
+            uid: user?.uid || 'admin',
+            name: adminProfile?.fullName || user?.displayName || user?.email || 'ועד הבית'
+          }}
+          onSuccess={handleRatingSuccess}
         />
       )}
     </div>

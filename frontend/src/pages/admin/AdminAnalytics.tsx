@@ -129,10 +129,13 @@ export default function AdminAnalytics() {
       setRefreshing(false);
     });
 
-    // Load registered vendors for directory lookup
+    // Load registered vendors for directory lookup (inheriting fleet pool if child)
     async function loadVendors() {
       try {
-        const vSnap = await getDocs(collection(db, 'tenants', tenantId as string, 'vendors'));
+        const vendorTenantId = (outletCtx?.tenantConfig?.usesParentPool && outletCtx?.tenantConfig?.parentEnterpriseId)
+          ? outletCtx.tenantConfig.parentEnterpriseId
+          : (tenantId as string);
+        const vSnap = await getDocs(collection(db, 'tenants', vendorTenantId, 'vendors'));
         setSavedVendors(vSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error("Failed to load vendors:", err);

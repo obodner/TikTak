@@ -10,6 +10,9 @@ import { ForwardToVendorModal } from '../../components/admin/ForwardToVendorModa
 import { TicketDetailsModal } from '../../components/admin/TicketDetailsModal';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useAuthState } from '../../hooks/useAuthState';
+import { RfqRatingModal } from '../../components/admin/RfqRatingModal';
+import { markRfqCompleted } from '../../utils/vendorReviewService';
+import { WorkQuoteRequest } from '../../types/rfq';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert, HelpCircle } from 'lucide-react';
 import { format, parseISO, subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
@@ -154,6 +157,7 @@ export default function AdminDashboard() {
   const [closureTicketId, setClosureTicketId] = useState<string | null>(null);
   const [forwardTicket, setForwardTicket] = useState<any | null>(null);
   const [detailsTicket, setDetailsTicket] = useState<Ticket | null>(null);
+  const [dashboardRatingRfq, setDashboardRatingRfq] = useState<WorkQuoteRequest | null>(null);
 
   const ticketParam = searchParams.get('ticket');
   useEffect(() => {
@@ -460,9 +464,12 @@ export default function AdminDashboard() {
       setTickets(parsed);
       setLastRefreshedAt(new Date());
 
-      // Fetch vendors list for tooltip lookup
+      // Fetch vendors list for tooltip lookup (resolving fleet parent pool if child building)
       try {
-        const vSnap = await getDocs(collection(db, "tenants", tenantId as string, "vendors"));
+        const vendorTenantId = (currentTenant?.usesParentPool && currentTenant?.parentEnterpriseId)
+          ? currentTenant.parentEnterpriseId
+          : (tenantId as string);
+        const vSnap = await getDocs(collection(db, "tenants", vendorTenantId, "vendors"));
         setSavedVendors(vSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (ve) {
         console.error("Failed to fetch vendors list for dashboard:", ve);
@@ -951,6 +958,47 @@ export default function AdminDashboard() {
       ));
 
       // Automated resident notifications are now handled by the backend Firestore trigger.
+
+      // Check if this ticket has an awarded RFQ and auto-complete it, prompting the admin to rate the contractor
+      try {
+        const rfqsRef = collection(db, "tenants", tenantId, "rfqs");
+        let linkedRfqDoc: any = null;
+
+        // Query by ticketId
+        const qTicket = query(rfqsRef, where("ticketId", "==", ticket.id));
+        const snapTicket = await getDocs(qTicket);
+        linkedRfqDoc = snapTicket.docs.find(d => d.data().status === 'awarded');
+
+        // Or query by ticketNumber
+        if (!linkedRfqDoc && ticket.ticketNumber !== undefined && ticket.ticketNumber !== null) {
+          const qNum = query(rfqsRef, where("ticketNumber", "==", Number(ticket.ticketNumber)));
+          const snapNum = await getDocs(qNum);
+          linkedRfqDoc = snapNum.docs.find(d => d.data().status === 'awarded');
+        }
+
+        if (linkedRfqDoc) {
+          const rfqData = linkedRfqDoc.data() as WorkQuoteRequest;
+          const rfqObj: WorkQuoteRequest = { ...rfqData, id: linkedRfqDoc.id };
+          const adminObj = {
+            uid: user?.uid || 'admin',
+            name: getAdminDisplayName()
+          };
+          await markRfqCompleted({
+            tenantId,
+            rfqId: linkedRfqDoc.id,
+            admin: adminObj
+          });
+          // Open rating modal directly on Admin Dashboard!
+          setDashboardRatingRfq({
+            ...rfqObj,
+            status: 'completed',
+            completedAt: nowIso,
+            completedBy: adminObj
+          });
+        }
+      } catch (rfqErr) {
+        console.warn("Could not check/complete linked RFQ on ticket resolution:", rfqErr);
+      }
     } catch (err) {
       console.error("Resolution failed:", err);
       showAlert(
@@ -2340,6 +2388,20 @@ export default function AdminDashboard() {
           cancelLabel={confirmState.cancelLabel}
           isEn={isEn}
         />
+
+        {/* Contractor Rating Modal on Ticket Closure */}
+        {dashboardRatingRfq && (
+          <RfqRatingModal
+            isOpen={Boolean(dashboardRatingRfq)}
+            onClose={() => setDashboardRatingRfq(null)}
+            rfq={dashboardRatingRfq}
+            currentAdmin={{
+              uid: user?.uid || 'admin',
+              name: getAdminDisplayName()
+            }}
+            onSuccess={() => setDashboardRatingRfq(null)}
+          />
+        )}
       </main>
     </div>
   );
