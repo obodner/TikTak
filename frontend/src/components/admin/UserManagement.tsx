@@ -11,6 +11,7 @@ interface User {
   lastName: string;
   email: string;
   mobile: string;
+  name?: string;
 }
 
 interface UserManagementProps {
@@ -239,7 +240,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ tenantId, caller
                   <div className="flex flex-col text-right">
                     <p className="font-black text-slate-800 text-sm flex items-center justify-between">
                       <span className="truncate">
-                        {u.firstName} {u.lastName}
+                        {(u.firstName && u.firstName !== 'מנהל') ? `${u.firstName} ${u.lastName || ''}`.trim() : (u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'מנהל')}
                       </span>
                       {isSelf && <span className="text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-black shrink-0 ms-2">אתה</span>}
                     </p>

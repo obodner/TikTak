@@ -28,6 +28,7 @@ import {
   Loader2,
   ArrowRight,
   ShieldAlert,
+  Snowflake,
   Image as ImageIcon,
   Mic,
   Play,
@@ -37,6 +38,20 @@ import {
 } from 'lucide-react';
 import { Vendor, VendorType, RfqAttachment, DispatchedVendorRecord, PaymentPhaseItem } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
+
+interface RfqLicensingState {
+  tier?: string;
+  status?: string;
+  annualQuota?: number;
+  overageRate?: number;
+  enforcementMode?: 'hard' | 'soft';
+  licenseExpiresAt?: string;
+  currentAnnualUsage?: {
+    dispatchedCount?: number;
+    lastDispatchedAt?: string;
+    alertsSent?: any;
+  };
+}
 
 const DEFAULT_CATEGORIES = [
   'אינסטלציה',
@@ -140,6 +155,8 @@ export default function NewRfqPage() {
   const [tenantName, setTenantName] = useState('');
   const [tenantType, setTenantType] = useState<string>('building');
   const isSettlement = tenantType?.toLowerCase() === 'municipality' || tenantType?.toLowerCase() === 'settlement' || tenantType?.toLowerCase() === 'community';
+  const [rfqLicensing, setRfqLicensing] = useState<RfqLicensingState | null>(null);
+  const [isTenantFrozen, setIsTenantFrozen] = useState(false);
   const [categoryPool, setCategoryPool] = useState<string[]>(DEFAULT_CATEGORIES);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
@@ -424,6 +441,24 @@ export default function NewRfqPage() {
           if (tData.type) {
             setTenantType(tData.type);
           }
+          if (tData.rfqLicensing) {
+            setRfqLicensing(tData.rfqLicensing);
+          }
+          let frozen = tData.isActive === false || tData.subscription?.status === 'frozen';
+          if (!frozen && tData.parentEnterpriseId) {
+            try {
+              const parentSnap = await getDoc(doc(db, "tenants", tData.parentEnterpriseId));
+              if (parentSnap.exists()) {
+                const pData = parentSnap.data();
+                if (pData.isActive === false || pData.subscription?.status === 'frozen') {
+                  frozen = true;
+                }
+              }
+            } catch (pErr) {
+              console.warn("Could not check parent enterprise freeze status:", pErr);
+            }
+          }
+          setIsTenantFrozen(frozen);
           tenantCategories = [
             ...(Array.isArray(tData.config?.categories) ? tData.config.categories : []),
             ...(Array.isArray(tData.categories) ? tData.categories : [])
@@ -933,6 +968,11 @@ export default function NewRfqPage() {
 
     if (!tenantId) return;
 
+    if (isTenantFrozen) {
+      setFormError('חשבון הישות מוקפא זמנית על ידי הנהלת המערכת. שילוח פניות הצעת מחיר לקבלנים חסום.');
+      return;
+    }
+
     if (!title.trim()) {
       setFormError('כותרת העבודה הינה שדה חובה');
       return;
@@ -1053,6 +1093,27 @@ export default function NewRfqPage() {
         publishedRfqId = docRef.id;
       }
 
+      // Record RFQ Dispatch & enforce quota in backend (including multi-admin WhatsApp alerts)
+      try {
+        const recordRes = await fetch('/api/recordRfqDispatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenantId, rfqId: publishedRfqId })
+        });
+        if (recordRes.ok) {
+          const resJson = await recordRes.json();
+          setRfqLicensing(prev => prev ? {
+            ...prev,
+            currentAnnualUsage: {
+              ...prev.currentAnnualUsage,
+              dispatchedCount: resJson.dispatchedCount
+            }
+          } : null);
+        }
+      } catch (recErr) {
+        console.warn('Failed to call recordRfqDispatch:', recErr);
+      }
+
       // Audit Logs
       const auditDetails: Record<string, any> = {
         rfqId: publishedRfqId,
@@ -1152,7 +1213,7 @@ export default function NewRfqPage() {
           <span className="text-slate-600">בקשת הצעה חדשה</span>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 shadow-sm">
               <FilePlus size={26} />
@@ -1165,13 +1226,59 @@ export default function NewRfqPage() {
             </div>
           </div>
 
-          <Link
-            to={`/admin/${tenantId}/quotes/active`}
-            className="text-xs font-bold text-slate-500 hover:text-slate-800 px-3 py-2 rounded-xl hover:bg-slate-100 transition-colors flex items-center gap-1.5"
-          >
-            <ArrowRight size={14} />
-            <span>חזרה לרשימה</span>
-          </Link>
+          <div className="flex items-center gap-3">
+            {/* RFQ Annual Quota Pill */}
+            {rfqLicensing && rfqLicensing.status !== 'disabled' && (
+              (() => {
+                const aQuota = Number(rfqLicensing.annualQuota ?? 0);
+                const dCount = Number(rfqLicensing.currentAnnualUsage?.dispatchedCount ?? 0);
+                const ratio = aQuota > 0 ? (dCount / aQuota) : 0;
+                const isExp = rfqLicensing.licenseExpiresAt ? new Date(rfqLicensing.licenseExpiresAt).getTime() < Date.now() : false;
+                const enf = rfqLicensing.enforcementMode || 'hard';
+
+                return (
+                  <div className="bg-white border border-slate-200 rounded-2xl px-4 py-2 shadow-xs flex items-center gap-3">
+                    <div className={`p-1.5 rounded-xl ${
+                      isExp || ratio >= 1.0 ? 'bg-red-50 text-red-600' :
+                      ratio >= 0.8 ? 'bg-amber-50 text-amber-600' :
+                      'bg-purple-50 text-purple-600'
+                    }`}>
+                      <ShieldAlert size={18} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-black text-slate-800">
+                          בנק בקשות: {dCount}/{aQuota}
+                        </span>
+                        <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
+                          {rfqLicensing.tier || 'standard'}
+                        </span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          enf === 'hard' ? 'bg-slate-100 text-slate-600' : 'bg-blue-50 text-blue-700'
+                        }`}>
+                          {enf === 'hard' ? 'Hard Cap' : `Soft (חריגה: ₪${rfqLicensing.overageRate ?? 45})`}
+                        </span>
+                      </div>
+                      {rfqLicensing.licenseExpiresAt && (
+                        <div className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                          תוקף שנתי: {new Date(rfqLicensing.licenseExpiresAt).toLocaleDateString('he-IL')}
+                          {isExp && <span className="text-red-500 font-bold mr-1">(פג תוקף!)</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+
+            <Link
+              to={`/admin/${tenantId}/quotes/active`}
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 px-3 py-2 rounded-xl hover:bg-slate-100 transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              <ArrowRight size={14} />
+              <span>חזרה לרשימה</span>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -1901,6 +2008,67 @@ export default function NewRfqPage() {
             ביטול
           </Link>
 
+          {/* Hard Cap & Soft Cap Warning Banners */}
+          {(() => {
+            const aQuota = Number(rfqLicensing?.annualQuota ?? 0);
+            const dCount = Number(rfqLicensing?.currentAnnualUsage?.dispatchedCount ?? 0);
+            const isRfqActive = rfqLicensing?.status !== 'disabled' && rfqLicensing?.tier !== 'disabled';
+            const enf = rfqLicensing?.enforcementMode || 'hard';
+            const isExp = rfqLicensing?.licenseExpiresAt ? new Date(rfqLicensing.licenseExpiresAt).getTime() < Date.now() : false;
+            const isHardCapBlocked = isRfqActive && aQuota > 0 && dCount >= aQuota && enf === 'hard';
+            const isSoftCapOverage = isRfqActive && aQuota > 0 && dCount >= aQuota && enf === 'soft';
+
+            if (isExp) {
+              return (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-800 text-xs font-bold w-full my-2">
+                  <AlertCircle className="text-red-600 shrink-0" size={20} />
+                  <div>
+                    <p className="text-sm font-black text-red-900">תוקף רישוי הצעות המחיר השנתי (RFQ) פג</p>
+                    <p className="text-red-700 mt-0.5">משלוח בקשות חדשות לקבלנים מוקפא עד לחידוש הרישוי השנתי מול הנהלת המערכת.</p>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isHardCapBlocked) {
+              return (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-800 text-xs font-bold w-full my-2">
+                  <AlertCircle className="text-red-600 shrink-0" size={20} />
+                  <div>
+                    <p className="text-sm font-black text-red-900">הגעת למלוא מכסת בקשות הצעות המחיר השנתית ({dCount}/{aQuota})</p>
+                    <p className="text-red-700 mt-0.5">בהתאם למדיניות הרישוי (Hard Cap), משלוח בקשות נוספות נחסם עד לשדרוג החבילה על ידי מנהל המערכת.</p>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isSoftCapOverage) {
+              return (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-900 text-xs font-bold w-full my-2">
+                  <AlertCircle className="text-amber-600 shrink-0" size={20} />
+                  <div>
+                    <p className="text-sm font-black text-amber-900">שים לב: חריגה ממכסת המכרזים השנתית ({dCount}/{aQuota})</p>
+                    <p className="text-amber-800 mt-0.5">בהתאם למדיניות Soft Cap, משלוח מכרז זה מותר ויחויב בתעריף חריגה של ₪{rfqLicensing?.overageRate ?? 45} בחשבון התקופתי.</p>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isTenantFrozen) {
+              return (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3.5 flex items-center gap-3">
+                  <Snowflake size={20} className="text-blue-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-black text-amber-900">חשבון הישות מוקפא זמנית</p>
+                    <p className="text-xs text-amber-800 mt-0.5">הישות מוקפאת על ידי הנהלת המערכת. שילוח פניות הצעת מחיר לקבלנים חסום עד לחידוש החשבון.</p>
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
             <button
               type="button"
@@ -1923,7 +2091,20 @@ export default function NewRfqPage() {
 
             <button
               type="submit"
-              disabled={submitting || isSavingDraft || selectedVendorIds.length === 0}
+              disabled={
+                submitting ||
+                isSavingDraft ||
+                isTenantFrozen ||
+                selectedVendorIds.length === 0 ||
+                Boolean(
+                  rfqLicensing &&
+                  rfqLicensing.status !== 'disabled' &&
+                  Number(rfqLicensing.annualQuota ?? 0) > 0 &&
+                  Number(rfqLicensing.currentAnnualUsage?.dispatchedCount ?? 0) >= Number(rfqLicensing.annualQuota ?? 0) &&
+                  (rfqLicensing.enforcementMode || 'hard') === 'hard'
+                ) ||
+                Boolean(rfqLicensing?.licenseExpiresAt && new Date(rfqLicensing.licenseExpiresAt).getTime() < Date.now())
+              }
               className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-black shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {submitting ? (

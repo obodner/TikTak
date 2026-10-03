@@ -6,7 +6,7 @@ import { ReportingForm } from '../components/ReportingForm';
 import { QuickTapPills } from '../components/QuickTapPills';
 import { QuickTapItem } from '../components/admin/QuickTapEditor';
 import { compressImage } from '../utils/compression';
-import { AlertTriangle, Wrench, Info, X } from 'lucide-react';
+import { AlertTriangle, Wrench, Info, X, Snowflake } from 'lucide-react';
 
 type FlowState = 'idle' | 'analyzing' | 'editing' | 'sending' | 'success' | 'error' | 'invalid' | 'rate-limited';
 
@@ -96,6 +96,7 @@ export default function ResidentFlow() {
     const [pendingMimeType, setPendingMimeType] = useState<string | null>(null);
     const [showAiFallbackNotice, setShowAiFallbackNotice] = useState<boolean>(false);
     const [isBannerDismissed, setIsBannerDismissed] = useState<boolean>(false);
+    const [isTenantFrozen, setIsTenantFrozen] = useState<boolean>(false);
     const [noticeBanner, setNoticeBanner] = useState<{
         active: boolean;
         message: string;
@@ -173,6 +174,10 @@ export default function ResidentFlow() {
 
                     if (data.noticeBanner) {
                         setNoticeBanner(data.noticeBanner);
+                    }
+
+                    if (data.isFrozen || data.isActive === false || data.subscription?.status === 'frozen') {
+                        setIsTenantFrozen(true);
                     }
 
                     setConfig({
@@ -473,6 +478,26 @@ export default function ResidentFlow() {
         }
     };
 
+
+    if (isTenantFrozen) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-sm w-full p-8 text-center animate-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
+                        <Snowflake size={32} />
+                    </div>
+                    <h1 className="text-xl font-black text-slate-900 mb-2">
+                        {i18n.language === 'en' ? 'Reporting System Temporarily Suspended' : 'מערכת הדיווחים אינה פעילה כעת'}
+                    </h1>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                        {i18n.language === 'en'
+                            ? `Reporting for ${tenantName || address || 'this building'} is currently paused. Please contact your building committee or management.`
+                            : `מערכת הדיווחים במבנה ${tenantName || address || ''} אינה פעילה כעת. לבירורים נא לפנות לוועד הבית או להנהלת המבנה.`}
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col min-h-[100dvh] bg-white relative overflow-hidden" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>

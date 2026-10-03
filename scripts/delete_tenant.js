@@ -1,3 +1,9 @@
+/**
+ * @deprecated [DEPRECATED as of v2.1]
+ * Tenant deletion is now natively managed via the SuperAdmin God's Eye View UI (/admin/god-view)
+ * with the exact Tenant ID typing confirmation gate and atomic Cloud Function `deleteTenantPermanently`.
+ * This CLI script is preserved for emergency recovery and offline scripting purposes only.
+ */
 const admin = require("firebase-admin");
 const readline = require("readline");
 

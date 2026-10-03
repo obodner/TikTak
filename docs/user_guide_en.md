@@ -74,6 +74,42 @@ To ensure no resident reports are neglected and to maintain service standards, t
 
 ---
 
+## 3. SuperAdmin Guide (God's Eye View & Multi-Tenant Licensing) 👑
+The **God's Eye View** interface at `/admin/god-view` grants system administrators full centralized control over all tenants, multi-building fleets, and licensing configurations across the TikTak ecosystem.
+
+### Centralized Tenants Table (High-Density View)
+- **Hierarchy & Structure**: Displays all tenants sorted alphabetically. Multi-building fleets appear as expandable parent rows (Accordion) revealing all associated child buildings underneath.
+- **Table Columns**:
+  - **Name & Slug**: Organization name, unique `tenantId` slug, and type badges (Building, Municipality, Fleet Master, or Fleet Child).
+  - **Registered Admins**: Admin count pill with an interactive popup displaying names, emails, and phone numbers for every authorized admin.
+  - **TikTak Tickets (Monthly)**: Color-coded progress gauge showing incident ticket consumption for the active calendar month (Green = Healthy, Amber = 80%, Red = 100%+ Overage).
+  - **RFQ Procurement Bank (Annual)**: Annual quota gauge showing contractor quote requests used against the purchased annual credit bank, alongside the exact license expiration date.
+  - **Creation & Last Login Dates**: Displayed in strict, unambiguous format (`DD/MM/YYYY HH:mm`), replacing vague relative wording.
+  - **Status**: Live badge indicating Active (`bg-emerald-50 text-emerald-700`) vs. Frozen (`bg-slate-100 text-slate-600`).
+  - **Actions (••• Menu)**: Quick actions guarded by designated confirmation modals.
+
+### Onboard Tenant & Fleet Wizard
+Clicking **"New Tenant / Fleet"** launches a 5-step guided provisioning wizard, retiring CLI scripts:
+1. **Entity Type Selection**: Choose between a Single Tenant (Building / Municipality) or Multi-Building Fleet.
+2. **Entity Details & Slugs**: Names, physical addresses, and auto-generated URL slugs with real-time uniqueness validation. In Fleet mode, add child buildings dynamically.
+3. **Dual Licensing Configuration**:
+   - **TikTak Incidents**: Monthly quota (10, 30, 75, 150, or Unlimited), enforcement mode (Hard / Soft), and per-ticket overage fee.
+   - **RFQ Procurement Bank**: Annual credit tier (Starter 3, Basic 6, Standard 12, Growth 25, Enterprise 50), per-quote overage fee, and annual expiration date (defaults to 12 months ahead).
+4. **Primary Admin Onboarding**: Admin first name, last name, mobile phone, and email. The system automatically creates an Auth account and generates a secure password reset link.
+5. **Handoff & WhatsApp Invite Generator**: Instant access to the dashboard URL and a 1-click **"Copy WhatsApp Message to Admin"** button with a pre-formatted invitation ready to send to the new manager.
+
+### Table Actions & Governance
+- **Switch to Tenant Dashboard**: Direct 1-click navigation to the tenant's admin dashboard without modal friction.
+- **Update Ticket / RFQ Licensing**: Focused modals to upgrade tiers, modify quota banks, or extend expiration dates in real time.
+- **Freeze / Unfreeze Tenant**: Instantly revoke or restore access with confirmation safety guards.
+- **Permanent Tenant Deletion**: Two-step destruction safeguard requiring typing the exact `tenantId` to permanently purge Firestore records, GCS images, and Firebase Auth users.
+
+### Automated Quota & Expiration Notification Engine
+- **RFQ Consumption Alerts (80% and 100%)**: Automatically broadcasts WhatsApp alerts to all registered admins (and parent fleet managers) upon reaching 80% and 100% of the annual credit bank, with deduplication timestamps.
+- **Annual License Expiration Cron**: A daily Cloud Scheduler task running at 06:00 UTC scans active tenants and dispatches WhatsApp alerts at **30 days**, **7 days**, and **day of expiration** to ensure uninterrupted service.
+
+---
+
 ## Privacy & Data Handling 🔒
 * Photos and voice recordings are stored securely and are automatically deleted after **1 year**.
 * Phone numbers are used only for ticket authentication and direct communication with the maintenance team.

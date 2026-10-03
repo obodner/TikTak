@@ -1,3 +1,9 @@
+/**
+ * @deprecated [DEPRECATED as of v2.1]
+ * Fleet provisioning is now natively managed via the SuperAdmin God's Eye View UI (/admin/god-view)
+ * with the Multi-Building Fleet tab and atomic Cloud Function `provisionTenantOrFleet`.
+ * This CLI script is preserved for legacy backup and offline scripting purposes only.
+ */
 const admin = require("firebase-admin");
 const readline = require("readline");
 const fs = require("fs");

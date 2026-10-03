@@ -7,7 +7,7 @@ import { useAuthState } from '../../hooks/useAuthState';
 import { AdminNavbar } from './AdminNavbar';
 import { AdminSidebar } from './AdminSidebar';
 import { HelpModal } from './HelpModal';
-import { ShieldAlert, Building2, LogOut, ArrowLeft } from 'lucide-react';
+import { ShieldAlert, Building2, LogOut, ArrowLeft, Snowflake } from 'lucide-react';
 import { 
   generateNotifications, 
   getDismissedMap, 
@@ -38,6 +38,7 @@ export function AdminLayout() {
   const [myTenants, setMyTenants] = useState<{ id: string; name?: string }[]>([]);
   const [isSuper, setIsSuper] = useState(false);
   const [isUnauthorized, setIsUnauthorized] = useState(false);
+  const [isTenantFrozen, setIsTenantFrozen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dashboardCount, setDashboardCount] = useState<number | undefined>(undefined);
@@ -120,7 +121,20 @@ export function AdminLayout() {
         // 3. If authorized, fetch current tenant info
         const bDoc = await getDoc(doc(db, "tenants", tenantId as string));
         if (bDoc.exists()) {
-          if (isMounted) setTenantConfig(bDoc.data());
+          const bData = bDoc.data();
+          if (isMounted) setTenantConfig(bData);
+
+          let frozen = bData.isActive === false || bData.subscription?.status === 'frozen';
+          if (!frozen && bData.parentEnterpriseId) {
+            const parentDoc = await getDoc(doc(db, "tenants", bData.parentEnterpriseId));
+            if (parentDoc.exists()) {
+              const pData = parentDoc.data();
+              if (pData.isActive === false || pData.subscription?.status === 'frozen') {
+                frozen = true;
+              }
+            }
+          }
+          if (isMounted) setIsTenantFrozen(frozen);
         } else {
           if (isMounted) setIsUnauthorized(true);
         }
@@ -227,6 +241,47 @@ export function AdminLayout() {
 
   if (!user) return <Navigate to="/admin/login" replace />;
 
+  if (isTenantFrozen && !isSuper) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" dir={isEn ? 'ltr' : 'rtl'}>
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-8 text-center animate-in fade-in zoom-in duration-200">
+          <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-inner">
+            <Snowflake size={36} />
+          </div>
+
+          <h1 className="text-2xl font-black text-slate-900 mb-2">
+            {isEn ? 'Account Suspended / Frozen' : 'חשבון הישות מוקפא זמנית'}
+          </h1>
+          <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+            {isEn 
+              ? 'Access to this building or fleet has been temporarily suspended by system administration. Please contact your account manager or TikTak support to restore full access.'
+              : 'הפעילות והגישה למבנה או מתחם זה הוקפאו זמנית על ידי הנהלת המערכת. לפתיחת החשבון וחידוש הפעילות, נא לפנות למנהל המערכת או לשירות הלקוחות של TikTak.'}
+          </p>
+
+          <div className="flex flex-col gap-3">
+            {myTenants.filter(t => t.id !== tenantId).length > 0 && (
+              <button
+                onClick={() => navigate('/admin/login')}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md active:scale-95 text-sm cursor-pointer"
+              >
+                <Building2 size={16} />
+                <span>{isEn ? 'Switch to Another Entity' : 'מעבר לישות ניהול אחרת'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center justify-center gap-2 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-xl transition-all text-sm cursor-pointer"
+            >
+              <LogOut size={16} />
+              <span>{isEn ? 'Sign Out' : 'התנתקות מהמערכת'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isUnauthorized) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" dir={isEn ? 'ltr' : 'rtl'}>
@@ -314,6 +369,12 @@ export function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans" dir={isEn ? 'ltr' : 'rtl'}>
+      {isSuper && isTenantFrozen && (
+        <div className="bg-amber-600 text-white text-xs font-bold py-2 px-4 text-center flex items-center justify-center gap-2 sticky top-0 z-50 shadow-md">
+          <Snowflake size={14} />
+          <span>{isEn ? 'SuperAdmin Mode: This tenant is FROZEN. End-user ticket reporting and RFQ dispatch are blocked.' : 'מצב מנהל-על: ישות זו מוקפאת זמנית. שילוח פניות תקלות ו-RFQ על ידי משתמשי קצה חסום.'}</span>
+        </div>
+      )}
       {/* Mobile Top Admin Navbar (< 768px) */}
       <AdminNavbar
         tenantId={tenantId as string}

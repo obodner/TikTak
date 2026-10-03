@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyQuoteSubmission = exports.dispatchRfqToVendors = exports.submitSupportInquiry = exports.forwardTicketToVendor = exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.slaCron = void 0;
+exports.recordRfqDispatch = exports.recordAdminLogin = exports.deleteTenantPermanently = exports.toggleTenantFreeze = exports.updateTenantLicensing = exports.provisionTenantOrFleet = exports.notifyQuoteSubmission = exports.dispatchRfqToVendors = exports.submitSupportInquiry = exports.forwardTicketToVendor = exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.checkAnnualLicenseExpirations = exports.slaCron = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
@@ -41,6 +41,8 @@ const i18n_1 = require("./utils/i18n");
 const quotaEngine_1 = require("./utils/quotaEngine");
 var slaCron_1 = require("./slaCron");
 Object.defineProperty(exports, "slaCron", { enumerable: true, get: function () { return slaCron_1.slaCron; } });
+var licenseExpiryCron_1 = require("./licenseExpiryCron");
+Object.defineProperty(exports, "checkAnnualLicenseExpirations", { enumerable: true, get: function () { return licenseExpiryCron_1.checkAnnualLicenseExpirations; } });
 const logger = __importStar(require("firebase-functions/logger"));
 const app_1 = require("firebase-admin/app");
 const firestore_2 = require("firebase-admin/firestore");
@@ -696,6 +698,19 @@ exports.createTicket = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_
             });
             return;
         }
+        if (tenantData.parentEnterpriseId) {
+            const parentDoc = await db.collection("tenants").doc(tenantData.parentEnterpriseId).get();
+            if (parentDoc.exists) {
+                const parentData = parentDoc.data() || {};
+                if (parentData.isActive === false || parentData.subscription?.status === 'frozen' || parentData.subscription?.status === 'cancelled') {
+                    res.status(403).send({
+                        error: "Fleet Frozen",
+                        message: `מתחם האב של מבנה זה מוקפא זמנית. אנא פנה להנהלת המתחם להפעלת החשבון.`
+                    });
+                    return;
+                }
+            }
+        }
         const { authorized, reporterName, cleanPhone } = await findAndValidateReporter(tenantId, reporterPhone);
         if (!authorized) {
             res.status(403).send({
@@ -1002,14 +1017,31 @@ exports.getTenantInfo = (0, https_1.onRequest)({ cors: true }, async (req, res) 
                 });
             }
         });
+        let isFrozen = tData?.isActive === false || tData?.subscription?.status === 'frozen';
+        if (!isFrozen && tData?.parentEnterpriseId) {
+            try {
+                const parentDoc = await db.collection("tenants").doc(tData.parentEnterpriseId).get();
+                if (parentDoc.exists) {
+                    const pData = parentDoc.data();
+                    if (pData?.isActive === false || pData?.subscription?.status === 'frozen') {
+                        isFrozen = true;
+                    }
+                }
+            }
+            catch (pErr) {
+                logger.warn("Could not check parent enterprise freeze status in getTenantInfo", pErr);
+            }
+        }
         logger.info("Returning tenant info with admins", {
             tenantId,
             hasQuickTap: !!tData?.quickTap,
             quickTapEnabled: tData?.quickTap?.enabled,
-            adminCount: admins.length
+            adminCount: admins.length,
+            isFrozen
         });
         res.send({
             ...tData,
+            isFrozen,
             admins
         });
     }
@@ -3800,6 +3832,26 @@ exports.dispatchRfqToVendors = (0, https_1.onRequest)({ cors: true, secrets: ["W
             return;
         }
         const tenantData = tenantSnap.data() || {};
+        if (tenantData.isActive === false || tenantData.subscription?.status === 'frozen' || tenantData.subscription?.status === 'cancelled') {
+            res.status(403).send({
+                error: "Account Frozen",
+                message: "חשבון ישות זו מוקפא זמנית. שילוח פניות הצעת מחיר לקבלנים חסום."
+            });
+            return;
+        }
+        if (tenantData.parentEnterpriseId) {
+            const parentSnap = await db.collection("tenants").doc(tenantData.parentEnterpriseId).get();
+            if (parentSnap.exists) {
+                const parentData = parentSnap.data() || {};
+                if (parentData.isActive === false || parentData.subscription?.status === 'frozen' || parentData.subscription?.status === 'cancelled') {
+                    res.status(403).send({
+                        error: "Fleet Master Frozen",
+                        message: "מתחם האב של ישות זו מוקפא זמנית. שילוח פניות הצעת מחיר לקבלנים חסום."
+                    });
+                    return;
+                }
+            }
+        }
         const phoneNumberId = tenantData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
         const tenantName = tenantData.name || tenantId;
         const tenantAddress = tenantData.address || "";
@@ -4102,6 +4154,881 @@ exports.notifyQuoteSubmission = (0, https_1.onRequest)({ cors: true, secrets: ["
     catch (err) {
         logger.error("Exception in notifyQuoteSubmission:", err);
         res.status(500).send({ error: err.message || "Failed to notify admin" });
+    }
+});
+async function verifySuperAdminRequest(req) {
+    const auth = admin.auth();
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        const idToken = authHeader.split("Bearer ")[1]?.trim();
+        if (idToken) {
+            try {
+                const decoded = await auth.verifyIdToken(idToken);
+                if (decoded.role === "super") {
+                    return { isSuper: true, callerUid: decoded.uid, callerEmail: decoded.email };
+                }
+            }
+            catch (tokenErr) {
+            }
+        }
+    }
+    const callerUid = req.body?.callerUid;
+    if (callerUid) {
+        try {
+            const user = await auth.getUser(callerUid);
+            if (user.customClaims?.role === "super") {
+                return { isSuper: true, callerUid: user.uid, callerEmail: user.email };
+            }
+        }
+        catch (uidErr) {
+            logger.error("Error inspecting caller custom claims:", uidErr);
+        }
+    }
+    return { isSuper: false };
+}
+exports.provisionTenantOrFleet = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const authCheck = await verifySuperAdminRequest(req);
+        if (!authCheck.isSuper) {
+            res.status(403).send({ error: "Unauthorized: Caller must be a Super Admin (role === 'super')" });
+            return;
+        }
+        const rawBody = req.body || {};
+        const isFleet = Boolean(rawBody.isFleet || rawBody.type === "fleet" || rawBody.fleet);
+        const entityType = rawBody.entityType || "building";
+        const isParentBuilding = rawBody.isParentBuilding ?? true;
+        let tenantData = rawBody.tenantData;
+        if (!tenantData) {
+            if (rawBody.singleTenant) {
+                tenantData = {
+                    tenantId: rawBody.singleTenant.id || rawBody.singleTenant.tenantId,
+                    name: rawBody.singleTenant.name,
+                    address: rawBody.singleTenant.address
+                };
+            }
+            else if (rawBody.fleet) {
+                tenantData = {
+                    tenantId: rawBody.fleet.fleetMasterId || rawBody.fleet.id || rawBody.fleet.tenantId,
+                    name: rawBody.fleet.fleetMasterName || rawBody.fleet.name,
+                    address: rawBody.fleet.address
+                };
+            }
+        }
+        let childBuildings = rawBody.childBuildings;
+        if (!childBuildings && rawBody.fleet?.buildings) {
+            childBuildings = rawBody.fleet.buildings.map((b) => ({
+                tenantId: b.id || b.tenantId,
+                name: b.name
+            }));
+        }
+        if (!Array.isArray(childBuildings)) {
+            childBuildings = [];
+        }
+        const adminUserData = rawBody.adminUserData || rawBody.admin || {};
+        const rawFirstName = (adminUserData.firstName || "").trim();
+        const rawLastName = (adminUserData.lastName || "").trim();
+        const rawFullName = (adminUserData.fullName || adminUserData.name || "").trim();
+        let resolvedFirstName = rawFirstName;
+        let resolvedLastName = rawLastName;
+        if (!resolvedFirstName && rawFullName) {
+            const parts = rawFullName.split(/\s+/).filter(Boolean);
+            resolvedFirstName = parts[0] || "מנהל";
+            resolvedLastName = parts.slice(1).join(" ");
+        }
+        if (!resolvedFirstName) {
+            resolvedFirstName = "מנהל";
+        }
+        const computedDisplayName = `${resolvedFirstName} ${resolvedLastName}`.trim();
+        adminUserData.firstName = resolvedFirstName;
+        adminUserData.lastName = resolvedLastName;
+        adminUserData.fullName = computedDisplayName;
+        adminUserData.name = computedDisplayName;
+        const ticketTier = rawBody.ticketTier || rawBody.ticketSubscription || { tier: "starter", monthlyQuota: 15, overageRate: 12.0 };
+        const rfqTier = rawBody.rfqTier || rawBody.rfqLicensing || { tier: "disabled", annualQuota: 0, overageRate: 59.0, enforcementMode: "hard" };
+        if (!tenantData?.name || !tenantData?.tenantId) {
+            res.status(400).send({ error: "Missing required fields: tenant name and tenantId are mandatory" });
+            return;
+        }
+        const parentId = tenantData.tenantId.trim();
+        const parentName = tenantData.name.trim();
+        const parentAddress = tenantData.address ? tenantData.address.trim() : "";
+        const parentDocSnap = await db.collection("tenants").doc(parentId).get();
+        if (parentDocSnap.exists) {
+            res.status(409).send({ error: `Tenant ID '${parentId}' already exists. Please choose a different ID.` });
+            return;
+        }
+        if (isFleet && Array.isArray(childBuildings) && childBuildings.length > 0) {
+            for (const child of childBuildings) {
+                const cId = child.tenantId?.trim();
+                if (!cId)
+                    continue;
+                const cSnap = await db.collection("tenants").doc(cId).get();
+                if (cSnap.exists) {
+                    res.status(409).send({ error: `Child Tenant ID '${cId}' already exists. Please choose a different ID.` });
+                    return;
+                }
+            }
+        }
+        const buildingCategories = [
+            "אשפה ומיחזור", "בטחון", "ביוב ונזילות", "גינון/נוף", "חשמל", "מעלית", "מפגע בדרך", "פסולת/ניקיון", "תאורה", "תחזוקה", "אחר"
+        ];
+        const muniCategories = [
+            "אשפה ומיחזור", "בטחון", "ביוב ונזילות", "גינון/נוף", "חשמל", "מפגע בדרך", "פסולת/ניקיון", "תאורה", "תחזוקה", "אחר"
+        ];
+        const selectedCategories = entityType === "municipality" ? muniCategories : buildingCategories;
+        const locationLabel = entityType === "municipality" ? "אזור" : "קומה";
+        const subLocationLabel = entityType === "municipality" ? "רחוב" : "מיקום";
+        const now = new Date();
+        const startDay = now.getDate();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const maxStartDay = new Date(year, month + 1, 0).getDate();
+        const actualStartDay = Math.min(startDay, maxStartDay);
+        const cycleStart = new Date(Date.UTC(year, month, actualStartDay, 0, 0, 0, 0));
+        if (now < cycleStart) {
+            const prevMonth = month === 0 ? 11 : month - 1;
+            const prevYear = month === 0 ? year - 1 : year;
+            const maxPrev = new Date(prevYear, prevMonth + 1, 0).getDate();
+            cycleStart.setUTCFullYear(prevYear, prevMonth, Math.min(startDay, maxPrev));
+        }
+        const nextMonth = cycleStart.getUTCMonth() === 11 ? 0 : cycleStart.getUTCMonth() + 1;
+        const nextYear = cycleStart.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : cycleStart.getUTCFullYear();
+        const maxNext = new Date(nextYear, nextMonth + 1, 0).getDate();
+        const cycleEnd = new Date(Date.UTC(nextYear, nextMonth, Math.min(startDay, maxNext), 0, 0, 0, 0));
+        cycleEnd.setTime(cycleEnd.getTime() - 1);
+        const annualExpiryDate = rfqTier.licenseExpiresAt || new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString();
+        const rfqLicensingPayload = {
+            tier: rfqTier.tier || "disabled",
+            status: rfqTier.tier && rfqTier.tier !== "disabled" ? "active" : "disabled",
+            annualQuota: Number(rfqTier.annualQuota) || 0,
+            overageRate: Number(rfqTier.overageRate) || 59.0,
+            enforcementMode: rfqTier.enforcementMode || "hard",
+            licenseStartDate: now.toISOString(),
+            licenseExpiresAt: annualExpiryDate,
+            currentAnnualUsage: {
+                dispatchedCount: 0,
+                alertsSent: {}
+            },
+            expiryAlertsSent: {}
+        };
+        const auth = admin.auth();
+        let adminUid = null;
+        let passwordResetLink = null;
+        if (adminUserData?.email) {
+            const cleanEmail = adminUserData.email.trim().toLowerCase();
+            try {
+                const existing = await auth.getUserByEmail(cleanEmail);
+                adminUid = existing.uid;
+            }
+            catch (notFoundErr) {
+                if (notFoundErr.code === "auth/user-not-found") {
+                    const generatedPass = adminUserData.password && adminUserData.password.length >= 6
+                        ? adminUserData.password
+                        : (0, crypto_1.randomUUID)().substring(0, 16) + "!Aa1";
+                    const newUser = await auth.createUser({
+                        email: cleanEmail,
+                        password: generatedPass,
+                        displayName: adminUserData.fullName || `${adminUserData.firstName || ''} ${adminUserData.lastName || ''}`.trim()
+                    });
+                    adminUid = newUser.uid;
+                }
+                else {
+                    throw notFoundErr;
+                }
+            }
+            try {
+                passwordResetLink = await auth.generatePasswordResetLink(cleanEmail);
+            }
+            catch (linkErr) {
+                logger.warn("Could not generate password reset link:", linkErr);
+            }
+        }
+        const adminUidsArray = adminUid ? [adminUid] : [];
+        if (!isFleet) {
+            const singleSubscription = {
+                tier: ticketTier.tier || "starter",
+                status: "active",
+                autoRenew: true,
+                monthlyQuota: Number(ticketTier.monthlyQuota) || 15,
+                overageRate: Number(ticketTier.overageRate) || 12.0,
+                billingCycleStartDay: startDay,
+                cycleStartDate: now.toISOString(),
+                cycleEndDate: cycleEnd.toISOString(),
+                frozenAt: null,
+                warned80PercentAt: null,
+                warned100PercentAt: null,
+                currentCycleTicketCount: 0,
+                currentCycleExclusions: 0,
+                rolloverTickets: 0
+            };
+            const tenantPayload = {
+                name: parentName,
+                address: parentAddress,
+                type: entityType,
+                isActive: true,
+                language: "he",
+                country: "IL",
+                subscription: singleSubscription,
+                rfqLicensing: rfqLicensingPayload,
+                slaConfig: {
+                    enabled: true,
+                    workingDays: [0, 1, 2, 3, 4]
+                },
+                config: {
+                    categories: selectedCategories,
+                    locationLabel,
+                    subLocationLabel,
+                    floors: [],
+                    resources: [],
+                    locations: [],
+                    subLocations: []
+                },
+                uiConfig: {
+                    locationLabel,
+                    subLocationLabel,
+                    showLocation: true
+                },
+                adminUids: adminUidsArray,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastLogin: null
+            };
+            await db.collection("tenants").doc(parentId).set(tenantPayload);
+            if (adminUid && adminUserData) {
+                await db.collection("tenants").doc(parentId).collection("adminUsers").doc(adminUid).set({
+                    email: adminUserData.email.trim().toLowerCase(),
+                    firstName: adminUserData.firstName || "מנהל",
+                    lastName: adminUserData.lastName || "",
+                    name: adminUserData.fullName || `${adminUserData.firstName || ''} ${adminUserData.lastName || ''}`.trim(),
+                    mobile: adminUserData.mobile ? adminUserData.mobile.trim() : "",
+                    role: "admin",
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    lastLogin: null
+                });
+            }
+            await recordAuditLog({
+                tenantId: parentId,
+                action: "TENANT_CREATED",
+                level: "INFO",
+                actor: {
+                    uid: authCheck.callerUid || "super-admin",
+                    name: authCheck.callerEmail || "Super Admin",
+                    type: "admin"
+                },
+                details: {
+                    tenantId: parentId,
+                    name: parentName,
+                    type: entityType,
+                    ticketTier: ticketTier.tier,
+                    rfqTier: rfqTier.tier,
+                    adminEmail: adminUserData?.email
+                }
+            });
+            res.status(200).send({
+                success: true,
+                tenantId: parentId,
+                name: parentName,
+                passwordResetLink,
+                adminUid
+            });
+            return;
+        }
+        else {
+            const childTenantIds = (childBuildings || []).map((b) => b.tenantId?.trim()).filter(Boolean);
+            const parentSubscription = {
+                tier: ticketTier.tier || "growth",
+                status: "active",
+                autoRenew: true,
+                monthlyQuota: Number(ticketTier.monthlyQuota) || 160,
+                overageRate: Number(ticketTier.overageRate) || 7.0,
+                billingCycleStartDay: startDay,
+                cycleStartDate: now.toISOString(),
+                cycleEndDate: cycleEnd.toISOString(),
+                frozenAt: null,
+                warned80PercentAt: null,
+                warned100PercentAt: null,
+                currentCycleTicketCount: 0,
+                currentCycleExclusions: 0,
+                rolloverTickets: 0
+            };
+            const masterPayload = {
+                name: parentName,
+                address: parentAddress,
+                type: isParentBuilding ? entityType : "municipality",
+                isActive: true,
+                isPoolMaster: true,
+                childTenantIds,
+                language: "he",
+                country: "IL",
+                subscription: parentSubscription,
+                rfqLicensing: rfqLicensingPayload,
+                slaConfig: { enabled: true, workingDays: [0, 1, 2, 3, 4] },
+                config: {
+                    categories: selectedCategories,
+                    locationLabel,
+                    subLocationLabel,
+                    floors: [], resources: [], locations: [], subLocations: []
+                },
+                uiConfig: { locationLabel, subLocationLabel, showLocation: true },
+                adminUids: adminUidsArray,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastLogin: null
+            };
+            await db.collection("tenants").doc(parentId).set(masterPayload);
+            if (adminUid && adminUserData) {
+                await db.collection("tenants").doc(parentId).collection("adminUsers").doc(adminUid).set({
+                    email: adminUserData.email.trim().toLowerCase(),
+                    firstName: adminUserData.firstName || "מנהל",
+                    lastName: adminUserData.lastName || "",
+                    name: adminUserData.fullName || `${adminUserData.firstName || ''} ${adminUserData.lastName || ''}`.trim(),
+                    mobile: adminUserData.mobile ? adminUserData.mobile.trim() : "",
+                    role: "admin",
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    lastLogin: null
+                });
+            }
+            for (const bldg of childBuildings) {
+                const cId = bldg.tenantId?.trim();
+                if (!cId)
+                    continue;
+                const childSubscription = {
+                    tier: ticketTier.tier,
+                    status: "active",
+                    autoRenew: true,
+                    monthlyQuota: 0,
+                    overageRate: Number(ticketTier.overageRate) || 7.0,
+                    billingCycleStartDay: startDay,
+                    cycleStartDate: now.toISOString(),
+                    cycleEndDate: cycleEnd.toISOString(),
+                    frozenAt: null,
+                    currentCycleTicketCount: 0,
+                    currentCycleExclusions: 0,
+                    rolloverTickets: 0
+                };
+                const childPayload = {
+                    name: bldg.name?.trim(),
+                    address: bldg.address ? bldg.address.trim() : "",
+                    type: entityType,
+                    isActive: true,
+                    parentEnterpriseId: parentId,
+                    isPoolMaster: false,
+                    usesParentPool: true,
+                    language: "he",
+                    country: "IL",
+                    subscription: childSubscription,
+                    rfqLicensing: {
+                        ...rfqLicensingPayload,
+                        annualQuota: 0
+                    },
+                    slaConfig: { enabled: true, workingDays: [0, 1, 2, 3, 4] },
+                    config: {
+                        categories: selectedCategories,
+                        locationLabel,
+                        subLocationLabel,
+                        floors: [], resources: [], locations: [], subLocations: []
+                    },
+                    uiConfig: { locationLabel, subLocationLabel, showLocation: true },
+                    adminUids: adminUidsArray,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    lastLogin: null
+                };
+                await db.collection("tenants").doc(cId).set(childPayload);
+                if (adminUid && adminUserData) {
+                    await db.collection("tenants").doc(cId).collection("adminUsers").doc(adminUid).set({
+                        email: adminUserData.email.trim().toLowerCase(),
+                        firstName: adminUserData.firstName || "מנהל",
+                        lastName: adminUserData.lastName || "",
+                        name: adminUserData.fullName || `${adminUserData.firstName || ''} ${adminUserData.lastName || ''}`.trim(),
+                        mobile: adminUserData.mobile ? adminUserData.mobile.trim() : "",
+                        role: "admin",
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                        lastLogin: null
+                    });
+                }
+            }
+            await recordAuditLog({
+                tenantId: parentId,
+                action: "FLEET_CREATED",
+                level: "INFO",
+                actor: {
+                    uid: authCheck.callerUid || "super-admin",
+                    name: authCheck.callerEmail || "Super Admin",
+                    type: "admin"
+                },
+                details: {
+                    masterTenantId: parentId,
+                    masterName: parentName,
+                    totalChildren: childTenantIds.length,
+                    childTenantIds,
+                    ticketTier: ticketTier.tier,
+                    rfqTier: rfqTier.tier
+                }
+            });
+            res.status(200).send({
+                success: true,
+                tenantId: parentId,
+                name: parentName,
+                isFleet: true,
+                childrenCount: childTenantIds.length,
+                passwordResetLink,
+                adminUid
+            });
+            return;
+        }
+    }
+    catch (err) {
+        logger.error("Exception in provisionTenantOrFleet:", err);
+        res.status(500).send({ error: err.message || "Failed to provision tenant" });
+    }
+});
+exports.updateTenantLicensing = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const authCheck = await verifySuperAdminRequest(req);
+        if (!authCheck.isSuper) {
+            res.status(403).send({ error: "Unauthorized: Super Admin access required" });
+            return;
+        }
+        const { tenantId, ticketSubscription, rfqLicensing } = req.body;
+        if (!tenantId) {
+            res.status(400).send({ error: "Missing mandatory parameter: tenantId" });
+            return;
+        }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const tenantDoc = await tenantRef.get();
+        if (!tenantDoc.exists) {
+            res.status(404).send({ error: `Tenant ${tenantId} not found` });
+            return;
+        }
+        const currentData = tenantDoc.data() || {};
+        const updates = {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        if (ticketSubscription) {
+            updates["subscription.tier"] = ticketSubscription.tier ?? currentData.subscription?.tier;
+            if (ticketSubscription.monthlyQuota !== undefined) {
+                updates["subscription.monthlyQuota"] = Number(ticketSubscription.monthlyQuota);
+            }
+            if (ticketSubscription.overageRate !== undefined) {
+                updates["subscription.overageRate"] = Number(ticketSubscription.overageRate);
+            }
+        }
+        if (rfqLicensing) {
+            if (rfqLicensing.tier !== undefined)
+                updates["rfqLicensing.tier"] = rfqLicensing.tier;
+            if (rfqLicensing.annualQuota !== undefined)
+                updates["rfqLicensing.annualQuota"] = Number(rfqLicensing.annualQuota);
+            if (rfqLicensing.overageRate !== undefined)
+                updates["rfqLicensing.overageRate"] = Number(rfqLicensing.overageRate);
+            if (rfqLicensing.enforcementMode !== undefined)
+                updates["rfqLicensing.enforcementMode"] = rfqLicensing.enforcementMode;
+            if (rfqLicensing.licenseExpiresAt !== undefined)
+                updates["rfqLicensing.licenseExpiresAt"] = rfqLicensing.licenseExpiresAt;
+            if (rfqLicensing.status !== undefined)
+                updates["rfqLicensing.status"] = rfqLicensing.status;
+        }
+        await tenantRef.update(updates);
+        await recordAuditLog({
+            tenantId,
+            action: "LICENSE_UPDATED",
+            level: "INFO",
+            actor: {
+                uid: authCheck.callerUid || "super-admin",
+                name: authCheck.callerEmail || "Super Admin",
+                type: "admin"
+            },
+            details: {
+                tenantId,
+                previousTickets: currentData.subscription?.tier,
+                newTickets: ticketSubscription?.tier,
+                previousRfq: currentData.rfqLicensing?.tier,
+                newRfq: rfqLicensing?.tier
+            }
+        });
+        res.status(200).send({ success: true, tenantId, updates });
+    }
+    catch (err) {
+        logger.error("Exception in updateTenantLicensing:", err);
+        res.status(500).send({ error: err.message || "Failed to update tenant licensing" });
+    }
+});
+exports.toggleTenantFreeze = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const authCheck = await verifySuperAdminRequest(req);
+        if (!authCheck.isSuper) {
+            res.status(403).send({ error: "Unauthorized: Super Admin access required" });
+            return;
+        }
+        const { tenantId, isActive } = req.body;
+        if (!tenantId || isActive === undefined) {
+            res.status(400).send({ error: "Missing required parameters: tenantId and isActive" });
+            return;
+        }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const tenantDoc = await tenantRef.get();
+        if (!tenantDoc.exists) {
+            res.status(404).send({ error: `Tenant ${tenantId} not found` });
+            return;
+        }
+        const newActiveState = Boolean(isActive);
+        const updatePayload = {
+            isActive: newActiveState,
+            "subscription.status": newActiveState ? "active" : "frozen",
+            frozenAt: newActiveState ? null : new Date().toISOString(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        await tenantRef.update(updatePayload);
+        const tenantData = tenantDoc.data() || {};
+        const childIds = new Set();
+        if (Array.isArray(tenantData.childTenantIds)) {
+            tenantData.childTenantIds.forEach((id) => {
+                if (id && typeof id === 'string')
+                    childIds.add(id.trim());
+            });
+        }
+        const childrenQuery = await db.collection("tenants").where("parentEnterpriseId", "==", tenantId).get();
+        childrenQuery.forEach(doc => childIds.add(doc.id));
+        if (childIds.size > 0) {
+            const batch = db.batch();
+            for (const childId of childIds) {
+                batch.update(db.collection("tenants").doc(childId), updatePayload);
+            }
+            await batch.commit();
+            logger.info(`Cascaded ${newActiveState ? 'unfreeze' : 'freeze'} to ${childIds.size} child tenants of parent ${tenantId}`);
+        }
+        await recordAuditLog({
+            tenantId,
+            action: newActiveState ? "TENANT_UNFROZEN" : "TENANT_FROZEN",
+            level: "WARN",
+            actor: {
+                uid: authCheck.callerUid || "super-admin",
+                name: authCheck.callerEmail || "Super Admin",
+                type: "admin"
+            },
+            details: { tenantId, newActiveState, cascadedChildCount: childIds.size, cascadedChildIds: Array.from(childIds) }
+        });
+        res.status(200).send({
+            success: true,
+            tenantId,
+            isActive: newActiveState,
+            cascadedChildren: Array.from(childIds)
+        });
+    }
+    catch (err) {
+        logger.error("Exception in toggleTenantFreeze:", err);
+        res.status(500).send({ error: err.message || "Failed to toggle tenant freeze status" });
+    }
+});
+exports.deleteTenantPermanently = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const authCheck = await verifySuperAdminRequest(req);
+        if (!authCheck.isSuper) {
+            res.status(403).send({ error: "Unauthorized: Super Admin access required" });
+            return;
+        }
+        const { tenantId, confirmationId } = req.body;
+        if (!tenantId || !confirmationId) {
+            res.status(400).send({ error: "Missing tenantId or confirmationId" });
+            return;
+        }
+        if (tenantId !== confirmationId) {
+            res.status(400).send({ error: `Confirmation mismatch. '${confirmationId}' does not match '${tenantId}'.` });
+            return;
+        }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const tenantDoc = await tenantRef.get();
+        if (!tenantDoc.exists) {
+            res.status(404).send({ error: `Tenant ${tenantId} not found` });
+            return;
+        }
+        const tenantName = tenantDoc.data()?.name || tenantId;
+        const auth = admin.auth();
+        const adminUsersSnap = await tenantRef.collection("adminUsers").get();
+        const uids = adminUsersSnap.docs.map(d => d.id);
+        for (const uid of uids) {
+            try {
+                const otherTenantsSnap = await db.collection("tenants")
+                    .where("adminUids", "array-contains", uid)
+                    .get();
+                const otherCount = otherTenantsSnap.docs.filter(d => d.id !== tenantId).length;
+                if (otherCount === 0) {
+                    await auth.deleteUser(uid);
+                    logger.info(`Deleted Firebase Auth user ${uid} belonging exclusively to ${tenantId}`);
+                }
+                else {
+                    logger.info(`Preserved Firebase Auth user ${uid} as they are attached to ${otherCount} other tenant(s)`);
+                }
+            }
+            catch (authErr) {
+                logger.warn(`Could not delete user ${uid}:`, authErr.message);
+            }
+        }
+        try {
+            const bucket = storage.bucket();
+            const prefix = `tenants/${tenantId}/`;
+            await bucket.deleteFiles({ prefix });
+            logger.info(`Deleted storage files with prefix ${prefix}`);
+        }
+        catch (storageErr) {
+            logger.warn(`Could not delete storage files for ${tenantId}:`, storageErr.message);
+        }
+        await recordAuditLog({
+            tenantId,
+            action: "TENANT_DELETED",
+            level: "ERROR",
+            actor: {
+                uid: authCheck.callerUid || "super-admin",
+                name: authCheck.callerEmail || "Super Admin",
+                type: "admin"
+            },
+            details: {
+                deletedTenantId: tenantId,
+                tenantName,
+                purgedAdminsCount: uids.length
+            }
+        });
+        await db.recursiveDelete(tenantRef);
+        logger.info(`Recursively deleted Firestore tree for tenant ${tenantId}`);
+        res.status(200).send({
+            success: true,
+            deletedTenantId: tenantId,
+            name: tenantName
+        });
+    }
+    catch (err) {
+        logger.error("Exception in deleteTenantPermanently:", err);
+        res.status(500).send({ error: err.message || "Failed to delete tenant permanently" });
+    }
+});
+exports.recordAdminLogin = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    try {
+        const { tenantId, uid } = req.body;
+        if (!tenantId || !uid) {
+            res.status(400).send({ error: "Missing required parameters: tenantId and uid" });
+            return;
+        }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const userRef = tenantRef.collection("adminUsers").doc(uid);
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        await tenantRef.update({
+            lastLogin: now,
+            updatedAt: now
+        });
+        const userDoc = await userRef.get();
+        if (userDoc.exists) {
+            await userRef.update({ lastLogin: now });
+        }
+        res.status(200).send({ success: true, tenantId, uid });
+    }
+    catch (err) {
+        logger.error("Exception in recordAdminLogin:", err);
+        res.status(500).send({ error: err.message || "Failed to record admin login" });
+    }
+});
+async function getTenantAdminsWithPhones(tenantId, parentEnterpriseId) {
+    const admins = [];
+    const seenPhones = new Set();
+    try {
+        const snap = await db.collection("tenants").doc(tenantId).collection("adminUsers").get();
+        for (const d of snap.docs) {
+            const data = d.data();
+            if (data.mobile && data.mobile.trim()) {
+                let clean = data.mobile.replace(/\D/g, "");
+                if (clean.startsWith("0"))
+                    clean = "972" + clean.substring(1);
+                if (!seenPhones.has(clean)) {
+                    seenPhones.add(clean);
+                    admins.push({
+                        name: data.name || `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'מנהל',
+                        phone: clean
+                    });
+                }
+            }
+        }
+        if (parentEnterpriseId && parentEnterpriseId !== tenantId) {
+            const parentSnap = await db.collection("tenants").doc(parentEnterpriseId).collection("adminUsers").get();
+            for (const d of parentSnap.docs) {
+                const data = d.data();
+                if (data.mobile && data.mobile.trim()) {
+                    let clean = data.mobile.replace(/\D/g, "");
+                    if (clean.startsWith("0"))
+                        clean = "972" + clean.substring(1);
+                    if (!seenPhones.has(clean)) {
+                        seenPhones.add(clean);
+                        admins.push({
+                            name: data.name || `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'מנהל מתחם',
+                            phone: clean
+                        });
+                    }
+                }
+            }
+        }
+    }
+    catch (e) {
+        logger.error(`Failed to fetch admin users for tenant ${tenantId}:`, e);
+    }
+    return admins;
+}
+async function checkAndDispatchRfqQuotaAlerts(tenantId, tenantData, newCount) {
+    try {
+        const rfqLicensing = tenantData.rfqLicensing || {};
+        const annualQuota = Number(rfqLicensing.annualQuota ?? 0);
+        if (annualQuota <= 0)
+            return;
+        const ratio = newCount / annualQuota;
+        const alertsSent = rfqLicensing.currentAnnualUsage?.alertsSent || {};
+        const nowIso = new Date().toISOString();
+        const token = process.env.WHATSAPP_ACCESS_TOKEN;
+        const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+        if (ratio >= 0.8 && !alertsSent['80_percent']) {
+            logger.info(`Tenant ${tenantId} reached 80% RFQ annual quota (${newCount}/${annualQuota})`);
+            await db.collection("tenants").doc(tenantId).set({
+                rfqLicensing: {
+                    currentAnnualUsage: {
+                        alertsSent: {
+                            ...alertsSent,
+                            '80_percent': nowIso
+                        }
+                    }
+                }
+            }, { merge: true });
+            await recordAuditLog({
+                tenantId,
+                action: 'RFQ_QUOTA_ALERT_80',
+                level: 'WARN',
+                actor: { uid: 'system', name: 'TikTak RFQ Licensing Engine', type: 'admin' },
+                details: {
+                    threshold: '80%',
+                    newCount,
+                    annualQuota,
+                    tier: rfqLicensing.tier
+                }
+            });
+            if (token) {
+                const admins = await getTenantAdminsWithPhones(tenantId, tenantData.parentEnterpriseId);
+                const tenantName = tenantData.name || tenantId;
+                for (const adminItem of admins) {
+                    const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-80% מנצולת בנק הצעות המחיר השנתי (נוצלו ${newCount} מתוך ${annualQuota} בקשות).\n\nלצפייה בפרטים וניהול המכרזים:\nhttps://tiktak2026.web.app/admin/${tenantId}/dashboard`;
+                    await sendWhatsAppText(adminItem.phone, text, phoneNumberId, token).catch((e) => logger.warn(`Failed to send 80% RFQ alert to ${adminItem.phone}`, e));
+                }
+            }
+        }
+        if (ratio >= 1.0 && !alertsSent['100_percent']) {
+            logger.info(`Tenant ${tenantId} reached 100% RFQ annual quota (${newCount}/${annualQuota})`);
+            await db.collection("tenants").doc(tenantId).set({
+                rfqLicensing: {
+                    currentAnnualUsage: {
+                        alertsSent: {
+                            ...alertsSent,
+                            '100_percent': nowIso
+                        }
+                    }
+                }
+            }, { merge: true });
+            await recordAuditLog({
+                tenantId,
+                action: 'RFQ_QUOTA_ALERT_100',
+                level: 'WARN',
+                actor: { uid: 'system', name: 'TikTak RFQ Licensing Engine', type: 'admin' },
+                details: {
+                    threshold: '100%',
+                    newCount,
+                    annualQuota,
+                    tier: rfqLicensing.tier,
+                    enforcementMode: rfqLicensing.enforcementMode
+                }
+            });
+            if (token) {
+                const admins = await getTenantAdminsWithPhones(tenantId, tenantData.parentEnterpriseId);
+                const tenantName = tenantData.name || tenantId;
+                const overageNote = rfqLicensing.enforcementMode === 'hard'
+                    ? "משלוח בקשות נוספות נחסם עד לשדרוג החבילה (Hard Cap)."
+                    : `כל בקשה נוספת תחויב בתעריף חריגה של ₪${rfqLicensing.overageRate ?? 45}.`;
+                for (const adminItem of admins) {
+                    const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-100% מנצולת בנק הצעות המחיר השנתי (${newCount}/${annualQuota}).\n${overageNote}\n\nלשדרוג חבילה וניהול:\nhttps://tiktak2026.web.app/admin/${tenantId}/dashboard`;
+                    await sendWhatsAppText(adminItem.phone, text, phoneNumberId, token).catch((e) => logger.warn(`Failed to send 100% RFQ alert to ${adminItem.phone}`, e));
+                }
+            }
+        }
+    }
+    catch (err) {
+        logger.error(`Error in checkAndDispatchRfqQuotaAlerts for ${tenantId}:`, err);
+    }
+}
+exports.recordRfqDispatch = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+    try {
+        const { tenantId, rfqId } = req.body;
+        if (!tenantId) {
+            res.status(400).send({ error: "Missing required parameter: tenantId" });
+            return;
+        }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const tenantDoc = await tenantRef.get();
+        if (!tenantDoc.exists) {
+            res.status(404).send({ error: `Tenant ${tenantId} not found` });
+            return;
+        }
+        const tenantData = tenantDoc.data() || {};
+        if (tenantData.isActive === false || tenantData.subscription?.status === 'frozen') {
+            res.status(403).send({ error: "Tenant is frozen. Cannot dispatch RFQs." });
+            return;
+        }
+        if (tenantData.parentEnterpriseId) {
+            const parentDoc = await db.collection("tenants").doc(tenantData.parentEnterpriseId).get();
+            if (parentDoc.exists) {
+                const parentData = parentDoc.data() || {};
+                if (parentData.isActive === false || parentData.subscription?.status === 'frozen') {
+                    res.status(403).send({ error: "Fleet master is frozen. Cannot dispatch RFQs." });
+                    return;
+                }
+            }
+        }
+        const rfqLicensing = tenantData.rfqLicensing || {};
+        if (rfqLicensing.status === 'disabled' || rfqLicensing.tier === 'disabled') {
+            res.status(403).send({ error: "RFQ procurement licensing is disabled for this tenant." });
+            return;
+        }
+        if (rfqLicensing.licenseExpiresAt) {
+            const expiresAt = new Date(rfqLicensing.licenseExpiresAt);
+            if (Date.now() > expiresAt.getTime()) {
+                res.status(403).send({ error: "RFQ procurement annual license has expired. Please renew." });
+                return;
+            }
+        }
+        const annualQuota = Number(rfqLicensing.annualQuota ?? 0);
+        const currentUsage = Number(rfqLicensing.currentAnnualUsage?.dispatchedCount ?? 0);
+        const enforcementMode = rfqLicensing.enforcementMode || 'hard';
+        if (enforcementMode === 'hard' && annualQuota > 0 && currentUsage >= annualQuota) {
+            res.status(403).send({
+                error: `Annual RFQ quota reached (${currentUsage}/${annualQuota}). Further dispatches are blocked under Hard Cap policy.`,
+                currentUsage,
+                annualQuota,
+                enforcementMode
+            });
+            return;
+        }
+        const newUsage = currentUsage + 1;
+        const nowIso = new Date().toISOString();
+        await tenantRef.update({
+            "rfqLicensing.currentAnnualUsage.dispatchedCount": newUsage,
+            "rfqLicensing.currentAnnualUsage.lastDispatchedAt": nowIso,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await checkAndDispatchRfqQuotaAlerts(tenantId, tenantData, newUsage);
+        res.status(200).send({
+            success: true,
+            tenantId,
+            rfqId,
+            annualQuota,
+            dispatchedCount: newUsage,
+            enforcementMode,
+            isOverQuota: annualQuota > 0 && newUsage > annualQuota
+        });
+    }
+    catch (err) {
+        logger.error("Exception in recordRfqDispatch:", err);
+        res.status(500).send({ error: err.message || "Failed to record RFQ dispatch" });
     }
 });
 //# sourceMappingURL=index.js.map

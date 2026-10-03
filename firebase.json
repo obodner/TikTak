@@ -24,6 +24,9 @@
     "hosting": {
         "site": "tiktak2026",
         "public": "frontend/dist",
+        "predeploy": [
+            "npm --prefix frontend run build"
+        ],
         "ignore": [
             "firebase.json",
             "**/.*",
@@ -161,6 +164,48 @@
                 "source": "/api/incrementMeToo",
                 "function": {
                     "functionId": "incrementMeToo",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/provisionTenantOrFleet",
+                "function": {
+                    "functionId": "provisionTenantOrFleet",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/updateTenantLicensing",
+                "function": {
+                    "functionId": "updateTenantLicensing",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/toggleTenantFreeze",
+                "function": {
+                    "functionId": "toggleTenantFreeze",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/deleteTenantPermanently",
+                "function": {
+                    "functionId": "deleteTenantPermanently",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/recordAdminLogin",
+                "function": {
+                    "functionId": "recordAdminLogin",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/recordRfqDispatch",
+                "function": {
+                    "functionId": "recordRfqDispatch",
                     "region": "us-central1"
                 }
             },
