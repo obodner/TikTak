@@ -13,13 +13,17 @@ import {
   ChevronUp,
   Plus,
   Trash2,
-  Truck
+  Truck,
+  PenTool,
+  CheckCircle2
 } from 'lucide-react';
 import { doc, getDoc, collection, getDocs, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
-import { WorkQuoteRequest, VendorQuoteSubmission } from '../../types/rfq';
+import { WorkQuoteRequest, VendorQuoteSubmission, ContractExecutionData } from '../../types/rfq';
 import { normalizePhone } from '../../utils/whatsapp';
 import { numberToHebrewWords } from '../../utils/hebrewNumberWords';
+import { logAction } from '../../utils/auditLogger';
+import SignaturePadModal from '../common/SignaturePadModal';
 
 export interface ContractPaymentMilestone {
   id: string;
@@ -50,6 +54,9 @@ interface WorkOrderContractModalProps {
   } | null;
   currentAdminName?: string;
   currentAdminPhone?: string;
+  isReadOnly?: boolean;
+  onContractSigned?: (updatedExecution: ContractExecutionData) => void;
+  onContractorSignClick?: () => void;
 }
 
 export default function WorkOrderContractModal({
@@ -59,8 +66,19 @@ export default function WorkOrderContractModal({
   submission,
   tenantInfo,
   currentAdminName,
-  currentAdminPhone
+  currentAdminPhone,
+  isReadOnly = false,
+  onContractSigned,
+  onContractorSignClick
 }: WorkOrderContractModalProps) {
+  const [contractExecution, setContractExecution] = useState<ContractExecutionData | undefined>(
+    rfq.contractExecution
+  );
+  const [showAdminSignatureModal, setShowAdminSignatureModal] = useState(false);
+
+  // If signed by admin or fully signed, terms are locked from further editing
+  const isTermsLocked = Boolean(contractExecution?.status === 'signed_by_admin' || contractExecution?.status === 'fully_signed');
+  const isContractorOrReadOnly = Boolean(isReadOnly || !auth.currentUser || isTermsLocked);
   const printRef = useRef<HTMLDivElement>(null);
   const [customerLogo, setCustomerLogo] = useState<string | null>(tenantInfo?.logoUrl || null);
   const [adminPhone, setAdminPhone] = useState<string>(rfq.createdBy?.phone || currentAdminPhone || '');
@@ -68,10 +86,21 @@ export default function WorkOrderContractModal({
     rfq.createdBy?.name || currentAdminName || ''
   );
   const [contractorCompanyId, setContractorCompanyId] = useState<string>(
+    contractExecution?.vendorSignature?.companyId ||
     submission.companyId ||
     rfq.dispatchedVendors?.find(v => v.vendorId === submission.vendorId)?.companyId ||
     ''
   );
+
+  // Keep contractExecution in sync if rfq updates
+  useEffect(() => {
+    if (rfq.contractExecution) {
+      setContractExecution(rfq.contractExecution);
+      if (rfq.contractExecution.vendorSignature?.companyId) {
+        setContractorCompanyId(rfq.contractExecution.vendorSignature.companyId);
+      }
+    }
+  }, [rfq.contractExecution]);
 
   // Format phone display nicely (e.g. 052-8376101)
   const formatDisplayPhone = (p?: string) => {
@@ -459,7 +488,7 @@ export default function WorkOrderContractModal({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState(false);
 
   const handleSaveContractCustomizations = async () => {
-    if (!rfq.tenantId || !rfq.id) return;
+    if (isContractorOrReadOnly || !rfq.tenantId || !rfq.id) return;
     setIsSavingCustomizations(true);
     try {
       const dataToSave = {
@@ -483,6 +512,81 @@ export default function WorkOrderContractModal({
       alert('שגיאה בשמירת השינויים בהסכם');
     } finally {
       setIsSavingCustomizations(false);
+    }
+  };
+
+  // Handler for Admin / Committee Online Digital Signature
+  const handleSignByAdmin = async (signatureDataUrl: string, signerName: string, extraData?: { signerPhone?: string }) => {
+    if (!rfq.tenantId || !rfq.id) return;
+    try {
+      const signedAt = new Date().toISOString();
+      const committeeSignatureObj: any = {
+        signerName,
+        signerRole: customerTypeLabel || 'נציגות ועד הבית',
+        signatureDataUrl,
+        signedAt
+      };
+      if (extraData?.signerPhone || adminPhone) {
+        committeeSignatureObj.signerPhone = (extraData?.signerPhone || adminPhone).trim();
+      }
+      if (typeof navigator !== 'undefined' && navigator.userAgent) {
+        committeeSignatureObj.userAgent = navigator.userAgent;
+      }
+
+      const updatedExecution: any = {
+        status: 'signed_by_admin',
+        contractVersion: (contractExecution?.contractVersion || 0) + 1,
+        committeeSignature: committeeSignatureObj
+      };
+      if (contractExecution?.vendorSignature) {
+        updatedExecution.vendorSignature = contractExecution.vendorSignature;
+      }
+
+      // Also ensure contract customizations are persisted alongside the signature
+      const updatePayload: any = {
+        contractExecution: updatedExecution,
+        contractCustomizations: {
+          scopeText: contractScopeText || '',
+          customClauses: customClauses || [],
+          paymentMode,
+          singlePaymentTerm: singlePaymentTerm || '',
+          milestones: milestones || [],
+          wasteClauseText: wasteClauseText || '',
+          updatedAt: signedAt
+        }
+      };
+
+      if (workStartDate) updatePayload.contractCustomizations.workStartDate = workStartDate;
+      if (workEndDate) updatePayload.contractCustomizations.workEndDate = workEndDate;
+
+      await updateDoc(doc(db, "tenants", rfq.tenantId, "rfqs", rfq.id), updatePayload);
+      setContractExecution(updatedExecution as ContractExecutionData);
+      setShowAdminSignatureModal(false);
+      if (onContractSigned) {
+        onContractSigned(updatedExecution as ContractExecutionData);
+      }
+
+      // Audit log event
+      await logAction({
+        tenantId: rfq.tenantId,
+        action: 'CONTRACT_SIGNED_BY_ADMIN',
+        actor: {
+          uid: auth.currentUser?.uid || 'admin',
+          name: signerName || resolvedContactName || 'נציג ועד הבית',
+          type: 'admin'
+        },
+        details: {
+          rfqId: rfq.id,
+          rfqTitle: rfq.title,
+          winningVendorName: submission.vendorName,
+          winningPrice: totalWithVat,
+          paymentMode,
+          milestonesCount: milestones.length
+        }
+      });
+    } catch (err) {
+      console.error('Error signing contract by admin:', err);
+      alert('אירעה שגיאה בשמירת החתימה הדיגיטלית. אנא נסה שוב.');
     }
   };
 
@@ -941,6 +1045,20 @@ export default function WorkOrderContractModal({
         ? ` (ב-${milestones.length} שלבי ביצוע לפי אבני דרך)`
         : '';
 
+    const isCommitteeSigned = contractExecution?.status === 'signed_by_admin';
+    const isFullySigned = contractExecution?.status === 'fully_signed';
+
+    let actionPrompt = `\n📄 לצפייה בהסכם המלא, בהזמנת העבודה ולהורדת ה-PDF:\n${contractPortalUrl}\n\n`;
+    if (isCommitteeSigned) {
+      actionPrompt = 
+        `\n✍️ *הסכם העבודה נחתם דיגיטלית ע״י הנהלת ${siteName}!*` +
+        `\nלחתימתך הדיגיטלית המאשרת את תנאי העבודה והתשלום:\n${contractPortalUrl}\n\n`;
+    } else if (isFullySigned) {
+      actionPrompt = 
+        `\n✅ *הסכם העבודה חתום במלואו ע״י שני הצדדים ומחייב כדין.*` +
+        `\nלצפייה ולהורדת עותק חתום:\n${contractPortalUrl}\n\n`;
+    }
+
     const message =
       `שלום ${submission.vendorName},\n` +
       `בהמשך לאישור הצעת המחיר שלך למכרז *#RFQ-${rfq.id.slice(0, 8).toUpperCase()}* (${rfq.title}),\n` +
@@ -949,8 +1067,7 @@ export default function WorkOrderContractModal({
       `💰 סה"כ תמורה מוסכמת: ₪${totalWithVat.toLocaleString()} (כולל מע"מ)${paymentNote}\n` +
       `⏱️ משך ביצוע מוסכם: ${submission.estimatedDuration || 'לפי תיאום'}\n` +
       (submission.notes ? `🛡️ תנאי אחריות: ${submission.notes}\n` : '') +
-      `\n📄 לצפייה בהסכם המלא, בהזמנת העבודה ולהורדת ה-PDF:\n` +
-      `${contractPortalUrl}\n\n` +
+      actionPrompt +
       `נא לתאם מועד תחילת עבודה מול ${adminName}${adminPhone ? ` (${formatDisplayPhone(adminPhone)})` : ''}.\n` +
       `בברכה,\n${customerTypeLabel} - ${siteName}`;
 
@@ -973,14 +1090,32 @@ export default function WorkOrderContractModal({
               <FileCheck2 size={22} />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2 flex-wrap">
                 <span>הסכם התקשרות והזמנת עבודה מחייבת</span>
-                <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                  הצעה מאושרת ✓
-                </span>
+                {contractExecution?.status === 'fully_signed' ? (
+                  <span className="text-xs bg-emerald-600 text-white font-extrabold px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>הסכם חתום ומחייב כדין ✓</span>
+                  </span>
+                ) : contractExecution?.status === 'signed_by_admin' ? (
+                  <span className="text-xs bg-blue-100 text-blue-900 font-extrabold px-2.5 py-0.5 rounded-full border border-blue-300 flex items-center gap-1">
+                    <PenTool size={12} className="text-blue-600" />
+                    <span>נחתם ע״י הוועד • ממתין לחתימת הקבלן</span>
+                  </span>
+                ) : (
+                  <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                    הצעה מאושרת (טיוטת הסכם)
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                הופק אוטומטית מנתוני המכרז • מסמך משפטי תקני להדפסה ולחתימה
+                {contractExecution?.status === 'fully_signed'
+                  ? 'ההסכם נחתם דיגיטלית ע״י נציגות המזמין והקבלן המבצע • מאובטח בכספת המשפטית ל-7 שנים'
+                  : contractExecution?.status === 'signed_by_admin'
+                  ? 'נציגות המזמין חתמה על ההסכם • תנאי ההסכם נעולים • קישור לחתימה נשלח לקבלן'
+                  : isContractorOrReadOnly
+                  ? 'הסכם עבודה והזמנה מחייבת שאושרה ע״י המזמין • להדפסה ולתיעוד'
+                  : 'הופק אוטומטית מנתוני המכרז • מסמך משפטי תקני להדפסה ולחתימה'}
               </p>
             </div>
           </div>
@@ -1005,8 +1140,28 @@ export default function WorkOrderContractModal({
           </div>
         </div>
 
-        {/* Customization Bar & Drawer - Not visible on print */}
-        <div className="border-b border-slate-200 bg-slate-100/80 no-print transition-all">
+        {/* Lock Banner when terms are locked */}
+        {isTermsLocked && !isReadOnly && (
+          <div className="px-6 py-2 bg-blue-50 border-b border-blue-200 text-xs text-blue-900 font-medium flex items-center justify-between no-print">
+            <div className="flex items-center gap-2">
+              <span className="text-blue-600 font-bold">🔒 תנאי ההסכם נעולים לעריכה:</span>
+              <span>
+                {contractExecution?.status === 'fully_signed'
+                  ? 'ההסכם נחתם סופית ע״י שני הצדדים ולא ניתן לשינוי.'
+                  : 'נציגות הוועד חתמה על ההסכם. התנאים נעולים כדי להבטיח את אמינות המסמך לחתימת הקבלן.'}
+              </span>
+            </div>
+            {contractExecution?.committeeSignature?.signedAt && (
+              <span className="text-[11px] text-blue-700 font-bold">
+                נחתם בתאריך: {formatDateDMY(contractExecution.committeeSignature.signedAt)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Customization Bar & Drawer - Visible only for Admin, hidden in Read-Only / Contractor View */}
+        {!isContractorOrReadOnly && (
+          <div className="border-b border-slate-200 bg-slate-100/80 no-print transition-all">
           <div className="px-6 py-2.5 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <button
@@ -1499,9 +1654,10 @@ export default function WorkOrderContractModal({
             </div>
           )}
         </div>
+        )}
 
         {/* Printable Contract Body */}
-        <div ref={printRef} className="p-6 sm:p-8 overflow-y-auto space-y-6 text-slate-800 print:p-0 print:space-y-4">
+        <div ref={printRef} className="p-4 sm:p-6 md:p-8 overflow-y-auto space-y-6 text-slate-800 print:p-0 print:space-y-4">
           <style>{`
             @media print {
               @page {
@@ -1660,35 +1816,50 @@ export default function WorkOrderContractModal({
 
             <div className="relative z-10 space-y-6">
               {/* Document Header */}
-              <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4 gap-6">
-                <div className="flex items-center gap-5 shrink-0">
-                  {customerLogo && (
-                    <>
+              <div className="border-b-2 border-slate-900 pb-4 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-5 min-w-0 flex-1">
+                  <div className="flex items-center justify-between sm:justify-start gap-3 shrink-0">
+                    <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                      {customerLogo && (
+                        <>
+                          <img
+                            src={customerLogo}
+                            alt={siteName}
+                            className="contract-customer-logo shrink-0"
+                            style={{ height: '42px', maxHeight: '52px', maxWidth: '130px', objectFit: 'contain' }}
+                          />
+                          <div className="contract-header-divider shrink-0" />
+                        </>
+                      )}
                       <img
-                        src={customerLogo}
-                        alt={siteName}
-                        className="contract-customer-logo shrink-0"
-                        style={{ height: '52px', maxHeight: '52px', maxWidth: '156px', objectFit: 'contain' }}
+                        src="/logo_transparent.png"
+                        alt="TikTak"
+                        className="contract-tiktak-logo shrink-0"
+                        style={{ height: '26px', maxHeight: '30px', width: 'auto', objectFit: 'contain' }}
                       />
-                      <div className="contract-header-divider shrink-0" />
-                    </>
-                  )}
-                  <img
-                    src="/logo_transparent.png"
-                    alt="TikTak"
-                    className="contract-tiktak-logo shrink-0"
-                    style={{ height: '30px', maxHeight: '30px', width: 'auto', objectFit: 'contain' }}
-                  />
-                  <div className="contract-header-divider shrink-0" />
-                  <div className="space-y-0.5">
-                    <h1 className="text-base font-black text-slate-900 leading-tight whitespace-nowrap">הזמנת עבודה והסכם התקשרות מחייב</h1>
-                    <p className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                    </div>
+                    {/* Mobile Ref box */}
+                    <div className="text-left text-[11px] space-y-0.5 shrink-0 sm:hidden" dir="ltr">
+                      <div className="font-extrabold text-slate-900">Ref: RFQ-{rfq.id.slice(0, 8).toUpperCase()}</div>
+                      {rfq.ticketNumber && <div className="text-blue-600 font-bold">Ticket #{rfq.ticketNumber}</div>}
+                      <div className="text-slate-400 text-[10px]">{todayFormatted}</div>
+                    </div>
+                  </div>
+
+                  <div className="contract-header-divider shrink-0 hidden sm:block" />
+
+                  <div className="space-y-0.5 min-w-0 flex-1">
+                    <h1 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+                      הזמנת עבודה והסכם התקשרות מחייב
+                    </h1>
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-relaxed">
                       הופק בהתאם לחוק החוזים (חלק כללי), תשל"ג-1973 ולהוראות התקנון המצוי
                     </p>
                   </div>
                 </div>
 
-                <div className="text-left text-xs space-y-0.5 shrink-0" dir="ltr">
+                {/* Desktop Ref box */}
+                <div className="text-left text-xs space-y-0.5 shrink-0 hidden sm:block" dir="ltr">
                   <div className="font-extrabold text-slate-900">Ref: RFQ-{rfq.id.slice(0, 8).toUpperCase()}</div>
                   {rfq.ticketNumber && <div className="text-blue-600 font-bold">Ticket #{rfq.ticketNumber}</div>}
                   <div className="text-slate-500">{todayFormatted}</div>
@@ -1948,25 +2119,89 @@ export default function WorkOrderContractModal({
 
               {/* Signatures Block */}
               <div className="pt-4 border-t-2 border-slate-300">
-                <div className="text-xs font-bold text-slate-700 mb-6">
-                  ולראיה באו הצדדים על החתום בתאריך {awardedDateFormatted}:
+                <div className="text-xs font-bold text-slate-700 mb-6 flex items-center justify-between">
+                  <span>ולראיה באו הצדדים על החתום בתאריך {awardedDateFormatted}:</span>
+                  {contractExecution?.status === 'fully_signed' && (
+                    <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-xs">
+                      <CheckCircle2 size={13} />
+                      <span>הסכם חתום דיגיטלית ומחייב ע״י שני הצדדים ✓</span>
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-8 text-xs">
                   {/* Committee Signature */}
-                  <div className="border-t border-slate-400 pt-2 text-center">
+                  <div className="border-t border-slate-400 pt-2 text-center flex flex-col items-center">
                     <div className="font-black text-slate-900">{customerTypeLabel} - {siteName}</div>
-                    <div className="text-slate-500 pt-1">נציג מורשה: {adminName}{adminPhone ? ` (${formatDisplayPhone(adminPhone)})` : ''}</div>
-                    <div className="text-[10px] text-slate-400 pt-3">חתימה וחותמת: ____________________</div>
+                    <div className="text-slate-500 pt-1">
+                      נציג מורשה: {contractExecution?.committeeSignature?.signerName || adminName}
+                      {(contractExecution?.committeeSignature?.signerPhone || adminPhone) ? ` (${formatDisplayPhone(contractExecution?.committeeSignature?.signerPhone || adminPhone)})` : ''}
+                    </div>
+
+                    {/* Stamped Graphical Signature or blank line */}
+                    {contractExecution?.committeeSignature?.signatureDataUrl ? (
+                      <div className="pt-2 flex flex-col items-center">
+                        <img 
+                          src={contractExecution.committeeSignature.signatureDataUrl} 
+                          alt="חתימת נציגות הוועד"
+                          className="h-16 max-w-[180px] object-contain" 
+                        />
+                        <div className="text-[9px] text-emerald-700 font-bold flex items-center gap-1 pt-0.5">
+                          <CheckCircle2 size={10} />
+                          <span>נחתם דיגיטלית: {formatDateDMY(contractExecution.committeeSignature.signedAt)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 pt-3">חתימה וחותמת: ____________________</div>
+                    )}
                   </div>
 
                   {/* Contractor Signature */}
-                  <div className="border-t border-slate-400 pt-2 text-center">
-                    <div className="font-black text-slate-900">{submission.vendorName}</div>
-                    <div className="text-slate-500 pt-1">
-                      קבלן מבצע מורשה{contractorCompanyId ? ` (ח.פ./ת.ז. ${contractorCompanyId})` : ''}
+                  <div className="border-t border-slate-400 pt-2 text-center flex flex-col items-center">
+                    <div className="font-black text-slate-900">
+                      {contractExecution?.vendorSignature?.signerName || submission.vendorName}
                     </div>
-                    <div className="text-[10px] text-slate-400 pt-3">חתימה וחותמת: ____________________</div>
+                    <div className="text-slate-500 pt-1">
+                      קבלן מבצע מורשה
+                      {(contractExecution?.vendorSignature?.companyId || contractorCompanyId) ? ` (ח.פ./ת.ז. ${contractExecution?.vendorSignature?.companyId || contractorCompanyId})` : ''}
+                    </div>
+
+                    {/* Stamped Graphical Signature or blank line */}
+                    {contractExecution?.vendorSignature?.signatureDataUrl ? (
+                      <div className="pt-2 flex flex-col items-center">
+                        <img 
+                          src={contractExecution.vendorSignature.signatureDataUrl} 
+                          alt="חתימת הקבלן המבצע"
+                          className="h-16 max-w-[180px] object-contain" 
+                        />
+                        <div className="text-[9px] text-emerald-700 font-bold flex items-center gap-1 pt-0.5">
+                          <CheckCircle2 size={10} />
+                          <span>נחתם דיגיטלית: {formatDateDMY(contractExecution.vendorSignature.signedAt)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2">
+                        {contractExecution?.status === 'signed_by_admin' && onContractorSignClick ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onContractorSignClick();
+                            }}
+                            className="no-print mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer animate-pulse"
+                          >
+                            <PenTool size={12} />
+                            <span>לחץ כאן לחתימת אישור ✍️</span>
+                          </button>
+                        ) : (
+                          <div className="text-[10px] text-slate-400 pt-3">
+                            {contractExecution?.status === 'signed_by_admin' 
+                              ? 'ממתין לחתימת הקבלן המבצע...' 
+                              : 'חתימה וחותמת: ____________________'}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1974,7 +2209,7 @@ export default function WorkOrderContractModal({
               {/* Legal 7-Year Retention Notice */}
               <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200 text-[10px] text-slate-500 leading-normal contract-border">
                 <strong>כספת תיעוד משפטית (TikTak Audit Vault):</strong> הזמנת עבודה זו הופקה דיגיטלית באמצעות מערכת TikTak.
-                כל מסמכי המכרז, הצעות המחיר המתחרות, קובצי המפרט ורישומי ה-Audit נשמרים ומאובטחים למשך <strong>7 שנים מלאות</strong> בהתאם להוראות חוק ההתיישנות (תשי"ח-1958) וסעיף 16 לתקנון המצוי (חוק המקרקעין).
+                כל מסמכי המכרז, הצעות המחיר המתחרות, קובצי המפרט, רישומי החתימות האלקטרוניות המאובטחות ורישומי ה-Audit נשמרים ומאובטחים למשך <strong>7 שנים מלאות</strong> בהתאם לחוק חתימה אלקטרונית (תשס"א-2001), חוק ההתיישנות (תשי"ח-1958) וסעיף 16 לתקנון המצוי.
               </div>
             </div>
           </div>
@@ -1983,23 +2218,78 @@ export default function WorkOrderContractModal({
         {/* Modal Bottom Actions - Not visible on print */}
         <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 no-print">
           <div className="text-[11px] text-slate-500 font-medium space-y-0.5 text-right w-full sm:w-auto">
-            <div>📄 ההודעה לוואטסאפ כוללת <strong>קישור ישיר</strong> לצפייה בהסכם המלא ע"י הקבלן.</div>
-            <div className="text-blue-600 font-bold">💡 לשליחת קובץ ה-PDF: לחץ "הדפס / שמור כ-PDF" וצרף אותו ישירות לצ'אט.</div>
+            {contractExecution?.status === 'fully_signed' ? (
+              <div className="text-emerald-700 font-bold flex items-center gap-1.5">
+                <CheckCircle2 size={14} />
+                <span>ההסכם נחתם סופית ע״י שני הצדדים! ניתן להדפיס או לשמור כ-PDF.</span>
+              </div>
+            ) : contractExecution?.status === 'signed_by_admin' ? (
+              <div>
+                <div className="text-blue-700 font-bold flex items-center gap-1">
+                  <span>✍️ נחתם ע״י הוועד.</span>
+                  <span>שלח קישור לקבלן בוואטסאפ לחתימת אישור סופית.</span>
+                </div>
+              </div>
+            ) : !isReadOnly && auth.currentUser ? (
+              <div>
+                <div className="text-slate-700 font-bold">1️⃣ התאם את הסעיפים 2️⃣ חתום על ההסכם 3️⃣ שלח לקבלן בוואטסאפ.</div>
+                <div className="text-[10px] text-slate-500">חתימתך תנעל את תנאי ההסכם ותאפשר לקבלן לחתום דיגיטלית.</div>
+              </div>
+            ) : (
+              <div>📄 הסכם זה הופק ונשמר במערכת. באפשרותך להדפיס או לשמור כ-PDF לצורך תיעוד וביצוע.</div>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-            <button
-              type="button"
-              onClick={handleSendWhatsApp}
-              className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
-            >
-              <MessageCircle size={15} />
-              <span>שלח הסכם בוואטסאפ 📲</span>
-            </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 flex-wrap justify-end">
+            {/* Contractor Sign Button (Visible when contractor opens contract and it has been signed by admin) */}
+            {isReadOnly && onContractorSignClick && contractExecution?.status === 'signed_by_admin' && !contractExecution.vendorSignature && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onContractorSignClick();
+                }}
+                className="flex-1 sm:flex-initial px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer animate-pulse"
+              >
+                <PenTool size={14} />
+                <span>חתימה ואישור ההסכם ✍️</span>
+              </button>
+            )}
+
+            {/* Admin Signature Button (Visible when not signed by admin and user is authorized admin) */}
+            {!isReadOnly && auth.currentUser && !contractExecution?.committeeSignature && (
+              <button
+                type="button"
+                onClick={() => setShowAdminSignatureModal(true)}
+                className="flex-1 sm:flex-initial px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <PenTool size={14} />
+                <span>חתום ואשר הסכם ✍️</span>
+              </button>
+            )}
+
+            {/* WhatsApp Share Button */}
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                className={`flex-1 sm:flex-initial px-4 py-2.5 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer ${
+                  contractExecution?.committeeSignature 
+                    ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-95' 
+                    : 'bg-emerald-600/80 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                <MessageCircle size={15} />
+                <span>
+                  {contractExecution?.committeeSignature ? 'שלח הסכם לקבלן בוואטסאפ 📲' : 'שלח הסכם בוואטסאפ 📲'}
+                </span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handlePrint}
-              className="flex-1 sm:flex-initial px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
             >
               <Printer size={15} />
               <span>הדפס / שמור כ-PDF</span>
@@ -2013,6 +2303,22 @@ export default function WorkOrderContractModal({
             </button>
           </div>
         </div>
+
+        {/* Signature Pad Modal for Admin / Committee */}
+        {showAdminSignatureModal && (
+          <SignaturePadModal
+            isOpen={showAdminSignatureModal}
+            onClose={() => setShowAdminSignatureModal(false)}
+            onSave={handleSignByAdmin}
+            title={`חתימת נציגות ${siteName}`}
+            subtitle="חתימתך מהווה אישור רשמי של המזמין לתנאי העבודה והתשלום שנקבעו בהסכם זה"
+            defaultSignerName={resolvedContactName || currentAdminName || rfq.createdBy?.name || ''}
+            defaultSignerPhone={adminPhone}
+            requireCompanyId={false}
+            requireConsentCheckbox={true}
+            consentCheckboxText="אני מאשר בזאת את תנאי ההסכם, הסכום ולוחות הזמנים כפי שנקבעו בהזמנת עבודה זו בשם נציגות המזמין."
+          />
+        )}
       </div>
     </div>
   );

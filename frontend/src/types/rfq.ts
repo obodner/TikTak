@@ -68,6 +68,45 @@ export interface PaymentTermsConfig {
   phases?: PaymentPhaseItem[];
 }
 
+export interface ContractSignatureRecord {
+  signerName: string;
+  signerRole: string;             // e.g. "נציגות ועד הבית" or "קבלן מבצע"
+  signatureDataUrl: string;       // Base64 PNG image (data:image/png;base64,...)
+  signedAt: string;               // ISO 8601 Timestamp
+  signerPhone?: string;
+  companyId?: string;             // ח.פ. / עוסק מורשה / ת.ז.
+  ipAddress?: string;             // Client IP for audit
+  userAgent?: string;             // Client browser user-agent
+}
+
+export interface ContractExecutionData {
+  status: 'draft' | 'signed_by_admin' | 'fully_signed';
+  committeeSignature?: ContractSignatureRecord;
+  vendorSignature?: ContractSignatureRecord;
+  fullySignedAt?: string;
+  contractVersion: number;
+}
+
+export interface ScopeAmendmentRecord {
+  version: number;
+  amendedAt: string;
+  amendedBy: {
+    uid: string;
+    name: string;
+    email?: string;
+  };
+  changeSummary: string;
+  previousDescription?: string;
+  previousAllowedWorkHours?: string;
+  previousDeadlineAt?: string;
+  changes?: {
+    title?: string;
+    allowedWorkHours?: string;
+    deadlineAt?: string;
+  };
+  notifiedVendorsCount?: number;
+}
+
 export interface ContractCustomizationData {
   scopeText?: string;
   workStartDate?: string;
@@ -105,6 +144,7 @@ export interface WorkQuoteRequest {
   workStartDate?: string;
   workTargetEndDate?: string;
   contractCustomizations?: ContractCustomizationData;
+  contractExecution?: ContractExecutionData;
   
   // Recipient selection
   targetCategory: string;
@@ -113,6 +153,10 @@ export interface WorkQuoteRequest {
   
   deadlineAt: string;
   status: RfqStatus;
+  
+  // Scope amendment & addendum versioning
+  scopeVersion?: number;
+  scopeHistory?: ScopeAmendmentRecord[];
   
   // Winner award metadata
   awardedQuoteId?: string;
@@ -188,6 +232,7 @@ export interface VendorQuoteSubmission {
   quoteDocumentUrl?: string; // Official PDF or image attachment
   
   status: QuoteSubmissionStatus;
+  basedOnScopeVersion?: number;
   submittedAt: string;
   updatedAt?: string;
   tokenHash?: string;

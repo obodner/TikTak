@@ -80,6 +80,49 @@ function RfqQuickRedirect() {
     );
 }
 
+// Quick Short Redirect for Contractor WhatsApp Dynamic Button: /vq/:slug or /quotes/:slug -> /quote/:tenantId/:rfqId?v=...&t=...
+function VendorQuoteQuickRedirect() {
+    const { slug } = useParams();
+    if (!slug) {
+        return <Navigate to="/" replace />;
+    }
+
+    let cleanSlug = decodeURIComponent(slug);
+    try {
+        cleanSlug = decodeURIComponent(cleanSlug);
+    } catch {
+        // already decoded
+    }
+    cleanSlug = cleanSlug
+        .replace(/\{\{\d+\}\}/g, '')
+        .replace(/%7B%7B\d+%7D%7D/gi, '')
+        .replace(/[{}]/g, '')
+        .trim();
+
+    const parts = cleanSlug.split('__');
+    const tenantId = parts[0]?.trim();
+    const rfqId = parts[1]?.trim();
+    const vendorId = parts[2]?.trim();
+    const tokenHash = parts[3]?.trim();
+
+    if (!tenantId || !rfqId) {
+        return <Navigate to="/" replace />;
+    }
+
+    const queryParams = new URLSearchParams();
+    if (vendorId) queryParams.set('v', vendorId);
+    if (tokenHash) queryParams.set('t', tokenHash);
+    queryParams.set('tid', tenantId);
+
+    const queryStr = queryParams.toString();
+    return (
+        <Navigate
+            to={`/quote/${tenantId}/${rfqId}${queryStr ? `?${queryStr}` : ''}`}
+            replace
+        />
+    );
+}
+
 // Wrapper to dynamically load LandingPage or ResidentFlow based on QR query params
 function HomeRoute() {
     const [searchParams] = useSearchParams();
@@ -126,6 +169,12 @@ export default function App() {
             {/* WhatsApp Dynamic Button Short Redirect (Single Slug for Meta URL Validation) */}
             <Route path="/q/:slug" element={<RfqQuickRedirect />} />
             <Route path="/q/:slug/*" element={<RfqQuickRedirect />} />
+
+            {/* Contractor Short Redirects (Single Slug for Meta URL Button Validation) */}
+            <Route path="/vq/:slug" element={<VendorQuoteQuickRedirect />} />
+            <Route path="/vq/:slug/*" element={<VendorQuoteQuickRedirect />} />
+            <Route path="/quotes/:slug" element={<VendorQuoteQuickRedirect />} />
+            <Route path="/quotes/:slug/*" element={<VendorQuoteQuickRedirect />} />
 
             {/* Resident facing UI -> strictly public */}
             <Route path="/" element={<HomeRoute />} />

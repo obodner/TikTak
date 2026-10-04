@@ -266,7 +266,10 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'NOTICE_BANNER_PINNED', 'NOTICE_BANNER_REMOVED', 'ANALYTICS_REPORT_EXPORTED',
         'RFQ_CREATED', 'RFQ_BROADCAST_SENT', 'RFQ_WHATSAPP_DISPATCHED', 'VENDOR_QUOTE_SUBMITTED', 'VENDOR_QUOTE_UPDATED',
         'RFQ_AWARDED', 'RFQ_CANCELLED', 'RFQ_EXPIRED',
-        'CONTRACTOR_AUTH_SUCCESS', 'CONTRACTOR_AUTH_FAILED', 'QUOTE_NOTIFICATION_SENT'
+        'CONTRACTOR_AUTH_SUCCESS', 'CONTRACTOR_AUTH_FAILED', 'QUOTE_NOTIFICATION_SENT',
+        'VENDORS_BULK_IMPORTED', 'TAG_MERGED', 'TAG_DELETED',
+        'TENANT_FROZEN', 'TENANT_UNFROZEN', 'TENANT_CREATED', 'FLEET_CREATED',
+        'LICENSE_UPDATED', 'TENANT_DELETED'
     ];
 
     const actionLabels: Record<string, { he: string; en: string }> = {
@@ -317,6 +320,15 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'CONTRACTOR_AUTH_SUCCESS': { he: 'אימות קבלן מורשה מוצלח (Whitelist)', en: 'Contractor Whitelist Verified' },
         'CONTRACTOR_AUTH_FAILED': { he: 'ניסיון אימות קבלן נכשל (גישה חסומה 403)', en: 'Contractor Auth Blocked (403)' },
         'QUOTE_NOTIFICATION_SENT': { he: 'התראת WhatsApp למנהל על הצעת מחיר', en: 'Quote WhatsApp Alert Sent' },
+        'VENDORS_BULK_IMPORTED': { he: 'ייבוא ספקים מקובץ (CSV)', en: 'Vendors Bulk Imported' },
+        'TAG_MERGED': { he: 'איחוד תגיות מקצועיות', en: 'Tag Merged' },
+        'TAG_DELETED': { he: 'מחיקת תגית מקצועית', en: 'Tag Deleted' },
+        'TENANT_FROZEN': { he: 'הקפאת חשבון מתחם', en: 'Tenant Frozen' },
+        'TENANT_UNFROZEN': { he: 'הפשרת / הפעלת חשבון מתחם', en: 'Tenant Unfrozen' },
+        'TENANT_CREATED': { he: 'יצירת מתחם / ישוב חדש', en: 'Tenant Created' },
+        'FLEET_CREATED': { he: 'יצירת מערך ציים / אשכול', en: 'Fleet Created' },
+        'LICENSE_UPDATED': { he: 'עדכון רישוי ומכסות', en: 'License Updated' },
+        'TENANT_DELETED': { he: 'מחיקת מתחם לצמיתות', en: 'Tenant Deleted' },
     };
 
     const statusMap: Record<string, { he: string; en: string }> = {
@@ -574,6 +586,18 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     ? `${actor} updated ticket ${urgTicketRef} urgency to ${log.details.newUrgency}`
                     : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;
             case 'CONFIGURATION_UPDATE':
+                if (log.details?.subAction === 'RFQ_COMPLETED') {
+                    const rfqRef = log.details.rfqId ? ` (#${log.details.rfqId.slice(0, 6)})` : '';
+                    return isEn
+                        ? `${actor} marked RFQ${rfqRef} as completed${locStr}`
+                        : `${actor} סימן/ה את המכרז${rfqRef} כהושלם${locStr}`;
+                }
+                if (log.details?.subAction === 'VENDOR_REVIEW_SAVED') {
+                    const stars = log.details.stars ? ` (${log.details.stars}/5 ⭐)` : '';
+                    return isEn
+                        ? `${actor} rated contractor service${stars}${locStr}`
+                        : `${actor} דירג/ה את שירות הקבלן${stars}${locStr}`;
+                }
                 return isEn
                     ? `${actor} updated ${formatTenantSettings(tenantName, tenant?.type, true)}`
                     : `${actor} עדכן את ${formatTenantSettings(tenantName, tenant?.type, false)}`;
@@ -823,6 +847,29 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                     ? `${actor} approved winning quote by ${winner}${price} for${rfqTitle}${locStr}${reasonStr}`
                     : `${actor} אישר/ה את הצעתו של ${winner}${price} כהצעה הזוכה עבור${rfqTitle}${locStr}${reasonStr}`;
             }
+            case 'CONTRACT_SIGNED_BY_ADMIN': {
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                const winner = log.details?.winningVendorName ? (isEn ? ` with ${log.details.winningVendorName}` : ` מול ${log.details.winningVendorName}`) : '';
+                return isEn
+                    ? `${actor} digitally signed work order contract${winner} for${rfqTitle}${locStr}`
+                    : `${actor} חתם/ה דיגיטלית על הסכם העבודה${winner} עבור${rfqTitle}${locStr}`;
+            }
+            case 'CONTRACT_FULLY_SIGNED': {
+                const vName = log.details?.winningVendorName || log.actor?.name || actor;
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                const cid = log.details?.companyId ? ` (ח.פ./ת.ז. ${log.details.companyId})` : '';
+                return isEn
+                    ? `Contractor ${vName}${cid} signed contract online - contract is now fully executed for${rfqTitle}${locStr}`
+                    : `הקבלן ${vName}${cid} חתם דיגיטלית על ההסכם - ההסכם נחתם סופית ומחייב עבור${rfqTitle}${locStr}`;
+            }
+            case 'RFQ_SCOPE_UPDATED': {
+                const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
+                const verStr = log.details?.newVersion ? (isEn ? ` (v${log.details.newVersion})` : ` (גרסה ${log.details.newVersion})`) : '';
+                const summary = log.details?.changeSummary ? `: "${log.details.changeSummary}"` : '';
+                return isEn
+                    ? `${actor} updated RFQ specifications${verStr} for${rfqTitle}${locStr}${summary}`
+                    : `${actor} עדכן/ה את מפרט המכרז${verStr} עבור${rfqTitle}${locStr}${summary}`;
+            }
             case 'RFQ_CANCELLED': {
                 const rfqTitle = log.details?.rfqTitle ? ` "${log.details.rfqTitle}"` : '';
                 return isEn
@@ -856,6 +903,104 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `WhatsApp notification sent to admin${recPhone} for new quote by ${vName}${price}${locStr}`
                     : `התראת וואטסאפ נשלחה למנהל/ת המכרז${recPhone} על הצעת מחיר חדשה מאת ${vName}${price}${locStr}`;
+            }
+            case 'VENDORS_BULK_IMPORTED': {
+                const total = log.details?.totalRecords !== undefined ? log.details.totalRecords : '';
+                const created = log.details?.createdCount;
+                const updated = log.details?.updatedCount;
+                let counts = '';
+                if (created !== undefined && updated !== undefined) {
+                    counts = isEn ? ` (${created} added, ${updated} updated)` : ` (${created} חדשים נוספו, ${updated} עודכנו)`;
+                } else if (total) {
+                    counts = isEn ? ` (${total} records)` : ` (${total} רשומות)`;
+                }
+                const fileStr = log.details?.fileName ? (isEn ? ` from "${log.details.fileName}"` : ` מקובץ "${log.details.fileName}"`) : '';
+                return isEn
+                    ? `${actor} bulk imported service vendors${fileStr}${counts}${locStr}`
+                    : `${actor} ייבא/ה אנשי שירות מקובץ CSV${fileStr}${counts}${locStr}`;
+            }
+            case 'TAG_MERGED': {
+                const src = log.details?.sourceTag ? `"${log.details.sourceTag}"` : '';
+                const dst = log.details?.targetTag ? `"${log.details.targetTag}"` : '';
+                const count = log.details?.affectedVendorsCount !== undefined 
+                    ? (isEn ? ` (${log.details.affectedVendorsCount} vendors affected)` : ` (${log.details.affectedVendorsCount} ספקים הושפעו)`)
+                    : '';
+                if (src && dst) {
+                    return isEn
+                        ? `${actor} merged professional tag ${src} into ${dst}${count}${locStr}`
+                        : `${actor} איחד/ה את התגית המקצועית ${src} לתוך ${dst}${count}${locStr}`;
+                }
+                return isEn
+                    ? `${actor} merged professional tags${count}${locStr}`
+                    : `${actor} איחד/ה תגיות מקצועיות${count}${locStr}`;
+            }
+            case 'TAG_DELETED': {
+                const tagStr = log.details?.tag ? ` "${log.details.tag}"` : '';
+                const count = log.details?.affectedVendorsCount !== undefined 
+                    ? (isEn ? ` (${log.details.affectedVendorsCount} vendors affected)` : ` (${log.details.affectedVendorsCount} ספקים הושפעו)`)
+                    : '';
+                return isEn
+                    ? `${actor} deleted professional tag${tagStr}${count}${locStr}`
+                    : `${actor} מחק/ה את התגית המקצועית${tagStr}${count}${locStr}`;
+            }
+            case 'TENANT_UNFROZEN': {
+                const cascaded = log.details?.cascadedChildCount 
+                    ? (isEn ? ` (and ${log.details.cascadedChildCount} fleet buildings)` : ` (ו-${log.details.cascadedChildCount} מבני האשכול)`)
+                    : '';
+                return isEn
+                    ? `${actor} unfroze (reactivated) account for ${tenantName}${cascaded}`
+                    : `${actor} הפשיר/ה (הפעיל/ה מחדש) את החשבון עבור ${tenantName}${cascaded}`;
+            }
+            case 'TENANT_FROZEN': {
+                const cascaded = log.details?.cascadedChildCount 
+                    ? (isEn ? ` (and ${log.details.cascadedChildCount} fleet buildings)` : ` (ו-${log.details.cascadedChildCount} מבני האשכול)`)
+                    : '';
+                return isEn
+                    ? `${actor} froze account for ${tenantName}${cascaded}`
+                    : `${actor} הקפיא/ה את החשבון עבור ${tenantName}${cascaded}`;
+            }
+            case 'TENANT_CREATED': {
+                const tName = log.details?.name || tenantName;
+                const typeStr = log.details?.type ? ` (${log.details.type})` : '';
+                return isEn
+                    ? `${actor} created new tenant "${tName}"${typeStr}`
+                    : `${actor} יצר/ה מתחם/ארגון חדש במערכת: "${tName}"${typeStr}`;
+            }
+            case 'FLEET_CREATED': {
+                const mName = log.details?.masterName || tenantName;
+                const count = log.details?.totalChildren !== undefined 
+                    ? (isEn ? ` with ${log.details.totalChildren} buildings` : ` עם ${log.details.totalChildren} מבנים`)
+                    : '';
+                return isEn
+                    ? `${actor} created new fleet cluster "${mName}"${count}`
+                    : `${actor} יצר/ה אשכול ציים חדש: "${mName}"${count}`;
+            }
+            case 'LICENSE_UPDATED': {
+                const coreTier = log.details?.newTickets ? `Core: ${log.details.newTickets}` : '';
+                const rfqTier = log.details?.newRfq ? `RFQ: ${log.details.newRfq}` : '';
+                const tiers = [coreTier, rfqTier].filter(Boolean).join(', ');
+                const tierStr = tiers ? ` (${tiers})` : '';
+                return isEn
+                    ? `${actor} updated licensing and quotas for ${tenantName}${tierStr}`
+                    : `${actor} עדכן/ה את חבילת הרישוי והמכסות עבור ${tenantName}${tierStr}`;
+            }
+            case 'TENANT_DELETED': {
+                const delName = log.details?.tenantName || tenantName;
+                return isEn
+                    ? `${actor} permanently deleted tenant "${delName}"`
+                    : `${actor} מחק/ה לצמיתות את החשבון והנתונים של "${delName}"`;
+            }
+            case 'RFQ_LICENSE_EXPIRY_30D':
+            case 'RFQ_LICENSE_EXPIRY_7D':
+            case 'RFQ_LICENSE_EXPIRY_0D': {
+                const days = log.details?.diffDays;
+                const dayStr = days !== undefined 
+                    ? (days <= 0 ? (isEn ? 'today' : 'היום') : (isEn ? `in ${days} days` : `בעוד ${days} ימים`))
+                    : '';
+                const tier = log.details?.tier ? ` (${log.details.tier})` : '';
+                return isEn
+                    ? `System alert: RFQ annual license for ${tenantName} expires ${dayStr}${tier}`
+                    : `התראת מערכת: רישוי ה-RFQ השנתי עבור ${tenantName} פג ${dayStr}${tier}`;
             }
             default: {
                 const actionLabel = isEn

@@ -655,9 +655,9 @@ export default function RfqProductLandingPage() {
                 <tbody className="divide-y divide-slate-200 font-bold text-slate-700">
                   <tr className="hover:bg-white transition-colors">
                     <td className="py-4 px-3 font-black text-slate-900">RFQ Starter</td>
-                    <td className="py-4 px-3">{isRtl ? '3 מכרזים בשנה' : '3 RFQs / year'}</td>
-                    <td className="py-4 px-3 text-emerald-700">₪179 / {isRtl ? 'שנה' : 'yr'}</td>
-                    <td className="py-4 px-3 text-slate-500">₪59.60 / {isRtl ? 'מכרז' : 'RFQ'}</td>
+                    <td className="py-4 px-3">{isRtl ? '5 מכרזים בשנה' : '5 RFQs / year'}</td>
+                    <td className="py-4 px-3 text-emerald-700">₪249 / {isRtl ? 'שנה' : 'yr'}</td>
+                    <td className="py-4 px-3 text-slate-500">₪49.80 / {isRtl ? 'מכרז' : 'RFQ'}</td>
                     <td className="py-4 px-3">
                       <button
                         onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
@@ -670,9 +670,9 @@ export default function RfqProductLandingPage() {
 
                   <tr className="hover:bg-white transition-colors">
                     <td className="py-4 px-3 font-black text-slate-900">RFQ Basic</td>
-                    <td className="py-4 px-3">{isRtl ? '6 מכרזים בשנה' : '6 RFQs / year'}</td>
-                    <td className="py-4 px-3 text-emerald-700">₪299 / {isRtl ? 'שנה' : 'yr'}</td>
-                    <td className="py-4 px-3 text-slate-500">₪49.80 / {isRtl ? 'מכרז' : 'RFQ'}</td>
+                    <td className="py-4 px-3">{isRtl ? '10 מכרזים בשנה' : '10 RFQs / year'}</td>
+                    <td className="py-4 px-3 text-emerald-700">₪449 / {isRtl ? 'שנה' : 'yr'}</td>
+                    <td className="py-4 px-3 text-slate-500">₪44.90 / {isRtl ? 'מכרז' : 'RFQ'}</td>
                     <td className="py-4 px-3">
                       <button
                         onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
@@ -691,9 +691,9 @@ export default function RfqProductLandingPage() {
                         {isRtl ? 'המומלץ ביותר ⭐' : 'Most Popular ⭐'}
                       </span>
                     </td>
-                    <td className="py-4 px-3 font-black text-slate-900">{isRtl ? '12 מכרזים בשנה' : '12 RFQs / year'}</td>
-                    <td className="py-4 px-3 font-black text-emerald-700 text-base">₪499 / {isRtl ? 'שנה' : 'yr'}</td>
-                    <td className="py-4 px-3 text-emerald-800 font-extrabold">₪41.50 / {isRtl ? 'מכרז' : 'RFQ'}</td>
+                    <td className="py-4 px-3 font-black text-slate-900">{isRtl ? '15 מכרזים בשנה' : '15 RFQs / year'}</td>
+                    <td className="py-4 px-3 font-black text-emerald-700 text-base">₪599 / {isRtl ? 'שנה' : 'yr'}</td>
+                    <td className="py-4 px-3 text-emerald-800 font-extrabold">₪39.93 / {isRtl ? 'מכרז' : 'RFQ'}</td>
                     <td className="py-4 px-3">
                       <button
                         onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
@@ -708,7 +708,7 @@ export default function RfqProductLandingPage() {
                     <td className="py-4 px-3 font-black text-slate-900">RFQ Growth</td>
                     <td className="py-4 px-3">{isRtl ? '25 מכרזים בשנה' : '25 RFQs / year'}</td>
                     <td className="py-4 px-3 text-emerald-700">₪899 / {isRtl ? 'שנה' : 'yr'}</td>
-                    <td className="py-4 px-3 text-slate-500">₪35.90 / {isRtl ? 'מכרז' : 'RFQ'}</td>
+                    <td className="py-4 px-3 text-slate-500">₪35.96 / {isRtl ? 'מכרז' : 'RFQ'}</td>
                     <td className="py-4 px-3">
                       <button
                         onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
@@ -720,16 +720,16 @@ export default function RfqProductLandingPage() {
                   </tr>
 
                   <tr className="hover:bg-white transition-colors">
-                    <td className="py-4 px-3 font-black text-slate-900">RFQ Enterprise</td>
-                    <td className="py-4 px-3">{isRtl ? '50 מכרזים בשנה' : '50 RFQs / year'}</td>
-                    <td className="py-4 px-3 text-emerald-700">₪1,599 / {isRtl ? 'שנה' : 'yr'}</td>
-                    <td className="py-4 px-3 text-slate-500">₪31.90 / {isRtl ? 'מכרז' : 'RFQ'}</td>
+                    <td className="py-4 px-3 font-black text-slate-900">{isRtl ? 'RFQ Custom / Enterprise' : 'RFQ Custom / Enterprise'}</td>
+                    <td className="py-4 px-3">{isRtl ? 'התאמה אישית (N מכרזים)' : 'Custom Allocation'}</td>
+                    <td className="py-4 px-3 text-emerald-700">{isRtl ? 'בהתאם למתחם' : 'Custom Quote'}</td>
+                    <td className="py-4 px-3 text-slate-500">{isRtl ? 'תמחור כמותי' : 'Volume-tiered'}</td>
                     <td className="py-4 px-3">
                       <button
                         onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
                         className="px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-600 hover:text-white border border-slate-300 text-slate-700 text-xs font-black transition-all cursor-pointer shadow-2xs"
                       >
-                        {isRtl ? 'בחר חבילה' : 'Select'}
+                        {isRtl ? 'צור קשר' : 'Contact'}
                       </button>
                     </td>
                   </tr>
@@ -742,7 +742,7 @@ export default function RfqProductLandingPage() {
                 <CheckCircle2 size={15} className="text-emerald-600" />
                 <span>{isRtl ? 'פניות שלא נוצלו עוברות אוטומטית לשנה הבאה בעת חידוש (Rollover)' : 'Unused RFQ credits roll over into the following year upon renewal'}</span>
               </span>
-              <span className="text-slate-700 font-bold">{isRtl ? 'רכישת פניות בודדות (Top-Up) זמינה בכל עת' : 'On-demand top-ups available'}</span>
+              <span className="text-slate-700 font-bold">{isRtl ? 'רכישת פניות בודדות (Top-Up / חריגה): החל מ-₪36 למכרז' : 'On-demand top-ups / overage: from ₪36 / RFQ'}</span>
             </div>
           </div>
         </div>

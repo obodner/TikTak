@@ -119,6 +119,13 @@
                 }
             },
             {
+                "source": "/api/dispatchRfqAddendum",
+                "function": {
+                    "functionId": "dispatchRfqAddendum",
+                    "region": "us-central1"
+                }
+            },
+            {
                 "source": "/api/notifyQuoteSubmission",
                 "function": {
                     "functionId": "notifyQuoteSubmission",

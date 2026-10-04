@@ -7,6 +7,7 @@ import {
   orderBy,
   doc,
   getDoc,
+  getDocs,
   updateDoc,
   deleteDoc
 } from 'firebase/firestore';
@@ -37,11 +38,15 @@ import {
   FileCheck2,
   FileEdit,
   Trash2,
-  Star
+  Star,
+  ShieldCheck,
+  PenTool,
+  Info
 } from 'lucide-react';
 import { WorkQuoteRequest, VendorQuoteSubmission, RfqStatus, RfqRating } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
 import WorkOrderContractModal from '../../components/admin/WorkOrderContractModal';
+import RfqScopeAmendmentModal from '../../components/admin/RfqScopeAmendmentModal';
 import { ConfirmModal } from '../../components/admin/ConfirmModal';
 import { RfqRatingModal } from '../../components/admin/RfqRatingModal';
 import { markRfqCompleted } from '../../utils/vendorReviewService';
@@ -111,6 +116,8 @@ export default function ActiveQuotesPage() {
     rfq: WorkQuoteRequest;
     submission: VendorQuoteSubmission;
     message: string;
+    contactName?: string;
+    contactPhone?: string;
     updateTicketStatus: boolean;
     awardReason: string;
     customReasonText: string;
@@ -126,6 +133,9 @@ export default function ActiveQuotesPage() {
 
   // Full Screen Comparison Modal State (QA-110)
   const [comparisonModalRfq, setComparisonModalRfq] = useState<WorkQuoteRequest | null>(null);
+
+  // Scope Amendment Modal State
+  const [amendingRfq, setAmendingRfq] = useState<WorkQuoteRequest | null>(null);
 
   // Status Change Confirmation Modal State (Replaces native browser window.confirm)
   const [statusConfirmModal, setStatusConfirmModal] = useState<{
@@ -153,12 +163,12 @@ export default function ActiveQuotesPage() {
     getDoc(doc(db, "tenants", tenantId, "adminUsers", user.uid)).then(snap => {
       if (snap.exists()) {
         const d = snap.data();
-        const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim();
+        const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.fullName || d.name || d.displayName;
         setAdminProfile({
           firstName: d.firstName,
           lastName: d.lastName,
           fullName: fullName || undefined,
-          mobile: d.mobile || d.phone
+          mobile: d.mobile || d.phone || d.phoneNumber
         });
       }
     }).catch(e => console.warn('Could not load current admin profile:', e));
@@ -430,7 +440,7 @@ export default function ActiveQuotesPage() {
     const portalUrl = `${origin}/quote/${rfq.id}?tid=${rfq.tenantId}&v=${vendor.vendorId}${vendor.tokenHash ? `&t=${vendor.tokenHash}` : ''}`;
     const cleanPhone = normalizePhone(vendor.phone || '');
 
-    const senderName = rfq.createdBy?.name || 'ועד הבית';
+    const senderName = adminProfile?.fullName || rfq.createdBy?.name || 'ועד הבית';
     const customerSite = rfq.tenantName || 'ועד הבית / היישוב';
 
     const message = `שלום ${vendor.vendorName},\n` +
@@ -453,7 +463,7 @@ export default function ActiveQuotesPage() {
   ) => {
     const rawPhone = quote?.vendorPhone || vendor.phone || '';
     const cleanPhone = normalizePhone(rawPhone);
-    const senderName = rfq.createdBy?.name || user?.displayName || 'ועד הבית';
+    const senderName = adminProfile?.fullName || rfq.createdBy?.name || user?.displayName || 'ועד הבית';
     const customerSite = tenantInfo?.name || rfq.tenantName || 'ועד הבית / היישוב';
 
     let message = '';
@@ -492,16 +502,107 @@ export default function ActiveQuotesPage() {
       : `https://wa.me/?text=${encodeURIComponent(message)}`;
   };
 
-  // Helper: Default award WhatsApp message (QA-105)
-  const buildDefaultAwardMessage = (rfq: WorkQuoteRequest, submission: VendorQuoteSubmission) => {
+  // Helper: Format phone for clean display (e.g., 050-1234567)
+  const formatDisplayPhone = (p?: string) => {
+    if (!p) return '';
+    const clean = p.replace(/\D/g, '');
+    if (clean.length === 10 && clean.startsWith('05')) {
+      return `${clean.slice(0, 3)}-${clean.slice(3)}`;
+    }
+    if (clean.length === 9 && clean.startsWith('0')) {
+      return `${clean.slice(0, 2)}-${clean.slice(2)}`;
+    }
+    return p;
+  };
+
+  // Helper: Default award WhatsApp message (QA-105 & contact person and phone)
+  const buildDefaultAwardMessage = (
+    rfq: WorkQuoteRequest,
+    submission: VendorQuoteSubmission,
+    contactName?: string,
+    contactPhone?: string
+  ) => {
     const vatText = submission.priceIncludesVat ? 'כולל מע"מ' : 'לפני מע"מ';
+    const name = (contactName ?? (adminProfile?.fullName || rfq.createdBy?.name || user?.displayName || '')).trim();
+    const phone = (contactPhone ?? (adminProfile?.mobile || rfq.createdBy?.phone || tenantInfo?.vaadPhone || user?.phoneNumber || '')).trim();
+
+    let contactLine = '';
+    if (name && phone) {
+      contactLine = `איש קשר לתיאום: ${name} - ${formatDisplayPhone(phone)}`;
+    } else if (phone) {
+      contactLine = `טלפון לתיאום: ${formatDisplayPhone(phone)}`;
+    } else if (name) {
+      contactLine = `איש קשר לתיאום: ${name}`;
+    }
+
     return (
       `שלום ${submission.vendorName},\n` +
       `שמחים לעדכן כי הצעת המחיר שלך ע"ס ₪${submission.price.toLocaleString()} (${vatText}) עבור: *${rfq.title}* אושרה! 🏆\n\n` +
       `נשמח לתאם איתך את מועד תחילת העבודה בהקדם.\n` +
-      `בברכה,\n` +
-      `${rfq.tenantName || 'ועד הבית / הנהלת המתחם'}`
+      (contactLine ? `${contactLine}\n` : '') +
+      `\nבברכה,\n` +
+      `${rfq.tenantName || tenantInfo?.name || 'ועד הבית / הנהלת המתחם'}`
     );
+  };
+
+  // Helper: Authoritatively resolve the best contact person and phone for the RFQ award
+  const resolveAwardContactInfo = async (rfq: WorkQuoteRequest) => {
+    let name = (adminProfile?.fullName || '').trim();
+    let phone = (adminProfile?.mobile || '').trim();
+
+    // 1. If we don't have name from adminProfile, check rfq.createdBy.name
+    if (!name && rfq.createdBy?.name && !rfq.createdBy.name.includes('@') && rfq.createdBy.name !== 'admin' && rfq.createdBy.name !== 'ועד הבית') {
+      name = rfq.createdBy.name.trim();
+    }
+    // 2. If we don't have phone, check rfq.createdBy.phone
+    if (!phone && rfq.createdBy?.phone) {
+      phone = rfq.createdBy.phone.trim();
+    }
+
+    // 3. Fallback to auth current user
+    if (!name && user?.displayName) {
+      name = user.displayName.trim();
+    }
+    if (!phone && user?.phoneNumber) {
+      phone = user.phoneNumber.trim();
+    }
+
+    // 4. If still missing phone or name, query adminUsers in this tenant
+    if ((!name || !phone) && tenantId) {
+      try {
+        const snap = await getDocs(collection(db, "tenants", tenantId, "adminUsers"));
+        if (!snap.empty) {
+          // Priority A: match current user UID or RFQ creator UID
+          const targetUid = user?.uid || (rfq.createdBy?.uid && rfq.createdBy.uid !== 'admin' ? rfq.createdBy.uid : undefined);
+          let matched = targetUid ? snap.docs.find(d => d.id === targetUid) : null;
+          // Priority B: if only 1 admin user in tenant, use them
+          if (!matched && snap.docs.length === 1) {
+            matched = snap.docs[0];
+          }
+          if (matched) {
+            const d = matched.data();
+            const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.fullName || d.name || d.displayName;
+            const uPhone = d.mobile || d.phone || d.phoneNumber;
+            if (!name && fullName) name = fullName;
+            if (!phone && uPhone) phone = uPhone;
+          }
+        }
+      } catch (e) {
+        console.warn("Could not query adminUsers for contact info:", e);
+      }
+    }
+
+    // 5. Fallback phone to building / tenant vaad phone
+    if (!phone && tenantInfo?.vaadPhone) {
+      phone = tenantInfo.vaadPhone.trim();
+    }
+
+    // 6. Fallback name
+    if (!name) {
+      name = tenantInfo?.name || rfq.tenantName || 'ועד הבית';
+    }
+
+    return { name, phone };
   };
 
   // Re-send automated WhatsApp template to contractor
@@ -534,16 +635,20 @@ export default function ActiveQuotesPage() {
   };
 
   // Open Award Winner Confirmation Modal with Decision Reasoning
-  const handleOpenAwardModal = (rfq: WorkQuoteRequest, submission: VendorQuoteSubmission) => {
+  const handleOpenAwardModal = async (rfq: WorkQuoteRequest, submission: VendorQuoteSubmission) => {
     const subs = submissionsByRfq[rfq.id] || [];
     const prices = subs.map(s => s.price).filter(p => p > 0);
     const minPrice = prices.length > 0 ? Math.min(...prices) : submission.price;
     const isLowest = submission.price <= minPrice;
 
+    const contact = await resolveAwardContactInfo(rfq);
+
     setAwardModalData({
       rfq,
       submission,
-      message: buildDefaultAwardMessage(rfq, submission),
+      contactName: contact.name,
+      contactPhone: contact.phone,
+      message: buildDefaultAwardMessage(rfq, submission, contact.name, contact.phone),
       updateTicketStatus: Boolean(rfq.ticketId),
       awardReason: isLowest ? 'ההצעה הזולה ביותר 💰' : 'תקופת אחריות ארוכה יותר 🛡️',
       customReasonText: '',
@@ -587,7 +692,7 @@ export default function ActiveQuotesPage() {
   // Confirm Award Action (QA-105 & QA-106 & Phase 5 Reasoning)
   const handleConfirmAward = async (sendWhatsApp: boolean) => {
     if (!tenantId || !awardModalData) return;
-    const { rfq, submission, message, updateTicketStatus, awardReason, customReasonText } = awardModalData;
+    const { rfq, submission, message, updateTicketStatus, awardReason, customReasonText, contactName, contactPhone } = awardModalData;
 
     setActionLoadingId(submission.id);
     try {
@@ -666,7 +771,7 @@ export default function ActiveQuotesPage() {
       }
 
       // Audit Log
-      const isCustomMessage = message.trim() !== buildDefaultAwardMessage(rfq, submission).trim();
+      const isCustomMessage = message.trim() !== buildDefaultAwardMessage(rfq, submission, contactName, contactPhone).trim();
       await logAction({
         tenantId,
         action: 'RFQ_AWARDED',
@@ -714,6 +819,10 @@ export default function ActiveQuotesPage() {
 
   // Open Status Confirmation Modal (replaces browser confirm)
   const handleOpenStatusConfirmModal = (rfq: WorkQuoteRequest, newStatus: RfqStatus) => {
+    if (rfq.contractExecution?.status === 'fully_signed') {
+      alert('לא ניתן לפתוח מחדש או לשנות סטטוס: קיים חוזה חתום ונעול משפטית על ידי שני הצדדים 🔒.');
+      return;
+    }
     setStatusConfirmModal({ rfq, newStatus });
   };
 
@@ -1275,9 +1384,26 @@ export default function ActiveQuotesPage() {
                                       <FileCheck2 size={12} />
                                       <span>הסכם עבודה 📄</span>
                                     </button>
+                                    {rfq.contractExecution?.status === 'fully_signed' && (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs">
+                                        <ShieldCheck size={13} className="text-emerald-200" />
+                                        <span>חוזה חתום ונעול 🔒✓</span>
+                                      </span>
+                                    )}
                                   </div>
                                 ) : rfq.status === 'awarded' ? (
                                   <div className="flex items-center gap-2 flex-wrap">
+                                    {rfq.contractExecution?.status === 'fully_signed' ? (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs animate-in fade-in">
+                                        <ShieldCheck size={13} className="text-emerald-200" />
+                                        <span>חוזה חתום ונעול 🔒✓</span>
+                                      </span>
+                                    ) : rfq.contractExecution?.status === 'signed_by_admin' ? (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-300 text-xs font-black flex items-center gap-1.5 animate-in fade-in">
+                                        <PenTool size={12} className="text-blue-600" />
+                                        <span>נחתם ע״י הוועד (ממתין לקבלן) ✍️</span>
+                                      </span>
+                                    ) : null}
                                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black flex items-center gap-1">
                                       <Trophy size={13} className="text-amber-600" />
                                       <span>נבחרה הצעה זוכה: {rfq.awardedVendorName} (₪{rfq.awardedPrice?.toLocaleString()})</span>
@@ -1397,12 +1523,70 @@ export default function ActiveQuotesPage() {
                             <div className="border-t border-slate-200 p-5 md:p-6 bg-slate-50/40 space-y-6 animate-in fade-in">
                               {/* Job Scope & Files */}
                               <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                                  פרטי הבקשה והנחיות לביצוע
-                                </h4>
+                                <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-slate-100">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">
+                                      פרטי הבקשה והנחיות לביצוע
+                                    </h4>
+                                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                      גרסה {rfq.scopeVersion || 1}
+                                    </span>
+                                  </div>
+
+                                  {/* Scope amendment button or contract locked indicator */}
+                                  {rfq.contractExecution?.status === 'signed_by_admin' || rfq.contractExecution?.status === 'fully_signed' ? (
+                                    <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md border border-slate-200">
+                                      <ShieldCheck size={12} className="text-emerald-500" />
+                                      <span>הסכם עבודה חתום • המפרט נעול</span>
+                                    </span>
+                                  ) : rfq.status !== 'cancelled' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setAmendingRfq(rfq)}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs hover:border-blue-300"
+                                      title="עריכת מפרט, הוספת משימות, שינוי שעות עבודה או הארכת מועד הגשה לקבלנים"
+                                    >
+                                      <FileEdit size={13} className="text-blue-600" />
+                                      <span>ערוך מפרט / הוסף נספח ✏️</span>
+                                    </button>
+                                  ) : null}
+                                </div>
+
                                 <p className="text-xs md:text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line break-words">
                                   {rfq.description || 'ללא תיאור מורחב'}
                                 </p>
+
+                                {/* Scope Amendments History Log if present */}
+                                {rfq.scopeHistory && rfq.scopeHistory.length > 0 && (
+                                  <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
+                                    <div className="flex items-center gap-1.5 text-xs font-black text-amber-900">
+                                      <Info size={14} className="text-amber-600 shrink-0" />
+                                      <span>היסטוריית עדכונים ונספחים למפרט ({rfq.scopeHistory.length}):</span>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      {rfq.scopeHistory.map((rec) => (
+                                        <div key={rec.version} className="bg-white/90 p-2.5 rounded-lg border border-amber-200/50 text-xs text-slate-700 space-y-1 shadow-2xs">
+                                          <div className="flex items-center justify-between flex-wrap gap-1">
+                                            <span className="font-extrabold text-amber-950 bg-amber-100/80 px-2 py-0.5 rounded text-[11px]">
+                                              גרסה {rec.version}
+                                            </span>
+                                            <span className="text-[11px] text-slate-400 font-medium">
+                                              {new Date(rec.amendedAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} • ע"י {rec.amendedBy?.name || 'מנהל'}
+                                            </span>
+                                          </div>
+                                          <div className="font-bold text-slate-900">
+                                            {rec.changeSummary}
+                                          </div>
+                                          {rec.changes?.allowedWorkHours && (
+                                            <div className="text-[11px] text-slate-500">
+                                              שעות עבודה מעודכנות: <span className="font-bold text-slate-700">{rec.changes.allowedWorkHours}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
 
                                 {/* Attachments */}
                                 {rfq.attachments && rfq.attachments.length > 0 && (
@@ -1595,21 +1779,10 @@ export default function ActiveQuotesPage() {
                                           </div>
 
                                           {isAwardedWinner ? (
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-black flex items-center gap-1 shadow-sm">
-                                                <Trophy size={13} />
-                                                <span>הצעה זוכה</span>
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleOpenContractModal(rfq, quote)}
-                                                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer"
-                                                title="צפה והדפס הסכם עבודה מחייב"
-                                              >
-                                                <FileCheck2 size={13} />
-                                                <span>הפק הסכם עבודה 📄</span>
-                                              </button>
-                                            </div>
+                                            <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-black flex items-center gap-1 shadow-sm">
+                                              <Trophy size={13} />
+                                              <span>הצעה זוכה</span>
+                                            </span>
                                           ) : quote ? (
                                             <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
                                               הוגשה הצעה ✓
@@ -1625,6 +1798,12 @@ export default function ActiveQuotesPage() {
                                         {/* Quote Details if submitted */}
                                         {quote ? (
                                           <div className="space-y-3">
+                                            {quote.basedOnScopeVersion && rfq.scopeVersion && quote.basedOnScopeVersion < rfq.scopeVersion && (
+                                              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                                                <AlertTriangle size={13} className="text-amber-600 shrink-0" />
+                                                <span>הוגשה לפי גרסת מפרט {quote.basedOnScopeVersion} (המפרט עודכן לגרסה {rfq.scopeVersion})</span>
+                                              </div>
+                                            )}
                                             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
                                               <div className="flex items-baseline justify-between">
                                                 <span className="text-xs text-slate-500 font-bold">מחיר מוצע:</span>
@@ -1710,10 +1889,10 @@ export default function ActiveQuotesPage() {
                                                       type="button"
                                                       onClick={() => handleOpenContractModal(rfq, quote)}
                                                       className="px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                                                      title="צפה בהסכם העבודה ובהזמנת העבודה החתומה (להדפסה / PDF)"
+                                                      title="צפה בהסכם העבודה ובהזמנת העבודה (להדפסה / PDF)"
                                                     >
                                                       <FileCheck2 size={13} className="text-blue-600" />
-                                                      <span>הסכם עבודה חתום 📄</span>
+                                                      <span>הסכם עבודה 📄</span>
                                                     </button>
 
                                                     {rfq.status === 'awarded' && !isLinkedTicketClosed(rfq) && (
@@ -1862,6 +2041,29 @@ export default function ActiveQuotesPage() {
                                         <span>מחק טיוטה לצמיתות</span>
                                       </button>
                                     </div>
+                                  ) : rfq.contractExecution?.status === 'fully_signed' ? (
+                                    <div className="flex items-center gap-1.5 text-xs font-black text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 shadow-2xs">
+                                      <ShieldCheck size={14} className="text-emerald-600" />
+                                      <span>הסכם חתום ונעול משפטית 🔒</span>
+                                    </div>
+                                  ) : rfq.contractExecution?.status === 'signed_by_admin' ? (
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-blue-800 bg-blue-50 px-2.5 py-1 rounded-xl border border-blue-200">
+                                      <PenTool size={13} className="text-blue-600" />
+                                      <span>נחתם ע״י הוועד • תנאים נעולים לחתימת קבלן</span>
+                                    </div>
+                                  ) : rfq.status === 'completed' ? (
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200">
+                                      <CheckCircle2 size={13} className="text-emerald-600" />
+                                      <span>עבודה זו הושלמה ונסגרה</span>
+                                    </div>
+                                  ) : rfq.status === 'awarded' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenStatusConfirmModal(rfq, 'cancelled')}
+                                      className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+                                    >
+                                      סגור / בטל פנייה זו
+                                    </button>
                                   ) : isRfqOpen(rfq) ? (
                                     <button
                                       type="button"
@@ -2085,6 +2287,9 @@ export default function ActiveQuotesPage() {
                         קריאה #{comparisonModalRfq.ticketNumber}
                       </span>
                     )}
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-700 border border-slate-300">
+                      גרסה {comparisonModalRfq.scopeVersion || 1}
+                    </span>
                   </div>
                   <p className="text-xs text-slate-500 font-medium">
                     תחום: <span className="font-bold text-slate-700">{comparisonModalRfq.category}</span> • השוואה מרוכזת של כל ההצעות שהתקבלו
@@ -2205,7 +2410,7 @@ export default function ActiveQuotesPage() {
                               title="צפה והדפס הסכם עבודה מחייב"
                             >
                               <FileCheck2 size={13} />
-                              <span>הפק הסכם עבודה 📄</span>
+                              <span>הסכם עבודה 📄</span>
                             </button>
                           </div>
                         ) : quote ? (
@@ -2221,6 +2426,12 @@ export default function ActiveQuotesPage() {
 
                       {quote ? (
                         <div className="space-y-2.5 text-xs">
+                          {quote.basedOnScopeVersion && comparisonModalRfq.scopeVersion && quote.basedOnScopeVersion < comparisonModalRfq.scopeVersion && (
+                            <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                              <AlertTriangle size={13} className="text-amber-600 shrink-0" />
+                              <span>הוגשה לפי גרסת מפרט {quote.basedOnScopeVersion} (המפרט עודכן לגרסה {comparisonModalRfq.scopeVersion})</span>
+                            </div>
+                          )}
                           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                             <div className="flex items-baseline justify-between">
                               <span className="text-slate-500 font-bold">מחיר מוצע:</span>
@@ -2418,6 +2629,10 @@ export default function ActiveQuotesPage() {
           tenantInfo={tenantInfo}
           currentAdminName={adminProfile?.fullName || user?.displayName || user?.email || undefined}
           currentAdminPhone={adminProfile?.mobile || user?.phoneNumber || undefined}
+          onContractSigned={(updatedExecution) => {
+            setRfqs(prev => prev.map(r => r.id === contractModalData.rfq.id ? { ...r, contractExecution: updatedExecution } : r));
+            setContractModalData(prev => prev ? { ...prev, rfq: { ...prev.rfq, contractExecution: updatedExecution } } : null);
+          }}
         />
       )}
 
@@ -2446,6 +2661,20 @@ export default function ActiveQuotesPage() {
             name: adminProfile?.fullName || user?.displayName || user?.email || 'ועד הבית'
           }}
           onSuccess={handleRatingSuccess}
+        />
+      )}
+
+      {/* RFQ Scope Amendment Modal */}
+      {amendingRfq && tenantId && (
+        <RfqScopeAmendmentModal
+          isOpen={Boolean(amendingRfq)}
+          onClose={() => setAmendingRfq(null)}
+          rfq={amendingRfq}
+          tenantId={tenantId}
+          onSuccess={(updatedRfq) => {
+            setRfqs(prev => prev.map(r => r.id === updatedRfq.id ? updatedRfq : r));
+            setAmendingRfq(null);
+          }}
         />
       )}
     </div>

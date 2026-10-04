@@ -27,11 +27,14 @@ import {
   Trophy,
   FileCheck2,
   Coins,
-  Truck
+  Truck,
+  PenTool,
+  AlertTriangle
 } from 'lucide-react';
-import { WorkQuoteRequest, VendorQuoteSubmission, DispatchedVendorRecord } from '../types/rfq';
+import { WorkQuoteRequest, VendorQuoteSubmission, DispatchedVendorRecord, ContractExecutionData } from '../types/rfq';
 import { logAction } from '../utils/auditLogger';
 import WorkOrderContractModal from '../components/admin/WorkOrderContractModal';
+import SignaturePadModal from '../components/common/SignaturePadModal';
 
 const DURATION_PRESETS = [
   'עד שעתיים ⚡',
@@ -200,6 +203,17 @@ export default function ContractorQuotePortal() {
       .replace(/[{}]/g, '')
       .trim();
 
+    // If rfq contains slug delimiters tenant__rfq__vendor__token
+    if (rfq.includes('__')) {
+      const parts = rfq.split('__');
+      if (parts.length >= 2) {
+        if (!tenant) tenant = parts[0]?.trim();
+        rfq = parts[1]?.trim();
+        if (parts[2] && !vendor) vendor = parts[2]?.trim();
+        if (parts[3] && !token) token = parts[3]?.trim();
+      }
+    }
+
     return {
       rfq: rfq.trim(),
       vendor: vendor.trim(),
@@ -263,6 +277,11 @@ export default function ContractorQuotePortal() {
 
   // Digital Contract / Work Order Modal State
   const [showContractModal, setShowContractModal] = useState(false);
+  const [showVendorSignModal, setShowVendorSignModal] = useState(false);
+  const [showPhoneChallengeModal, setShowPhoneChallengeModal] = useState(false);
+  const [vendorLast4Input, setVendorLast4Input] = useState('');
+  const [vendorLast4Error, setVendorLast4Error] = useState('');
+  const [contractSignedSuccess, setContractSignedSuccess] = useState(false);
 
   // 1. Fetch RFQ details, verify whitelist & phone, and identify tenant
   useEffect(() => {
@@ -568,6 +587,97 @@ export default function ContractorQuotePortal() {
     }
   };
 
+  // Handler for Contractor 4-digit Whitelist Phone Challenge
+  const handleVerifyLast4Digits = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!matchedVendor?.phone) {
+      setVendorLast4Error('מספר הטלפון של הקבלן אינו רשום במערכת.');
+      return;
+    }
+    const cleanRegistered = matchedVendor.phone.replace(/\D/g, '');
+    const expectedLast4 = cleanRegistered.slice(-4);
+    const enteredLast4 = vendorLast4Input.replace(/\D/g, '');
+
+    if (enteredLast4.length !== 4 || enteredLast4 !== expectedLast4) {
+      setVendorLast4Error('4 הספרות האחרונות שהוקלדו אינן תואמות את מספר הטלפון הרשום של הקבלן ב-Whitelist.');
+      return;
+    }
+
+    // Success: close challenge and open signature canvas
+    setVendorLast4Error('');
+    setShowPhoneChallengeModal(false);
+    setShowVendorSignModal(true);
+  };
+
+  // Handler for Contractor Online Signature Submission
+  const handleVendorContractSign = async (
+    signatureDataUrl: string,
+    signerName: string,
+    extraData?: { companyId?: string }
+  ) => {
+    if (!rfq || !resolvedTenantId || !rfq.id) return;
+    try {
+      const signedAt = new Date().toISOString();
+      const committeeSig = rfq.contractExecution?.committeeSignature;
+      const vendorCompanyId = extraData?.companyId || matchedVendor?.companyId || '';
+
+      const vendorSignatureObj: any = {
+        signerName,
+        signerRole: 'קבלן מבצע מורשה',
+        signatureDataUrl,
+        signedAt
+      };
+      if (vendorCompanyId) vendorSignatureObj.companyId = vendorCompanyId.trim();
+      if (matchedVendor?.phone) vendorSignatureObj.signerPhone = matchedVendor.phone.trim();
+      if (typeof navigator !== 'undefined' && navigator.userAgent) {
+        vendorSignatureObj.userAgent = navigator.userAgent;
+      }
+
+      const updatedExecution: any = {
+        status: 'fully_signed',
+        contractVersion: (rfq.contractExecution?.contractVersion || 1),
+        vendorSignature: vendorSignatureObj,
+        fullySignedAt: signedAt
+      };
+      if (committeeSig) {
+        updatedExecution.committeeSignature = committeeSig;
+      }
+
+      // Persist to Firestore
+      const rfqDocRef = doc(db, "tenants", resolvedTenantId, "rfqs", rfq.id);
+      await setDoc(rfqDocRef, {
+        contractExecution: updatedExecution,
+        updatedAt: signedAt
+      }, { merge: true });
+
+      // Update local state
+      setRfq(prev => prev ? { ...prev, contractExecution: updatedExecution as ContractExecutionData } : null);
+      setShowVendorSignModal(false);
+      setContractSignedSuccess(true);
+
+      // Audit Log Event
+      await logAction({
+        tenantId: resolvedTenantId,
+        action: 'CONTRACT_FULLY_SIGNED',
+        actor: {
+          uid: matchedVendor?.vendorId || vendorId || 'vendor',
+          name: signerName || matchedVendor?.vendorName || 'קבלן זוכה',
+          type: 'vendor'
+        },
+        details: {
+          rfqId: rfq.id,
+          rfqTitle: rfq.title,
+          winningVendorName: matchedVendor?.vendorName,
+          companyId: vendorCompanyId,
+          totalWithVat: rfq.awardedPrice
+        }
+      });
+    } catch (err) {
+      console.error('Error submitting vendor contract signature:', err);
+      alert('אירעה שגיאה בחתימת ההסכם. אנא נסה שוב.');
+    }
+  };
+
   // VAT Calculations
   const numericPrice = parseFloat(priceInput) || 0;
   const calculatedTotalWithVat = priceIncludesVat
@@ -705,7 +815,8 @@ export default function ContractorQuotePortal() {
         estimatedDuration: durationToSave,
         status: 'submitted',
         submittedAt: nowIso,
-        updatedAt: nowIso
+        updatedAt: nowIso,
+        basedOnScopeVersion: rfq.scopeVersion || 1
       };
 
       if (rfq.ticketId) payload.ticketId = rfq.ticketId;
@@ -739,7 +850,8 @@ export default function ContractorQuotePortal() {
           price: numericPrice,
           priceIncludesVat,
           totalPriceWithVat: calculatedTotalWithVat,
-          duration: durationToSave
+          duration: durationToSave,
+          basedOnScopeVersion: rfq.scopeVersion || 1
         }
       });
 
@@ -932,7 +1044,7 @@ export default function ContractorQuotePortal() {
           </div>
         ) : (
           <>
-            {/* Awarded Winner Banner & Contract Access (Bug #4) */}
+            {/* Awarded Winner Banner & Contract Access with Online Signing */}
             {rfq.status === 'awarded' && rfq.awardedVendorId === matchedVendor?.vendorId ? (
               <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/70 border-2 border-emerald-400 text-emerald-950 space-y-3 shadow-md animate-in fade-in">
                 <div className="flex items-center gap-3">
@@ -940,27 +1052,73 @@ export default function ContractorQuotePortal() {
                     <Trophy size={22} />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-emerald-950">
-                      ברכות! הצעתך אושרה והמכרז הוענק לך 🏆
+                    <h3 className="text-base font-black text-emerald-950 flex items-center gap-2 flex-wrap">
+                      <span>ברכות! הצעתך אושרה והמכרז הוענק לך 🏆</span>
+                      {rfq.contractExecution?.status === 'fully_signed' ? (
+                        <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                          <CheckCircle2 size={12} />
+                          <span>הסכם חתום ומחייב ✓</span>
+                        </span>
+                      ) : rfq.contractExecution?.status === 'signed_by_admin' ? (
+                        <span className="text-[10px] bg-blue-600 text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs animate-pulse">
+                          <PenTool size={12} />
+                          <span>ממתין לחתימתך הדיגיטלית ✍️</span>
+                        </span>
+                      ) : null}
                     </h3>
                     <p className="text-xs text-emerald-800 font-medium">
-                      הסכם ההתקשרות והזמנת העבודה המחייבת מוכנים לצפייה, להדפסה ולחתימה.
+                      {rfq.contractExecution?.status === 'fully_signed'
+                        ? 'הסכם העבודה חתום דיגיטלית במלואו ע״י שני הצדדים. באפשרותך לצפות ולהוריד עותק.'
+                        : rfq.contractExecution?.status === 'signed_by_admin'
+                        ? 'הסכם העבודה נחתם ע״י הנהלת המתחם וממתין לחתימתך הדיגיטלית לאישור תחילת העבודה.'
+                        : 'הסכם ההתקשרות והזמנת העבודה המחייבת מוכנים לצפייה ולהדפסה.'}
                     </p>
                   </div>
                 </div>
+
                 <div className="p-3 bg-white/90 rounded-2xl border border-emerald-200 text-xs space-y-1">
                   <div><strong>תמורה מוסכמת:</strong> ₪{rfq.awardedPrice?.toLocaleString()} (כולל מע"מ)</div>
                   <div><strong>אתר ביצוע:</strong> {tenantInfo?.name || rfq.tenantName}</div>
                   {tenantInfo?.address && <div><strong>כתובת:</strong> {tenantInfo.address}</div>}
+                  {rfq.contractExecution?.committeeSignature?.signedAt && (
+                    <div className="text-blue-700 font-bold pt-1 border-t border-slate-100 flex items-center gap-1">
+                      <CheckCircle2 size={12} className="text-blue-600" />
+                      <span>נחתם ע״י נציגות הוועד: {rfq.contractExecution.committeeSignature.signerName}</span>
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowContractModal(true)}
-                  className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-                >
-                  <FileCheck2 size={16} />
-                  <span>צפה בהסכם העבודה ובהזמנה החתומה (להדפסה / PDF) 📄</span>
-                </button>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  {/* Action 1: Sign button if signed by admin and not yet signed by vendor */}
+                  {rfq.contractExecution?.status === 'signed_by_admin' && !rfq.contractExecution.vendorSignature && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVendorLast4Input('');
+                        setVendorLast4Error('');
+                        setShowPhoneChallengeModal(true);
+                      }}
+                      className="flex-1 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                    >
+                      <PenTool size={16} />
+                      <span>אישור וחתימה על ההסכם ✍️</span>
+                    </button>
+                  )}
+
+                  {/* Action 2: View full contract modal */}
+                  <button
+                    type="button"
+                    onClick={() => setShowContractModal(true)}
+                    className={`py-3.5 rounded-2xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
+                      rfq.contractExecution?.status === 'signed_by_admin' && !rfq.contractExecution.vendorSignature
+                        ? 'px-4 bg-white/80 hover:bg-white text-emerald-900 border border-emerald-300'
+                        : 'w-full bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    <FileCheck2 size={16} />
+                    <span>{rfq.contractExecution?.status === 'fully_signed' ? 'צפה בהסכם החתום (PDF) 📄' : 'צפה בהסכם העבודה 📄'}</span>
+                  </button>
+                </div>
               </div>
             ) : isClosed ? (
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2.5">
@@ -988,6 +1146,45 @@ export default function ContractorQuotePortal() {
                 <p className="text-xs text-emerald-800 font-medium leading-relaxed">
                   {recipientRole} קיבל/ה את הצעתך בסך <strong>₪{existingSubmission?.price?.toLocaleString()}</strong> ({existingSubmission?.priceIncludesVat ? 'כולל מע"מ' : '+ מע"מ'}).
                   תוכל לעדכן את הפרטים בטופס מטה בכל עת עד למועד הסגירה.
+                </p>
+              </div>
+            )}
+
+            {/* Scope Amendment / Addendum Banner (if amended) */}
+            {rfq.scopeVersion && rfq.scopeVersion > 1 && (
+              <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 space-y-2.5 shadow-sm text-right animate-in fade-in">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-200 text-amber-800 rounded-lg">
+                      <AlertTriangle size={18} />
+                    </div>
+                    <span className="text-sm font-black">
+                      שים לב: מפרט הפנייה עודכן (גרסה {rfq.scopeVersion}) 📝
+                    </span>
+                  </div>
+                  {rfq.scopeHistory && rfq.scopeHistory.length > 0 && (
+                    <span className="text-[11px] font-bold text-amber-800">
+                      עודכן ב-{new Date(rfq.scopeHistory[rfq.scopeHistory.length - 1].amendedAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+
+                {rfq.scopeHistory && rfq.scopeHistory.length > 0 && (
+                  <div className="bg-white/90 p-3 rounded-xl border border-amber-200/80 text-xs space-y-1">
+                    <div className="font-extrabold text-amber-900">דברי הסבר לעדכון המפרט והמשימות:</div>
+                    <div className="font-medium text-slate-800 whitespace-pre-line leading-relaxed">
+                      {rfq.scopeHistory[rfq.scopeHistory.length - 1].changeSummary}
+                    </div>
+                    {rfq.scopeHistory[rfq.scopeHistory.length - 1].changes?.allowedWorkHours && (
+                      <div className="pt-1 text-[11px] text-slate-600 font-bold border-t border-slate-100">
+                        שעות עבודה מעודכנות באתר: {rfq.scopeHistory[rfq.scopeHistory.length - 1].changes?.allowedWorkHours}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-amber-900 font-medium">
+                  אנא וודא שהצעת המחיר שלך מתייחסת לדרישות המעודכנות במפרט זה.
                 </p>
               </div>
             )}
@@ -1493,7 +1690,132 @@ export default function ContractorQuotePortal() {
           }
           tenantInfo={tenantInfo}
           currentAdminName={rfq.createdBy?.name || undefined}
+          isReadOnly={true}
+          onContractorSignClick={() => {
+            setVendorLast4Input('');
+            setVendorLast4Error('');
+            setShowPhoneChallengeModal(true);
+          }}
         />
+      )}
+
+      {/* Step 1: Whitelist 4-Digits Verification Modal for Contractor Signing */}
+      {showPhoneChallengeModal && matchedVendor && (
+        <div className="fixed inset-0 z-[120] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto no-print" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto ring-6 ring-blue-50/60">
+              <Lock size={28} />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-900">אימות זהות קבלן מורשה 🔒</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                לחתימה על הסכם העבודה מול <strong>{customerHeaderTitle}</strong>, אנא הקלד את <strong>4 הספרות האחרונות</strong> של מספר הטלפון הרשום שלך ב-Whitelist:
+              </p>
+            </div>
+
+            {vendorLast4Error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-center gap-1.5 text-right">
+                <span>⚠️</span>
+                <span>{vendorLast4Error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyLast4Digits} className="space-y-4">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                autoFocus
+                value={vendorLast4Input}
+                onChange={e => {
+                  setVendorLast4Input(e.target.value.replace(/\D/g, '').slice(0, 4));
+                  if (vendorLast4Error) setVendorLast4Error('');
+                }}
+                placeholder="XXXX"
+                className="w-full py-3 text-center text-2xl font-black tracking-widest bg-slate-50 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+              />
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowPhoneChallengeModal(false)}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                >
+                  ביטול
+                </button>
+                <button
+                  type="submit"
+                  disabled={vendorLast4Input.length !== 4}
+                  className="flex-1 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-xl shadow-sm transition-all cursor-pointer"
+                >
+                  המשך לחתימה ✍️
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Contractor Signature Canvas Modal */}
+      {showVendorSignModal && rfq && matchedVendor && (
+        <SignaturePadModal
+          isOpen={showVendorSignModal}
+          onClose={() => setShowVendorSignModal(false)}
+          onSave={handleVendorContractSign}
+          title="חתימה ואישור הסכם התקשרות"
+          subtitle={`מול ${customerHeaderTitle} • מכרז #${rfq.ticketNumber || rfq.id.slice(0, 6)}`}
+          defaultSignerName={matchedVendor.vendorName}
+          defaultSignerPhone={matchedVendor.phone}
+          requireCompanyId={true}
+          requireConsentCheckbox={true}
+          consentCheckboxText="אני מצהיר ומאשר כי קראתי את כל סעיפי ההסכם, לוחות הזמנים ושלבי התשלום, וחתימתי זו מהווה התחייבות חוזית ומשפטית מלאה ומחייבת של הקבלן המבצע בהתאם לחוק חתימה אלקטרונית, התשס״א-2001."
+        />
+      )}
+
+      {/* Step 3: Success Confirmation Modal after Contractor Signs */}
+      {contractSignedSuccess && (
+        <div className="fixed inset-0 z-[130] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto no-print" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto ring-8 ring-emerald-50/60">
+              <CheckCircle2 size={36} />
+            </div>
+
+            <div>
+              <h3 className="text-xl font-black text-slate-900">ההסכם נחתם בהצלחה! 🎉</h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                חתימתך הדיגיטלית הוטבעה בהצלחה בהזמנת העבודה ונשמרה בכספת המשפטית המאובטחת. ההסכם כעת חתום וסופי ע״י שני הצדדים.
+              </p>
+            </div>
+
+            <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-xs font-bold text-emerald-900 space-y-1 text-right">
+              <div>✓ חתימת המזמין: מאושרת</div>
+              <div>✓ חתימת הקבלן: מאושרת</div>
+              <div>✓ תוקף משפטי: חוק חתימה אלקטרונית (2001)</div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setContractSignedSuccess(false);
+                  setShowContractModal(true);
+                }}
+                className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <FileCheck2 size={16} />
+                <span>צפה בהסכם החתום (PDF) 📄</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setContractSignedSuccess(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                סגור
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

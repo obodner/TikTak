@@ -71,17 +71,16 @@ Because capital renovations and contractor bids are seasonal (roof leaks in autu
 | RFQ Tier License | Annual Allocation (Bank) | Annual Price | Effective Rate / RFQ | Overage Fee (Extra RFQ) | Target Community Size |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Disabled** | 0 RFQs | ₪0 | - | - | Module hidden |
-| **RFQ Starter** | **3 RFQs / year** | ₪179 / year | ₪59.60 / RFQ | **₪59.00 / extra RFQ** | Small building (<50 units) |
-| **RFQ Basic** | **6 RFQs / year** | ₪299 / year | ₪49.80 / RFQ | **₪49.00 / extra RFQ** | Small–Mid (~100–150 units) |
-| **RFQ Standard** | **12 RFQs / year** | ₪499 / year | ₪41.50 / RFQ | **₪45.00 / extra RFQ** | Mid-size (~200–300 units) |
-| **RFQ Growth** | **25 RFQs / year** | ₪899 / year | ₪35.90 / RFQ | **₪39.00 / extra RFQ** | Large (~400–600 units) |
-| **RFQ Enterprise**| **50 RFQs / year** | ₪1,599 / year| ₪31.90 / RFQ | **₪35.00 / extra RFQ** | Fleets & management cos |
-| **Custom / Pilot**| Custom $N$ RFQs | Custom Contract | Configurable | Configurable | Municipal / Custom contracts |
+| **RFQ Starter** | **5 RFQs / year** | ₪249 / year | ₪49.80 / RFQ | **₪49.00 / extra RFQ** | Small building (<24 units) |
+| **RFQ Basic** | **10 RFQs / year** | ₪449 / year | ₪44.90 / RFQ | **₪45.00 / extra RFQ** | Mid-size (~25–60 units) |
+| **RFQ Standard** | **15 RFQs / year** | ₪599 / year | ₪39.93 / RFQ | **₪40.00 / extra RFQ** | Towers & complexes (~60–120 units) |
+| **RFQ Growth** | **25 RFQs / year** | ₪899 / year | ₪35.96 / RFQ | **₪36.00 / extra RFQ** | Large complexes (~120–250+ units) |
+| **RFQ Custom / Enterprise**| **Custom $N$ RFQs** | Custom Contract | Volume-tiered | Negotiated | Municipal, Settlements & fleets |
 
 #### Top-Up Packs & Overage Policy:
 - **Soft Cap Mode**: If a building exhausts its annual credit bank, additional RFQs can be dispatched at the tier's **Overage Fee** (billed at year-end or via top-up pack).
 - **Hard Cap Mode**: Dispatches are locked once the annual allocation is reached until upgraded or topped up.
-- **Top-Up Option**: Single RFQ top-up is available for ₪49; 3-pack top-up is available for ₪129.
+- **Top-Up Option**: Single RFQ top-up is available for ₪49; 3-pack top-up is available for ₪129; 5-pack top-up is available for ₪199.
 
 ---
 

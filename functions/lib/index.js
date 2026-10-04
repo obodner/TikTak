@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recordRfqDispatch = exports.recordAdminLogin = exports.deleteTenantPermanently = exports.toggleTenantFreeze = exports.updateTenantLicensing = exports.provisionTenantOrFleet = exports.notifyQuoteSubmission = exports.dispatchRfqToVendors = exports.submitSupportInquiry = exports.forwardTicketToVendor = exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.checkAnnualLicenseExpirations = exports.slaCron = void 0;
+exports.recordRfqDispatch = exports.recordAdminLogin = exports.deleteTenantPermanently = exports.toggleTenantFreeze = exports.updateTenantLicensing = exports.provisionTenantOrFleet = exports.notifyQuoteSubmission = exports.dispatchRfqAddendum = exports.dispatchRfqToVendors = exports.submitSupportInquiry = exports.forwardTicketToVendor = exports.whatsappWebhook = exports.onTicketUpdate = exports.sendWhatsAppCommentNotification = exports.manageTenantUser = exports.getAudio = exports.getImage = exports.incrementMeToo = exports.addResidentComment = exports.getResidentTickets = exports.getTenantInfo = exports.landingMetrics = exports.submitAppFeedback = exports.createTicket = exports.checkAuth = exports.analyzeImage = exports.health = exports.checkAnnualLicenseExpirations = exports.slaCron = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const slaEngine_1 = require("./utils/slaEngine");
@@ -3982,6 +3982,110 @@ exports.dispatchRfqToVendors = (0, https_1.onRequest)({ cors: true, secrets: ["W
     catch (err) {
         logger.error("Exception in dispatchRfqToVendors:", err);
         res.status(500).send({ error: err.message || "אירעה שגיאה בשיגור הודעות הוואטסאפ לקבלנים" });
+    }
+});
+exports.dispatchRfqAddendum = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
+    try {
+        if (req.method !== "POST") {
+            res.status(405).send({ error: "Method not allowed. Use POST." });
+            return;
+        }
+        const { tenantId, rfqId, scopeVersion, changeSummary, actor } = req.body || {};
+        if (!tenantId || !rfqId) {
+            res.status(400).send({ error: "Missing required parameters (tenantId, rfqId)" });
+            return;
+        }
+        const token = process.env.WHATSAPP_ACCESS_TOKEN;
+        if (!token) {
+            res.status(500).send({ error: "WhatsApp access token not configured" });
+            return;
+        }
+        const tenantRef = db.collection("tenants").doc(tenantId);
+        const tenantSnap = await tenantRef.get();
+        if (!tenantSnap.exists) {
+            res.status(404).send({ error: "Tenant not found" });
+            return;
+        }
+        const tenantData = tenantSnap.data() || {};
+        if (tenantData.isActive === false || tenantData.subscription?.status === 'frozen' || tenantData.subscription?.status === 'cancelled') {
+            res.status(403).send({
+                error: "Account Frozen",
+                message: "חשבון ישות זו מוקפא זמנית. שילוח פניות הצעת מחיר לקבלנים חסום."
+            });
+            return;
+        }
+        const phoneNumberId = tenantData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
+        const tenantName = tenantData.name || tenantId;
+        const rfqRef = tenantRef.collection("rfqs").doc(rfqId);
+        const rfqSnap = await rfqRef.get();
+        if (!rfqSnap.exists) {
+            res.status(404).send({ error: "RFQ not found" });
+            return;
+        }
+        const rfqData = rfqSnap.data() || {};
+        const dispatchedVendors = rfqData.dispatchedVendors || [];
+        if (dispatchedVendors.length === 0) {
+            res.status(200).send({ success: true, message: "No dispatched vendors to notify", results: [] });
+            return;
+        }
+        const results = [];
+        const sanitizeParam = (val, maxLen = 60) => {
+            const clean = (val || "").replace(/[\r\n\t]+/g, " ").trim();
+            return clean.length > maxLen ? clean.slice(0, maxLen - 1) + "…" : clean;
+        };
+        const p2_rfqTitle = sanitizeParam(rfqData.title || "בקשה להצעת מחיר");
+        const p3_site = sanitizeParam(tenantName);
+        const p4_scopeVersion = String(scopeVersion || rfqData.scopeVersion || 2);
+        const p5_changeSummary = sanitizeParam(changeSummary || "התווספו משימות במפרט", 100);
+        for (const vendor of dispatchedVendors) {
+            let rawPhone = (vendor.phone || "").replace(/[^0-9]/g, "");
+            if (rawPhone.startsWith("0")) {
+                rawPhone = "972" + rawPhone.substring(1);
+            }
+            if (rawPhone.length < 8)
+                continue;
+            const p1_vendorName = sanitizeParam(vendor.vendorName || "ספק");
+            const templateParams = [
+                p1_vendorName,
+                p2_rfqTitle,
+                p3_site,
+                p4_scopeVersion,
+                p5_changeSummary
+            ];
+            const vendorTokenPart = vendor.tokenHash ? `__${vendor.tokenHash}` : '';
+            const buttonSuffix = `${tenantId}__${rfqId}__${vendor.vendorId}${vendorTokenPart}`;
+            let metaMessageId = null;
+            let success = false;
+            let errorDetail = null;
+            try {
+                const resp = await sendWhatsAppTemplate(rawPhone, "contractor_rfq_scope_updated", "he", templateParams, phoneNumberId, token, buttonSuffix);
+                metaMessageId = resp?.messages?.[0]?.id || null;
+                success = true;
+                logger.info(`Successfully dispatched contractor_rfq_scope_updated to ${rawPhone} (${vendor.vendorName})`);
+            }
+            catch (err) {
+                logger.warn(`contractor_rfq_scope_updated failed for ${rawPhone}:`, err?.message);
+                errorDetail = err?.message || JSON.stringify(err);
+            }
+            results.push({
+                vendorId: vendor.vendorId,
+                vendorName: vendor.vendorName,
+                phone: rawPhone,
+                success,
+                metaMessageId,
+                error: errorDetail
+            });
+        }
+        const successCount = results.filter(r => r.success).length;
+        res.status(200).send({
+            success: successCount > 0,
+            message: `שוגרו נספחי שינויים ל-${successCount} מתוך ${dispatchedVendors.length} קבלנים`,
+            results
+        });
+    }
+    catch (err) {
+        logger.error("Exception in dispatchRfqAddendum:", err);
+        res.status(500).send({ error: err.message || "שגיאה בשיגור נספח לקבלנים" });
     }
 });
 exports.notifyQuoteSubmission = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
