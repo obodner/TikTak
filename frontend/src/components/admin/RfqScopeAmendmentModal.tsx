@@ -11,11 +11,32 @@ import {
   Loader2,
   Info
 } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthState } from '../../hooks/useAuthState';
 import { WorkQuoteRequest, ScopeAmendmentRecord } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
+
+// Helper to remove any undefined properties recursively while preserving Firestore FieldValues
+function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj === 'object' && (obj._methodName || (obj.constructor && obj.constructor.name === 'FieldValue'))) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForFirestore(item)).filter(item => item !== undefined);
+  }
+  if (typeof obj === 'object') {
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined) {
+        clean[k] = (typeof v === 'object' && v !== null) ? sanitizeForFirestore(v) : v;
+      }
+    }
+    return clean;
+  }
+  return obj;
+}
 
 interface RfqScopeAmendmentModalProps {
   isOpen: boolean;
@@ -57,16 +78,26 @@ export default function RfqScopeAmendmentModal({
 
   if (!isOpen) return null;
 
-  // Check if contract is sealed
+  // Check if contract is sealed or RFQ is closed (completed, cancelled, or expired)
   const isContractSealed = Boolean(
     rfq.contractExecution?.status === 'signed_by_admin' ||
     rfq.contractExecution?.status === 'fully_signed'
+  );
+
+  const isRfqClosed = Boolean(
+    rfq.status === 'completed' ||
+    rfq.status === 'cancelled' ||
+    (rfq.deadlineAt && new Date(rfq.deadlineAt).getTime() < Date.now())
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isContractSealed) {
       setErrorMsg('הסכם העבודה כבר נחתם - לא ניתן לערוך את מפרט הבקשה.');
+      return;
+    }
+    if (isRfqClosed) {
+      setErrorMsg('פנייה זו הושלמה או נסגרה (הושלמה / בוטלה / פג תוקפה) - לא ניתן לערוך את המפרט.');
       return;
     }
 
@@ -88,23 +119,33 @@ export default function RfqScopeAmendmentModal({
       const nowIso = new Date().toISOString();
       const adminName = user?.displayName || user?.email || 'ועד הבית';
 
+      const changes: Record<string, any> = {};
+      if (title.trim() !== rfq.title) {
+        changes.title = title.trim();
+      }
+      if (description.trim() !== rfq.description) {
+        changes.description = description.trim();
+      }
+      if (allowedWorkHours.trim() !== rfq.allowedWorkHours) {
+        changes.allowedWorkHours = allowedWorkHours.trim();
+      }
+      if (deadlineAt && new Date(deadlineAt).toISOString() !== rfq.deadlineAt) {
+        changes.deadlineAt = new Date(deadlineAt).toISOString();
+      }
+
       const amendmentRecord: ScopeAmendmentRecord = {
         version: nextVersion,
         amendedAt: nowIso,
         amendedBy: {
           uid: user?.uid || 'admin',
           name: adminName,
-          email: user?.email || undefined
+          ...(user?.email ? { email: user.email } : {})
         },
         changeSummary: trimmedSummary,
-        previousDescription: rfq.description,
-        previousAllowedWorkHours: rfq.allowedWorkHours,
-        previousDeadlineAt: rfq.deadlineAt,
-        changes: {
-          title: title.trim(),
-          allowedWorkHours: allowedWorkHours.trim(),
-          deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : undefined
-        },
+        ...(rfq.description ? { previousDescription: rfq.description } : {}),
+        ...(rfq.allowedWorkHours ? { previousAllowedWorkHours: rfq.allowedWorkHours } : {}),
+        ...(rfq.deadlineAt ? { previousDeadlineAt: rfq.deadlineAt } : {}),
+        changes,
         notifiedVendorsCount: notifyVendors ? (rfq.dispatchedVendors?.length || 0) : 0
       };
 
@@ -117,13 +158,13 @@ export default function RfqScopeAmendmentModal({
         title: title.trim(),
         description: description.trim(),
         allowedWorkHours: allowedWorkHours.trim(),
-        workStartDate: rfq.workStartDate || null,
-        workTargetEndDate: rfq.workTargetEndDate || null,
         scopeVersion: nextVersion,
         scopeHistory: updatedHistory,
         updatedAt: nowIso
       };
 
+      if (rfq.workStartDate) updates.workStartDate = rfq.workStartDate;
+      if (rfq.workTargetEndDate) updates.workTargetEndDate = rfq.workTargetEndDate;
       if (deadlineAt) {
         updates.deadlineAt = new Date(deadlineAt).toISOString();
       }
@@ -132,46 +173,61 @@ export default function RfqScopeAmendmentModal({
       const isCurrentlyAwarded = Boolean(rfq.status === 'awarded' || rfq.awardedVendorId);
       if (isCurrentlyAwarded) {
         updates.status = 'open';
-        updates.awardedVendorId = null;
-        updates.awardedVendorName = null;
-        updates.awardedPrice = null;
-        updates.awardedAt = null;
-        updates.awardReasoning = null;
+        updates.awardedVendorId = deleteField();
+        updates.awardedVendorName = deleteField();
+        updates.awardedPrice = deleteField();
+        updates.awardedAt = deleteField();
+        updates.awardReasoning = deleteField();
       }
 
-      await updateDoc(rfqRef, updates);
+      const cleanUpdates = sanitizeForFirestore(updates);
+      await updateDoc(rfqRef, cleanUpdates);
 
       // Audit Log
+      const auditChangedFields: Record<string, any> = {};
+      if (title.trim() !== rfq.title) {
+        auditChangedFields.title = { before: rfq.title || '', after: title.trim() };
+      }
+      if (description.trim() !== rfq.description) {
+        auditChangedFields.description = { before: rfq.description || '', after: description.trim() };
+      }
+      if (allowedWorkHours.trim() !== rfq.allowedWorkHours) {
+        auditChangedFields.allowedWorkHours = { before: rfq.allowedWorkHours || '', after: allowedWorkHours.trim() };
+      }
+      if (deadlineAt && new Date(deadlineAt).toISOString() !== rfq.deadlineAt) {
+        auditChangedFields.deadlineAt = { before: rfq.deadlineAt || '', after: new Date(deadlineAt).toISOString() };
+      }
+
+      const auditDetails: Record<string, any> = {
+        rfqId: rfq.id,
+        rfqTitle: title.trim(),
+        previousVersion: currentVersion,
+        newVersion: nextVersion,
+        changeSummary: trimmedSummary,
+        category: rfq.category, // Proves category was preserved
+        changedFields: auditChangedFields,
+        notifiedVendorsCount: notifyVendors ? (rfq.dispatchedVendors?.length || 0) : 0
+      };
+
+      if (isCurrentlyAwarded) {
+        auditDetails.previousAwardRevoked = {
+          vendorId: rfq.awardedVendorId || '',
+          vendorName: rfq.awardedVendorName || '',
+          awardedPrice: rfq.awardedPrice || 0,
+          reason: 'מכרז נפתח מחדש לקבלת הצעות עקב שינוי מפרט ודרישות לפני חתימת הסכם'
+        };
+      }
+
       await logAction({
         tenantId,
         action: 'RFQ_SCOPE_UPDATED',
         actor: {
           uid: user?.uid || 'admin',
           name: adminName,
-          email: user?.email || undefined,
+          ...(user?.email ? { email: user.email } : {}),
           type: 'admin'
         },
-        details: {
-          rfqId: rfq.id,
-          rfqTitle: title.trim(),
-          previousVersion: currentVersion,
-          newVersion: nextVersion,
-          changeSummary: trimmedSummary,
-          category: rfq.category, // Proves category was preserved
-          previousAwardRevoked: isCurrentlyAwarded ? {
-            vendorId: rfq.awardedVendorId,
-            vendorName: rfq.awardedVendorName,
-            awardedPrice: rfq.awardedPrice,
-            reason: 'מכרז נפתח מחדש לקבלת הצעות עקב שינוי מפרט ודרישות לפני חתימת הסכם'
-          } : undefined,
-          changedFields: {
-            title: title.trim() !== rfq.title ? { before: rfq.title, after: title.trim() } : undefined,
-            description: description.trim() !== rfq.description ? { before: rfq.description, after: description.trim() } : undefined,
-            allowedWorkHours: allowedWorkHours.trim() !== rfq.allowedWorkHours ? { before: rfq.allowedWorkHours, after: allowedWorkHours.trim() } : undefined,
-            deadlineAt: deadlineAt && new Date(deadlineAt).toISOString() !== rfq.deadlineAt ? { before: rfq.deadlineAt, after: new Date(deadlineAt).toISOString() } : undefined
-          },
-          notifiedVendorsCount: notifyVendors ? (rfq.dispatchedVendors?.length || 0) : 0
-        }
+        details: auditDetails
       });
 
       // Dispatch WhatsApp Addendum if requested
@@ -199,7 +255,15 @@ export default function RfqScopeAmendmentModal({
 
       const updatedRfq: WorkQuoteRequest = {
         ...rfq,
-        ...updates,
+        title: title.trim(),
+        description: description.trim(),
+        allowedWorkHours: allowedWorkHours.trim(),
+        workStartDate: rfq.workStartDate,
+        workTargetEndDate: rfq.workTargetEndDate,
+        scopeVersion: nextVersion,
+        scopeHistory: updatedHistory,
+        updatedAt: nowIso,
+        ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}),
         status: isCurrentlyAwarded ? 'open' : rfq.status,
         awardedVendorId: isCurrentlyAwarded ? undefined : rfq.awardedVendorId,
         awardedVendorName: isCurrentlyAwarded ? undefined : rfq.awardedVendorName,

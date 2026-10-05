@@ -1466,11 +1466,17 @@ export default function ActiveQuotesPage() {
                                 {rfq.title}
                               </h3>
 
-                              {rfq.location && (
-                                <p className="text-xs text-slate-500 font-medium">
-                                  מיקום: {rfq.location}
-                                </p>
-                              )}
+                              <div className="flex items-center gap-3 text-xs text-slate-500 font-medium flex-wrap">
+                                {rfq.location && (
+                                  <span>מיקום: {rfq.location}</span>
+                                )}
+                                {rfq.createdAt && (
+                                  <span className="flex items-center gap-1 text-slate-400">
+                                    <Calendar size={12} className="text-slate-400" />
+                                    <span>נוצר ב: {new Date(rfq.createdAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* Right side stats & toggle */}
@@ -1539,7 +1545,7 @@ export default function ActiveQuotesPage() {
                                       <ShieldCheck size={12} className="text-emerald-500" />
                                       <span>הסכם עבודה חתום • המפרט נעול</span>
                                     </span>
-                                  ) : rfq.status !== 'cancelled' ? (
+                                  ) : !isRfqClosed(rfq) ? (
                                     <button
                                       type="button"
                                       onClick={() => setAmendingRfq(rfq)}
@@ -1660,11 +1666,19 @@ export default function ActiveQuotesPage() {
                                             {rfq.awardedPrice && ` (₪${rfq.awardedPrice.toLocaleString()})`}
                                           </span>
                                         </div>
-                                        {(rfq.awardReasoning?.awardedAt || rfq.awardedAt) && (
-                                          <span className="text-[11px] text-slate-500 font-bold">
-                                            תאריך אישור: {new Date(rfq.awardReasoning?.awardedAt || rfq.awardedAt || '').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-bold flex-wrap">
+                                          {rfq.createdAt && (
+                                            <span className="flex items-center gap-1">
+                                              <Calendar size={12} className="text-slate-400" />
+                                              <span>נוצר ב: {new Date(rfq.createdAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                            </span>
+                                          )}
+                                          {(rfq.awardReasoning?.awardedAt || rfq.awardedAt) && (
+                                            <span>
+                                              {rfq.createdAt && '• '}תאריך אישור: {new Date(rfq.awardReasoning?.awardedAt || rfq.awardedAt || '').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
 
                                       {rfq.awardReasoning ? (
@@ -2334,11 +2348,19 @@ export default function ActiveQuotesPage() {
                           {comparisonModalRfq.awardedPrice && ` (₪${comparisonModalRfq.awardedPrice.toLocaleString()})`}
                         </span>
                       </div>
-                      {(comparisonModalRfq.awardReasoning?.awardedAt || comparisonModalRfq.awardedAt) && (
-                        <span className="text-[11px] text-slate-500 font-bold">
-                          תאריך אישור: {new Date(comparisonModalRfq.awardReasoning?.awardedAt || comparisonModalRfq.awardedAt || '').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-bold flex-wrap">
+                        {comparisonModalRfq.createdAt && (
+                          <span className="flex items-center gap-1">
+                            <Calendar size={12} className="text-slate-400" />
+                            <span>נוצר ב: {new Date(comparisonModalRfq.createdAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                          </span>
+                        )}
+                        {(comparisonModalRfq.awardReasoning?.awardedAt || comparisonModalRfq.awardedAt) && (
+                          <span>
+                            {comparisonModalRfq.createdAt && '• '}תאריך אישור: {new Date(comparisonModalRfq.awardReasoning?.awardedAt || comparisonModalRfq.awardedAt || '').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {comparisonModalRfq.awardReasoning ? (

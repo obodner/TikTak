@@ -1083,7 +1083,13 @@ export default function ContractorQuotePortal() {
                   {rfq.contractExecution?.committeeSignature?.signedAt && (
                     <div className="text-blue-700 font-bold pt-1 border-t border-slate-100 flex items-center gap-1">
                       <CheckCircle2 size={12} className="text-blue-600" />
-                      <span>נחתם ע״י נציגות הוועד: {rfq.contractExecution.committeeSignature.signerName}</span>
+                      <span>נחתם ע״י נציגות הוועד: {rfq.contractExecution.committeeSignature.signerName} ({new Date(rfq.contractExecution.committeeSignature.signedAt).toLocaleDateString('he-IL')})</span>
+                    </div>
+                  )}
+                  {rfq.contractExecution?.vendorSignature?.signedAt && (
+                    <div className="text-emerald-700 font-bold pt-1 border-t border-slate-100 flex items-center gap-1">
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      <span>נחתם סופית על ידך: {new Date(rfq.contractExecution.vendorSignature.signedAt).toLocaleDateString('he-IL')}</span>
                     </div>
                   )}
                 </div>

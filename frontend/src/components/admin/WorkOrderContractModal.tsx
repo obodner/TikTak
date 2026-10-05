@@ -332,8 +332,27 @@ export default function WorkOrderContractModal({
     return `${day}-${month}-${year}`;
   };
 
+  const formatTimeHM = (dateInput?: string | Date) => {
+    if (!dateInput) return '';
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return '';
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   const todayFormatted = formatDateDMY(new Date());
   const awardedDateFormatted = rfq.awardedAt ? formatDateDMY(rfq.awardedAt) : todayFormatted;
+
+  const contractorSignedAt = contractExecution?.vendorSignature?.signedAt || contractExecution?.fullySignedAt;
+  const adminSignedAt = contractExecution?.committeeSignature?.signedAt;
+
+  // The definitive date the contract entered into legal force (the contractor's signing date when fully signed)
+  const contractFinalizedDateFormatted = contractorSignedAt
+    ? formatDateDMY(contractorSignedAt)
+    : adminSignedAt
+    ? formatDateDMY(adminSignedAt)
+    : awardedDateFormatted;
 
   const isSettlementTenant =
     (tenantInfo?.type || rfq.tenantType)?.toLowerCase() === 'municipality' ||
@@ -1151,11 +1170,16 @@ export default function WorkOrderContractModal({
                   : 'נציגות הוועד חתמה על ההסכם. התנאים נעולים כדי להבטיח את אמינות המסמך לחתימת הקבלן.'}
               </span>
             </div>
-            {contractExecution?.committeeSignature?.signedAt && (
-              <span className="text-[11px] text-blue-700 font-bold">
-                נחתם בתאריך: {formatDateDMY(contractExecution.committeeSignature.signedAt)}
+            {contractExecution?.status === 'fully_signed' && contractorSignedAt ? (
+              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 size={12} />
+                <span>נחתם סופית ע״י הקבלן בתאריך: {formatDateDMY(contractorSignedAt)}</span>
               </span>
-            )}
+            ) : contractExecution?.committeeSignature?.signedAt ? (
+              <span className="text-[11px] text-blue-700 font-bold">
+                נחתם ע״י הוועד בתאריך: {formatDateDMY(contractExecution.committeeSignature.signedAt)}
+              </span>
+            ) : null}
           </div>
         )}
 
@@ -1842,7 +1866,13 @@ export default function WorkOrderContractModal({
                     <div className="text-left text-[11px] space-y-0.5 shrink-0 sm:hidden" dir="ltr">
                       <div className="font-extrabold text-slate-900">Ref: RFQ-{rfq.id.slice(0, 8).toUpperCase()}</div>
                       {rfq.ticketNumber && <div className="text-blue-600 font-bold">Ticket #{rfq.ticketNumber}</div>}
-                      <div className="text-slate-400 text-[10px]">{todayFormatted}</div>
+                      <div className="text-slate-500 text-[10px] font-medium">
+                        {contractExecution?.status === 'fully_signed' && contractorSignedAt
+                          ? `תאריך חתימה: ${formatDateDMY(contractorSignedAt)}`
+                          : contractExecution?.status === 'signed_by_admin' && adminSignedAt
+                          ? `נחתם ע״י הוועד: ${formatDateDMY(adminSignedAt)}`
+                          : `תאריך: ${todayFormatted}`}
+                      </div>
                     </div>
                   </div>
 
@@ -1862,7 +1892,13 @@ export default function WorkOrderContractModal({
                 <div className="text-left text-xs space-y-0.5 shrink-0 hidden sm:block" dir="ltr">
                   <div className="font-extrabold text-slate-900">Ref: RFQ-{rfq.id.slice(0, 8).toUpperCase()}</div>
                   {rfq.ticketNumber && <div className="text-blue-600 font-bold">Ticket #{rfq.ticketNumber}</div>}
-                  <div className="text-slate-500">{todayFormatted}</div>
+                  <div className="text-slate-500 font-medium">
+                    {contractExecution?.status === 'fully_signed' && contractorSignedAt
+                      ? `תאריך חתימה: ${formatDateDMY(contractorSignedAt)}`
+                      : contractExecution?.status === 'signed_by_admin' && adminSignedAt
+                      ? `נחתם ע״י הוועד: ${formatDateDMY(adminSignedAt)}`
+                      : `תאריך: ${todayFormatted}`}
+                  </div>
                 </div>
               </div>
 
@@ -2120,7 +2156,7 @@ export default function WorkOrderContractModal({
               {/* Signatures Block */}
               <div className="pt-4 border-t-2 border-slate-300">
                 <div className="text-xs font-bold text-slate-700 mb-6 flex items-center justify-between">
-                  <span>ולראיה באו הצדדים על החתום בתאריך {awardedDateFormatted}:</span>
+                  <span>ולראיה באו הצדדים על החתום בתאריך {contractFinalizedDateFormatted}:</span>
                   {contractExecution?.status === 'fully_signed' && (
                     <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-xs">
                       <CheckCircle2 size={13} />
@@ -2148,7 +2184,10 @@ export default function WorkOrderContractModal({
                         />
                         <div className="text-[9px] text-emerald-700 font-bold flex items-center gap-1 pt-0.5">
                           <CheckCircle2 size={10} />
-                          <span>נחתם דיגיטלית: {formatDateDMY(contractExecution.committeeSignature.signedAt)}</span>
+                          <span>
+                            נחתם דיגיטלית: {formatDateDMY(contractExecution.committeeSignature.signedAt)}
+                            {formatTimeHM(contractExecution.committeeSignature.signedAt) ? ` (${formatTimeHM(contractExecution.committeeSignature.signedAt)})` : ''}
+                          </span>
                         </div>
                       </div>
                     ) : (
@@ -2176,7 +2215,10 @@ export default function WorkOrderContractModal({
                         />
                         <div className="text-[9px] text-emerald-700 font-bold flex items-center gap-1 pt-0.5">
                           <CheckCircle2 size={10} />
-                          <span>נחתם דיגיטלית: {formatDateDMY(contractExecution.vendorSignature.signedAt)}</span>
+                          <span>
+                            נחתם דיגיטלית: {formatDateDMY(contractExecution.vendorSignature.signedAt)}
+                            {formatTimeHM(contractExecution.vendorSignature.signedAt) ? ` (${formatTimeHM(contractExecution.vendorSignature.signedAt)})` : ''}
+                          </span>
                         </div>
                       </div>
                     ) : (
