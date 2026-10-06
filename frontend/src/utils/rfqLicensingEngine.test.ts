@@ -6,10 +6,10 @@ import { describe, it, expect } from 'vitest';
 
 export const RFQ_TIER_PRESETS: Record<string, { annualQuota: number; overageRate: number }> = {
   disabled: { annualQuota: 0, overageRate: 59.0 },
-  starter: { annualQuota: 3, overageRate: 59.0 },
-  basic: { annualQuota: 6, overageRate: 49.0 },
-  standard: { annualQuota: 12, overageRate: 45.0 },
-  growth: { annualQuota: 25, overageRate: 39.0 },
+  starter: { annualQuota: 5, overageRate: 49.0 },
+  basic: { annualQuota: 10, overageRate: 45.0 },
+  standard: { annualQuota: 15, overageRate: 40.0 },
+  growth: { annualQuota: 25, overageRate: 36.0 },
   enterprise: { annualQuota: 50, overageRate: 35.0 }
 };
 
@@ -28,7 +28,12 @@ export function evaluateRfqDispatchEligibility(licensing: {
   isExpired: boolean;
   overageFee: number;
 } {
-  const isRfqActive = licensing.status !== 'disabled' && licensing.tier !== 'disabled';
+  const isRfqActive = Boolean(
+    licensing &&
+    licensing.status === 'active' &&
+    licensing.tier &&
+    licensing.tier !== 'disabled'
+  );
   if (!isRfqActive) {
     return { canDispatch: false, isHardCapBlocked: true, isSoftCapOverage: false, isExpired: false, overageFee: 0 };
   }
@@ -106,12 +111,46 @@ export function evaluateLicenseExpiryMilestone(
   return null;
 }
 
+export function calculateLicenseRenewalUpdate(params: {
+  renewalMode: 'midterm' | 'restart';
+  existingExpiresAt?: string;
+  currentDispatchedCount?: number;
+  now?: Date;
+}): {
+  licenseExpiresAt: string;
+  resetUsage: boolean;
+  expectedDispatchedCount: number;
+} {
+  const now = params.now || new Date();
+  const currentDispatched = Number(params.currentDispatchedCount ?? 0);
+  const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  if (params.renewalMode === 'restart') {
+    return {
+      licenseExpiresAt: oneYearFromNow,
+      resetUsage: true,
+      expectedDispatchedCount: 0
+    };
+  }
+
+  // Midterm upgrade: preserve existing expiration date and current usage
+  const existingDateStr = params.existingExpiresAt
+    ? new Date(params.existingExpiresAt).toISOString().split('T')[0]
+    : oneYearFromNow;
+
+  return {
+    licenseExpiresAt: existingDateStr,
+    resetUsage: false,
+    expectedDispatchedCount: currentDispatched
+  };
+}
+
 describe('RFQ Licensing & Quota Engine Tests', () => {
   it('correctly maps all 5 PRD tiers and overage rates', () => {
-    expect(RFQ_TIER_PRESETS.starter).toEqual({ annualQuota: 3, overageRate: 59.0 });
-    expect(RFQ_TIER_PRESETS.basic).toEqual({ annualQuota: 6, overageRate: 49.0 });
-    expect(RFQ_TIER_PRESETS.standard).toEqual({ annualQuota: 12, overageRate: 45.0 });
-    expect(RFQ_TIER_PRESETS.growth).toEqual({ annualQuota: 25, overageRate: 39.0 });
+    expect(RFQ_TIER_PRESETS.starter).toEqual({ annualQuota: 5, overageRate: 49.0 });
+    expect(RFQ_TIER_PRESETS.basic).toEqual({ annualQuota: 10, overageRate: 45.0 });
+    expect(RFQ_TIER_PRESETS.standard).toEqual({ annualQuota: 15, overageRate: 40.0 });
+    expect(RFQ_TIER_PRESETS.growth).toEqual({ annualQuota: 25, overageRate: 36.0 });
     expect(RFQ_TIER_PRESETS.enterprise).toEqual({ annualQuota: 50, overageRate: 35.0 });
   });
 
@@ -174,6 +213,20 @@ describe('RFQ Licensing & Quota Engine Tests', () => {
 
       expect(res.canDispatch).toBe(false);
       expect(res.isExpired).toBe(true);
+    });
+
+    it('blocks dispatch when customer is disabled or tier/status missing', () => {
+      const resDisabled = evaluateRfqDispatchEligibility({
+        status: 'disabled',
+        tier: 'disabled'
+      });
+      expect(resDisabled.canDispatch).toBe(false);
+
+      const resMissingTier = evaluateRfqDispatchEligibility({
+        status: undefined,
+        tier: undefined
+      });
+      expect(resMissingTier.canDispatch).toBe(false);
     });
   });
 
@@ -248,6 +301,37 @@ describe('RFQ Licensing & Quota Engine Tests', () => {
         expiry_0d: '2026-10-01T06:00:00Z'
       });
       expect(milestone).toBeNull();
+    });
+  });
+
+  describe('License Renewal & Midterm Upgrade Modes (Option 1 vs Option 2)', () => {
+    const fixedNow = new Date('2026-10-06T12:00:00Z');
+    const existingExpiry = '2026-12-31T23:59:59.000Z';
+
+    it('Option 1 (Midterm Upgrade): preserves countdown and maintains existing usage', () => {
+      const result = calculateLicenseRenewalUpdate({
+        renewalMode: 'midterm',
+        existingExpiresAt: existingExpiry,
+        currentDispatchedCount: 12,
+        now: fixedNow
+      });
+
+      expect(result.resetUsage).toBe(false);
+      expect(result.expectedDispatchedCount).toBe(12);
+      expect(result.licenseExpiresAt).toBe('2026-12-31');
+    });
+
+    it('Option 2 (Full 1-Year Renewal): resets countdown to 365 days from now and resets usage to 0', () => {
+      const result = calculateLicenseRenewalUpdate({
+        renewalMode: 'restart',
+        existingExpiresAt: existingExpiry,
+        currentDispatchedCount: 12,
+        now: fixedNow
+      });
+
+      expect(result.resetUsage).toBe(true);
+      expect(result.expectedDispatchedCount).toBe(0);
+      expect(result.licenseExpiresAt).toBe('2027-10-06');
     });
   });
 });

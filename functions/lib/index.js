@@ -3852,6 +3852,25 @@ exports.dispatchRfqToVendors = (0, https_1.onRequest)({ cors: true, secrets: ["W
                 }
             }
         }
+        const rfqLic = tenantData.rfqLicensing;
+        const isRfqActive = Boolean(rfqLic &&
+            rfqLic.status === 'active' &&
+            rfqLic.tier &&
+            rfqLic.tier !== 'disabled');
+        if (!isRfqActive) {
+            res.status(403).send({
+                error: "RFQ Disabled",
+                message: "מודול מכרזי הצעות מחיר (RFQ) מושבת עבור ישות זו בהגדרות הרישוי. לא ניתן לשגר פניות לקבלנים."
+            });
+            return;
+        }
+        if (rfqLic.licenseExpiresAt && new Date(rfqLic.licenseExpiresAt).getTime() < Date.now()) {
+            res.status(403).send({
+                error: "RFQ License Expired",
+                message: "תוקף רישוי הצעות המחיר השנתי (RFQ) פג. לא ניתן לשגר פניות לקבלנים."
+            });
+            return;
+        }
         const phoneNumberId = tenantData.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
         const tenantName = tenantData.name || tenantId;
         const tenantAddress = tenantData.address || "";
@@ -4731,6 +4750,14 @@ exports.updateTenantLicensing = (0, https_1.onRequest)({ cors: true }, async (re
                 updates["rfqLicensing.licenseExpiresAt"] = rfqLicensing.licenseExpiresAt;
             if (rfqLicensing.status !== undefined)
                 updates["rfqLicensing.status"] = rfqLicensing.status;
+            if (rfqLicensing.resetUsage) {
+                updates["rfqLicensing.currentAnnualUsage"] = {
+                    dispatchedCount: 0,
+                    alertsSent: {}
+                };
+                updates["rfqLicensing.expiryAlertsSent"] = {};
+                updates["rfqLicensing.licenseStartDate"] = new Date().toISOString();
+            }
         }
         await tenantRef.update(updates);
         await recordAuditLog({
@@ -4747,7 +4774,9 @@ exports.updateTenantLicensing = (0, https_1.onRequest)({ cors: true }, async (re
                 previousTickets: currentData.subscription?.tier,
                 newTickets: ticketSubscription?.tier,
                 previousRfq: currentData.rfqLicensing?.tier,
-                newRfq: rfqLicensing?.tier
+                newRfq: rfqLicensing?.tier,
+                renewalMode: rfqLicensing?.resetUsage ? "renewal_restart" : "midterm_update",
+                resetUsage: Boolean(rfqLicensing?.resetUsage)
             }
         });
         res.status(200).send({ success: true, tenantId, updates });
@@ -5088,8 +5117,12 @@ exports.recordRfqDispatch = (0, https_1.onRequest)({ cors: true, secrets: ["WHAT
                 }
             }
         }
-        const rfqLicensing = tenantData.rfqLicensing || {};
-        if (rfqLicensing.status === 'disabled' || rfqLicensing.tier === 'disabled') {
+        const rfqLicensing = tenantData.rfqLicensing;
+        const isRfqActive = Boolean(rfqLicensing &&
+            rfqLicensing.status === 'active' &&
+            rfqLicensing.tier &&
+            rfqLicensing.tier !== 'disabled');
+        if (!isRfqActive) {
             res.status(403).send({ error: "RFQ procurement licensing is disabled for this tenant." });
             return;
         }

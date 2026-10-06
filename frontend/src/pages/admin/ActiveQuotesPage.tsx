@@ -40,6 +40,8 @@ import {
   Trash2,
   Star,
   ShieldCheck,
+  ShieldAlert,
+  AlertCircle,
   PenTool,
   Info
 } from 'lucide-react';
@@ -110,6 +112,19 @@ export default function ActiveQuotesPage() {
 
   // Tenant Info for dynamic customer type, building address, and customer logo
   const [tenantInfo, setTenantInfo] = useState<{ name: string; type: string; address?: string; logoUrl?: string; vaadPhone?: string } | null>(null);
+  const [rfqLicensing, setRfqLicensing] = useState<{
+    tier?: string;
+    status?: string;
+    annualQuota?: number;
+    currentAnnualUsage?: { dispatchedCount?: number };
+    licenseExpiresAt?: string;
+  } | null>(null);
+  const isRfqActive = Boolean(
+    rfqLicensing &&
+    rfqLicensing.status === 'active' &&
+    rfqLicensing.tier &&
+    rfqLicensing.tier !== 'disabled'
+  );
 
   // Award Winner Modal State (QA-105 & Phase 5 Reasoning)
   const [awardModalData, setAwardModalData] = useState<{
@@ -223,6 +238,16 @@ export default function ActiveQuotesPage() {
           if (d.address) resolvedAddress = d.address;
           if (d.logoUrl) resolvedLogoUrl = d.logoUrl;
           if (d.vaadPhone) resolvedVaadPhone = d.vaadPhone;
+          if (d.rfqLicensing && d.rfqLicensing.status === 'active' && d.rfqLicensing.tier && d.rfqLicensing.tier !== 'disabled') {
+            setRfqLicensing(d.rfqLicensing);
+          } else {
+            setRfqLicensing({
+              ...(d.rfqLicensing || {}),
+              tier: 'disabled',
+              status: 'disabled',
+              annualQuota: 0
+            });
+          }
         }
       } catch (err) {
         console.warn('Firestore tenant fetch error:', err);
@@ -1042,14 +1067,37 @@ export default function ActiveQuotesPage() {
           </div>
         </div>
 
-        <Link
-          to={`/admin/${tenantId}/quotes/new`}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md shadow-blue-200 transition-all cursor-pointer shrink-0"
-        >
-          <Plus size={18} />
-          <span>בקשת הצעה חדשה</span>
-        </Link>
+        {isRfqActive ? (
+          <Link
+            to={`/admin/${tenantId}/quotes/new`}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md shadow-blue-200 transition-all cursor-pointer shrink-0"
+          >
+            <Plus size={18} />
+            <span>בקשת הצעה חדשה</span>
+          </Link>
+        ) : (
+          <div
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold cursor-not-allowed shrink-0"
+            title="מודול הצעות מחיר מושבת לישות זו בהגדרות הרישוי"
+          >
+            <ShieldAlert size={16} className="text-red-400 shrink-0" />
+            <span>מודול RFQ מושבת</span>
+          </div>
+        )}
       </div>
+
+      {/* Alert Notification Banner for Disabled RFQ Module */}
+      {!isRfqActive && rfqLicensing && (
+        <div className="mt-4 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-900 flex items-center gap-3 shadow-xs">
+          <AlertCircle size={22} className="text-red-600 shrink-0" />
+          <div>
+            <p className="text-sm font-black text-red-950">מודול מכרזי הצעות מחיר (RFQ) מושבת עבור ישות זו</p>
+            <p className="text-xs text-red-700 mt-0.5">
+              ישות זו מוגדרת כ-Disabled בהגדרות רישוי המערכת. יצירת בקשות הצעת מחיר חדשות ושילוח פניות לקבלנים חסומים עד להפעלת הרישוי.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Alert Notification Banner for Incoming Quote */}
       {targetRfqId && isQuoteAlert && (
@@ -1218,13 +1266,20 @@ export default function ActiveQuotesPage() {
               ? 'נסה לשנות את תנאי החיפוש או לבחור בלשונית אחרת.'
               : 'יצירת בקשת מחיר תאפשר לך לשגר קישור ישיר לקבלנים ב-WhatsApp ולקבל הצעות להשוואה בקליק אחד.'}
           </p>
-          <Link
-            to={`/admin/${tenantId}/quotes/new`}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-bold shadow-md shadow-blue-200 transition-colors"
-          >
-            <Plus size={16} />
-            <span>צור בקשת הצעה חדשה</span>
-          </Link>
+          {isRfqActive ? (
+            <Link
+              to={`/admin/${tenantId}/quotes/new`}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-bold shadow-md shadow-blue-200 transition-colors"
+            >
+              <Plus size={16} />
+              <span>צור בקשת הצעה חדשה</span>
+            </Link>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-400 text-xs md:text-sm font-bold cursor-not-allowed">
+              <ShieldAlert size={16} className="text-red-400 shrink-0" />
+              <span>מודול RFQ מושבת בהגדרות הרישוי</span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-6 space-y-6">

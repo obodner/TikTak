@@ -157,6 +157,12 @@ export default function NewRfqPage() {
   const [tenantType, setTenantType] = useState<string>('building');
   const isSettlement = tenantType?.toLowerCase() === 'municipality' || tenantType?.toLowerCase() === 'settlement' || tenantType?.toLowerCase() === 'community';
   const [rfqLicensing, setRfqLicensing] = useState<RfqLicensingState | null>(null);
+  const isRfqActive = Boolean(
+    rfqLicensing &&
+    rfqLicensing.status === 'active' &&
+    rfqLicensing.tier &&
+    rfqLicensing.tier !== 'disabled'
+  );
   const [isTenantFrozen, setIsTenantFrozen] = useState(false);
   const [categoryPool, setCategoryPool] = useState<string[]>(DEFAULT_CATEGORIES);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -443,8 +449,15 @@ export default function NewRfqPage() {
           if (tData.type) {
             setTenantType(tData.type);
           }
-          if (tData.rfqLicensing) {
+          if (tData.rfqLicensing && tData.rfqLicensing.status === 'active' && tData.rfqLicensing.tier && tData.rfqLicensing.tier !== 'disabled') {
             setRfqLicensing(tData.rfqLicensing);
+          } else {
+            setRfqLicensing({
+              ...(tData.rfqLicensing || {}),
+              tier: 'disabled',
+              status: 'disabled',
+              annualQuota: 0
+            });
           }
           let frozen = tData.isActive === false || tData.subscription?.status === 'frozen';
           if (!frozen && tData.parentEnterpriseId) {
@@ -847,6 +860,18 @@ export default function NewRfqPage() {
   // Save RFQ as Draft (Pillar 1)
   const handleSaveDraft = async () => {
     if (!tenantId) return;
+
+    if (isTenantFrozen) {
+      setFormError('חשבון הישות מוקפא זמנית. שמירת טיוטות חסומה.');
+      return;
+    }
+
+    const isRfqActive = Boolean(rfqLicensing && rfqLicensing.status !== 'disabled' && rfqLicensing.tier !== 'disabled');
+    if (!isRfqActive) {
+      setFormError('מודול מכרזי הצעות מחיר (RFQ) מושבת עבור ישות זו בהגדרות הרישוי. לא ניתן לשמור טיוטות.');
+      return;
+    }
+
     setIsSavingDraft(true);
     setFormError('');
 
@@ -992,6 +1017,25 @@ export default function NewRfqPage() {
       return;
     }
 
+    const isRfqActive = Boolean(rfqLicensing && rfqLicensing.status !== 'disabled' && rfqLicensing.tier !== 'disabled');
+    if (!isRfqActive) {
+      setFormError('מודול מכרזי הצעות מחיר (RFQ) מושבת עבור ישות זו בהגדרות הרישוי. לא ניתן ליצור או לשגר מכרז.');
+      return;
+    }
+
+    if (rfqLicensing?.licenseExpiresAt && new Date(rfqLicensing.licenseExpiresAt).getTime() < Date.now()) {
+      setFormError('תוקף רישוי הצעות המחיר השנתי (RFQ) פג. משלוח בקשות חדשות לקבלנים מוקפא.');
+      return;
+    }
+
+    const aQuota = Number(rfqLicensing?.annualQuota ?? 0);
+    const dCount = Number(rfqLicensing?.currentAnnualUsage?.dispatchedCount ?? 0);
+    const enf = rfqLicensing?.enforcementMode || 'hard';
+    if (enf === 'hard' && aQuota > 0 && dCount >= aQuota) {
+      setFormError(`הגעת למלוא מכסת בקשות הצעות המחיר השנתית (${dCount}/${aQuota}) במדיניות Hard Cap. לא ניתן לשגר מכרז נוסף.`);
+      return;
+    }
+
     if (!title.trim()) {
       setFormError('כותרת העבודה הינה שדה חובה');
       return;
@@ -1128,9 +1172,15 @@ export default function NewRfqPage() {
               dispatchedCount: resJson.dispatchedCount
             }
           } : null);
+        } else {
+          const errData = await recordRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'שגיאה באישור שילוח המכרז בשרת');
         }
-      } catch (recErr) {
-        console.warn('Failed to call recordRfqDispatch:', recErr);
+      } catch (recErr: any) {
+        console.error('Failed to call recordRfqDispatch:', recErr);
+        setFormError(recErr.message || 'שגיאה באימות רישוי המכרז מול השרת');
+        setSubmitting(false);
+        return;
       }
 
       // Audit Logs
@@ -1196,8 +1246,7 @@ export default function NewRfqPage() {
             }
           })
         });
-        const dispatchResult = await dispatchRes.json();
-        console.log("RFQ WhatsApp dispatch response:", dispatchResult);
+        await dispatchRes.json().catch(() => ({}));
       } catch (dispatchErr) {
         console.warn("Automated WhatsApp dispatch call failed, links available in Active Quotes:", dispatchErr);
       }
@@ -1246,8 +1295,8 @@ export default function NewRfqPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* RFQ Annual Quota Pill */}
-            {rfqLicensing && rfqLicensing.status !== 'disabled' && (
+            {/* RFQ Annual Quota Pill or Disabled Pill */}
+            {isRfqActive && rfqLicensing ? (
               (() => {
                 const aQuota = Number(rfqLicensing.annualQuota ?? 0);
                 const dCount = Number(rfqLicensing.currentAnnualUsage?.dispatchedCount ?? 0);
@@ -1288,6 +1337,25 @@ export default function NewRfqPage() {
                   </div>
                 );
               })()
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-2 shadow-xs flex items-center gap-2.5">
+                <div className="p-1.5 rounded-xl bg-red-100 text-red-700">
+                  <ShieldAlert size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-red-800">
+                      מודול RFQ מושבת
+                    </span>
+                    <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-red-200 text-red-900">
+                      Disabled
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-red-600 font-bold">
+                    ישות זו אינה מורשית לשגר מכרזים
+                  </div>
+                </div>
+              </div>
             )}
 
             <Link
@@ -1302,6 +1370,16 @@ export default function NewRfqPage() {
       </div>
 
       <form onSubmit={handleSubmitRfq} className="space-y-6">
+        {!isRfqActive && (
+          <div className="p-4 bg-red-50 border border-red-200 text-red-900 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-3 shadow-xs">
+            <AlertCircle size={22} className="shrink-0 text-red-600" />
+            <div>
+              <p className="text-sm font-black text-red-950">מודול מכרזי הצעות מחיר (RFQ) מושבת עבור ישות זו</p>
+              <p className="text-red-700 mt-0.5">ישות זו מוגדרת כ-Disabled בהגדרות רישוי RFQ. פעולות יצירת מכרז, שמירת טיוטות ושילוח לקבלנים חסומות עד להפעלת המודול על ידי הנהלת המערכת.</p>
+            </div>
+          </div>
+        )}
+
         {draftId && (
           <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs md:text-sm font-bold flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2">
@@ -2050,15 +2128,26 @@ export default function NewRfqPage() {
             ביטול
           </Link>
 
-          {/* Hard Cap & Soft Cap Warning Banners */}
+          {/* Hard Cap, Soft Cap & Disabled Warning Banners */}
           {(() => {
             const aQuota = Number(rfqLicensing?.annualQuota ?? 0);
             const dCount = Number(rfqLicensing?.currentAnnualUsage?.dispatchedCount ?? 0);
-            const isRfqActive = rfqLicensing?.status !== 'disabled' && rfqLicensing?.tier !== 'disabled';
             const enf = rfqLicensing?.enforcementMode || 'hard';
             const isExp = rfqLicensing?.licenseExpiresAt ? new Date(rfqLicensing.licenseExpiresAt).getTime() < Date.now() : false;
             const isHardCapBlocked = isRfqActive && aQuota > 0 && dCount >= aQuota && enf === 'hard';
             const isSoftCapOverage = isRfqActive && aQuota > 0 && dCount >= aQuota && enf === 'soft';
+
+            if (!isRfqActive) {
+              return (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-800 text-xs font-bold w-full my-2">
+                  <AlertCircle className="text-red-600 shrink-0" size={20} />
+                  <div>
+                    <p className="text-sm font-black text-red-900">מודול מכרזי הצעות מחיר (RFQ) מושבת עבור ישות זו</p>
+                    <p className="text-red-700 mt-0.5">ישות זו מוגדרת כ-Disabled בהגדרות רישוי המערכת. שמירת טיוטות ושילוח מכרזים חסומים.</p>
+                  </div>
+                </div>
+              );
+            }
 
             if (isExp) {
               return (
@@ -2115,7 +2204,7 @@ export default function NewRfqPage() {
             <button
               type="button"
               onClick={handleSaveDraft}
-              disabled={isSavingDraft || submitting}
+              disabled={isSavingDraft || submitting || isTenantFrozen || !isRfqActive}
               className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {isSavingDraft ? (
@@ -2137,10 +2226,10 @@ export default function NewRfqPage() {
                 submitting ||
                 isSavingDraft ||
                 isTenantFrozen ||
+                !isRfqActive ||
                 selectedVendorIds.length === 0 ||
                 Boolean(
                   rfqLicensing &&
-                  rfqLicensing.status !== 'disabled' &&
                   Number(rfqLicensing.annualQuota ?? 0) > 0 &&
                   Number(rfqLicensing.currentAnnualUsage?.dispatchedCount ?? 0) >= Number(rfqLicensing.annualQuota ?? 0) &&
                   (rfqLicensing.enforcementMode || 'hard') === 'hard'

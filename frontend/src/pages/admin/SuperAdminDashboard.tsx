@@ -134,10 +134,11 @@ export default function SuperAdminDashboard() {
   const [ticketForm, setTicketForm] = useState({ tier: 'standard', monthlyQuota: 80, overageRate: 8.0 });
   const [rfqForm, setRfqForm] = useState({
     tier: 'standard',
-    annualQuota: 12,
-    overageRate: 45.0,
+    annualQuota: 15,
+    overageRate: 40.0,
     enforcementMode: 'hard' as 'hard' | 'soft',
-    licenseExpiresAt: ''
+    licenseExpiresAt: '',
+    renewalMode: 'midterm' as 'midterm' | 'restart'
   });
 
   useEffect(() => {
@@ -251,10 +252,11 @@ export default function SuperAdminDashboard() {
 
     setRfqForm({
       tier: tenant.rfqLicensing?.tier || 'standard',
-      annualQuota: tenant.rfqLicensing?.annualQuota ?? 12,
-      overageRate: tenant.rfqLicensing?.overageRate ?? 45.0,
+      annualQuota: tenant.rfqLicensing?.annualQuota ?? 15,
+      overageRate: tenant.rfqLicensing?.overageRate ?? 40.0,
       enforcementMode: tenant.rfqLicensing?.enforcementMode || 'hard',
-      licenseExpiresAt: defaultExpiryDate
+      licenseExpiresAt: defaultExpiryDate,
+      renewalMode: 'midterm'
     });
     setActionError(null);
     setActiveMenuTenantId(null);
@@ -325,7 +327,8 @@ export default function SuperAdminDashboard() {
             overageRate: Number(rfqForm.overageRate),
             enforcementMode: rfqForm.enforcementMode,
             licenseExpiresAt: rfqForm.licenseExpiresAt ? new Date(rfqForm.licenseExpiresAt).toISOString() : undefined,
-            status: rfqForm.tier !== 'disabled' ? 'active' : 'disabled'
+            status: rfqForm.tier !== 'disabled' ? 'active' : 'disabled',
+            resetUsage: rfqForm.renewalMode === 'restart'
           }
         })
       });
@@ -338,6 +341,7 @@ export default function SuperAdminDashboard() {
       // Update local state
       setTenants(prev => prev.map(tItem => {
         if (tItem.id === editingRfqTenant.id) {
+          const currentUsage = tItem.rfqLicensing?.currentAnnualUsage;
           return {
             ...tItem,
             rfqLicensing: {
@@ -347,7 +351,10 @@ export default function SuperAdminDashboard() {
               overageRate: Number(rfqForm.overageRate),
               enforcementMode: rfqForm.enforcementMode,
               licenseExpiresAt: rfqForm.licenseExpiresAt,
-              status: rfqForm.tier !== 'disabled' ? 'active' : 'disabled'
+              status: rfqForm.tier !== 'disabled' ? 'active' : 'disabled',
+              currentAnnualUsage: rfqForm.renewalMode === 'restart'
+                ? { dispatchedCount: 0, alertsSent: {} }
+                : currentUsage
             }
           };
         }
@@ -479,10 +486,10 @@ export default function SuperAdminDashboard() {
 
   const RFQ_TIER_PRESETS: Record<string, { annualQuota: number; overageRate: number }> = {
     disabled: { annualQuota: 0, overageRate: 59.0 },
-    starter: { annualQuota: 3, overageRate: 59.0 },
-    basic: { annualQuota: 6, overageRate: 49.0 },
-    standard: { annualQuota: 12, overageRate: 45.0 },
-    growth: { annualQuota: 25, overageRate: 39.0 },
+    starter: { annualQuota: 5, overageRate: 49.0 },
+    basic: { annualQuota: 10, overageRate: 45.0 },
+    standard: { annualQuota: 15, overageRate: 40.0 },
+    growth: { annualQuota: 25, overageRate: 36.0 },
     enterprise: { annualQuota: 50, overageRate: 35.0 }
   };
 
@@ -1278,6 +1285,114 @@ export default function SuperAdminDashboard() {
                       </div>
                     </div>
 
+                    {/* Annual Cycle & Renewal Option Selector */}
+                    {editingRfqTenant && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          {t('super_field_renewal_mode')}
+                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                          {/* Option 1: Mid-Term Upgrade */}
+                          <div
+                            onClick={() => {
+                              const existingExp = editingRfqTenant.rfqLicensing?.licenseExpiresAt;
+                              const fallbackExp = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                              setRfqForm(prev => ({
+                                ...prev,
+                                renewalMode: 'midterm',
+                                licenseExpiresAt: existingExp
+                                  ? new Date(existingExp).toISOString().split('T')[0]
+                                  : (prev.licenseExpiresAt || fallbackExp)
+                              }));
+                            }}
+                            className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                              rfqForm.renewalMode === 'midterm'
+                                ? 'border-purple-600 bg-purple-50/70 shadow-sm'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <input
+                                type="radio"
+                                name="rfqRenewalMode"
+                                checked={rfqForm.renewalMode === 'midterm'}
+                                onChange={() => {}}
+                                className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-1 mb-1">
+                                  <span className="text-xs font-bold text-slate-900 truncate">
+                                    {t('super_renewal_midterm_title')}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 whitespace-nowrap">
+                                    {t('super_renewal_midterm_badge')}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-600 leading-snug">
+                                  שמירת תוקף מקורי (
+                                  <strong className="text-slate-800">
+                                    {editingRfqTenant.rfqLicensing?.licenseExpiresAt
+                                      ? formatDefiniteDate(editingRfqTenant.rfqLicensing.licenseExpiresAt)
+                                      : 'לא מוגדר'}
+                                  </strong>
+                                  ). מונה ניצול (
+                                  <strong className="text-purple-700">
+                                    {editingRfqTenant.rfqLicensing?.currentAnnualUsage?.dispatchedCount || 0}
+                                  </strong>{' '}
+                                  מתוך {rfqForm.annualQuota}) ממשיך כרגיל.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Option 2: Full 1-Year Renewal */}
+                          <div
+                            onClick={() => {
+                              const oneYearDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                              setRfqForm(prev => ({
+                                ...prev,
+                                renewalMode: 'restart',
+                                licenseExpiresAt: oneYearDate
+                              }));
+                            }}
+                            className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                              rfqForm.renewalMode === 'restart'
+                                ? 'border-purple-600 bg-purple-50/70 shadow-sm'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <input
+                                type="radio"
+                                name="rfqRenewalMode"
+                                checked={rfqForm.renewalMode === 'restart'}
+                                onChange={() => {}}
+                                className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-1 mb-1">
+                                  <span className="text-xs font-bold text-slate-900 truncate">
+                                    {t('super_renewal_restart_title')}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 whitespace-nowrap">
+                                    {t('super_renewal_restart_badge')}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-600 leading-snug">
+                                  איפוס ספירה לאחור ל-365 ימים מהיום (
+                                  <strong className="text-purple-700">
+                                    {formatDefiniteDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000))}
+                                  </strong>
+                                  ) ואיפוס מונה הבקשות ל-
+                                  <strong className="text-emerald-700">0</strong>.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">{t('super_field_annual_quota')}</label>
@@ -1325,6 +1440,17 @@ export default function SuperAdminDashboard() {
                           onChange={e => setRfqForm({ ...rfqForm, licenseExpiresAt: e.target.value })}
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                         />
+                        <div className="text-[10px] mt-1">
+                          {rfqForm.renewalMode === 'restart' ? (
+                            <span className="text-emerald-700 font-bold">
+                              ✓ מונה השימוש יאופס ל-0 והספירה לאחור תחל מחדש
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-medium">
+                              ℹ מונה הניצול ({editingRfqTenant?.rfqLicensing?.currentAnnualUsage?.dispatchedCount || 0} בקשות) יישמר
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
