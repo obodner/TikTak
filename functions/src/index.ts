@@ -3,6 +3,8 @@ import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { calculateWorkingDays } from "./utils/slaEngine";
 import { t } from "./utils/i18n";
 import { getTenantQuotaStats } from "./utils/quotaEngine";
+import { validateImageBuffer, checkRateLimit, verifyMetaWebhookSignature, verifyAppCheckHeader } from "./utils/securityGuards";
+import { classifyMaintenanceIncident, refineSummaryWithAI } from "./utils/aiEngine";
 export { slaCron } from "./slaCron";
 export { checkAnnualLicenseExpirations } from "./licenseExpiryCron";
 import * as logger from "firebase-functions/logger";
@@ -10,7 +12,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType, Schema } from "@google/generative-ai";
 import { randomUUID } from "crypto";
 
 initializeApp();
@@ -225,101 +227,154 @@ export const health = onRequest({ cors: true }, (request, response) => {
 
 export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] }, async (req, res) => {
   try {
+    // 1. IP Rate Limiting Guard (Anti-DoW / Anti-Automation)
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown-ip";
+    const rateLimit = checkRateLimit(`analyzeImage:${clientIp}`, 20, 5 * 60 * 1000); // 20 requests per 5 minutes
+    if (!rateLimit.allowed) {
+      logger.warn("analyzeImage rate limit exceeded", { clientIp });
+      res.status(429).send({ error: "חריגה ממספר הדיווחים המותר. אנא המתן מספר דקות לפני ניסיון חוזר." });
+      return;
+    }
+
     const { base64Image, mimeType, tenantId, location, subLocation } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     logger.info("analyzeImage started", {
+      clientIp,
       mimeType,
       imageSize: base64Image ? base64Image.length : 0,
       hasApiKey: !!apiKey
     });
 
-    if (!apiKey) {
-      logger.error("GEMINI_API_KEY secret is not set");
-      res.status(500).send({ error: "API Key not configured" });
+    // 1.1 Firebase App Check Guard (Web Anti-Scraping / Bot Defense)
+    const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
+    const appCheckRes = await verifyAppCheckHeader(appCheckToken, process.env.APP_CHECK_STRICT === "true");
+    if (!appCheckRes.valid) {
+      logger.warn("analyzeImage App Check rejected request", { clientIp, error: appCheckRes.error });
+      res.status(401).send({ error: appCheckRes.error || "Unauthorized App Check" });
       return;
     }
 
+    // 2. Payload Validation & Size Ceiling (Max 5MB base64 string)
     if (!base64Image) {
       logger.error("No image provided in request body");
       res.status(400).send({ error: "No image provided" });
       return;
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    if (typeof base64Image !== "string" || base64Image.length > 5 * 1024 * 1024) {
+      logger.warn("analyzeImage payload too large", { size: base64Image?.length, clientIp });
+      res.status(413).send({ error: "Payload too large. Maximum image size is 5MB." });
+      return;
+    }
 
-    // 1. Kick off Google Cloud Storage Image Upload
+    // 3. Decode & Inspect Magic Bytes (Reject SVGs, scripts, executables, or corrupt buffers)
+    let imageBuffer: Buffer;
+    try {
+      imageBuffer = Buffer.from(base64Image, "base64");
+    } catch {
+      res.status(400).send({ error: "Invalid base64 encoding" });
+      return;
+    }
+
+    const validation = validateImageBuffer(imageBuffer);
+    if (!validation.valid) {
+      logger.warn("analyzeImage rejected invalid file header", { error: validation.error, clientIp });
+      res.status(415).send({ error: validation.error || "Unsupported media type" });
+      return;
+    }
+    const effectiveMime = validation.detectedMime || mimeType || "image/jpeg";
+
+    // 4. Pre-Flight Tenant Validation (Prevent arbitrary GCS upload or unmetered Gemini calls)
+    const safeTenantId = tenantId ? String(tenantId).trim() : null;
+    if (!safeTenantId) {
+      res.status(400).send({ error: "Missing required tenantId" });
+      return;
+    }
+
+    const tenantDoc = await db.collection("tenants").doc(safeTenantId).get();
+    if (!tenantDoc.exists) {
+      logger.warn("analyzeImage requested for non-existent tenant", { tenantId: safeTenantId, clientIp });
+      res.status(404).send({ error: "Tenant not found" });
+      return;
+    }
+
+    const tData = tenantDoc.data() || {};
+    if (tData.isActive === false || tData.subscription?.status === "frozen" || tData.subscription?.status === "cancelled") {
+      logger.warn("analyzeImage requested for inactive/frozen tenant", { tenantId: safeTenantId, status: tData.subscription?.status });
+      res.status(403).send({ error: "Tenant account is inactive or frozen. AI analysis is unavailable." });
+      return;
+    }
+
+    // 5. Kick off Google Cloud Storage Image Upload only after validation
     const imageId = randomUUID();
-    const safeTenantId = tenantId || 'default-tenant';
     const bucket = storage.bucket();
     const file = bucket.file(`tenants/${safeTenantId}/${imageId}.jpg`);
-    const imageBuffer = Buffer.from(base64Image, 'base64');
 
     const uploadPromise = file.save(imageBuffer, {
-      metadata: { contentType: mimeType || "image/jpeg" }
+      metadata: { contentType: effectiveMime }
     });
 
-    // 2. Fetch tenant config for language, type and categories
-    const tenantDoc = await db.collection("tenants").doc(safeTenantId).get();
-    const tData = tenantDoc.data() || {};
-    const lang = tData.language || 'he';
-    const type = tData.type || 'building';
-    const categories = (tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"]).join(", ");
+    // 6. Tenant Context & Structured Schema Definition
+    const lang = tData.language || "he";
+    const type = tData.type || "building";
+    const rawCategories: string[] = tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"];
+    const categoriesList = Array.from(new Set(rawCategories.map((c: string) => String(c).trim()).filter(Boolean)));
+    if (!categoriesList.includes("אחר")) {
+      categoriesList.push("אחר");
+    }
 
-    // 3. Prepare AI Request with dynamic language and categories
-    const langNote = lang === 'he'
-      ? "Respond in Hebrew ONLY. Summarize as a short Hebrew sentence."
-      : "Respond in English ONLY. Summarize as a short English sentence.";
+    const entityContext = type === "municipality"
+      ? "a public space, street, facility, or municipal infrastructure hazard (e.g. electrical wiring, lighting defect, pothole, street light, waste, safety hazard)"
+      : "a building or facility maintenance issue (e.g. electrical wiring, lighting defect, leak, broken bulb, elevator failure, safety hazard)";
 
-    const entityContext = type === 'municipality'
-      ? "a public space or city maintenance hazard (e.g. pothole, broken street light, waste)"
-      : "a building maintenance issue (e.g. leak, broken bulb, elevator failure)";
-
-    const prompt = `
-      You are TikTak AI, an efficient and accurate maintenance assistant.
-      Analyze the attached image of ${entityContext}.
-      ${langNote}
-
-      Return a JSON object only. Choose the most appropriate Hebrew category from the exact provided list: [${categories}].
-
-      Include the following keys:
-      1. 'is_valid_issue': Boolean (true/false). If the image is blank, chaotic, or clearly not a maintenance issue, set to false.
-      2. 'summary': A concise summary (3-10 words) describing the primary problem in detail.
-      3. 'category': One of [${categories}]. Choose the most appropriate Hebrew category name from this list.
-      4. 'urgency': One of [High, Moderate, Low]. High means critical danger or failure.
-      
-      Respond ONLY with the RAW JSON object.
-    `;
-
-    logger.info("Sending request to Gemini...", { prompt, model: "gemini-2.5-flash" });
+    logger.info("Executing Enterprise AI Inference...", { tenantId: safeTenantId, clientIp });
 
     let finalData: any = {};
     let isAiFallback = false;
 
     try {
-      const result = await model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: base64Image,
-            mimeType: mimeType || "image/jpeg",
-          },
-        },
-      ]);
+      const aiResult = await classifyMaintenanceIncident({
+        tenantId: safeTenantId,
+        categoriesList,
+        entityContext,
+        language: lang,
+        imageBuffer,
+        imageMime: effectiveMime
+      });
 
-      const responseText = result.response.text();
-      // Clean potential markdown code blocks if the AI includes them
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      const cleanJson = jsonMatch ? jsonMatch[0] : responseText;
-      finalData = JSON.parse(cleanJson || "{}");
+      finalData = {
+        is_valid_issue: aiResult.is_valid_issue,
+        summary: aiResult.summary,
+        category: aiResult.category,
+        urgency: aiResult.urgency
+      };
+
+      // Correlate and record AI Token Telemetry into Audit Logs
+      await recordAuditLog({
+        tenantId: safeTenantId,
+        action: "AI_IMAGE_ANALYSIS",
+        level: "INFO",
+        actor: { uid: "system", name: "TikTak AI", type: "system" as any },
+        details: {
+          engine: aiResult.telemetry.engine,
+          model: aiResult.telemetry.model,
+          promptTokens: aiResult.telemetry.promptTokens,
+          candidatesTokens: aiResult.telemetry.candidatesTokens,
+          totalTokens: aiResult.telemetry.totalTokens,
+          durationMs: aiResult.telemetry.durationMs,
+          category: aiResult.category,
+          urgency: aiResult.urgency,
+          is_valid_issue: aiResult.is_valid_issue,
+          appCheckValid: appCheckRes.valid
+        }
+      });
     } catch (aiErr: any) {
-      logger.warn("Gemini AI API call failed, falling back to manual ticket parameters", {
-        message: aiErr.message,
-        stack: aiErr.stack
+      logger.warn("AI Classification failed, falling back to manual ticket defaults", {
+        tenantId: safeTenantId,
+        message: aiErr.message
       });
       isAiFallback = true;
-      const categoriesList = tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"];
       const defaultCategory = categoriesList[0] || "תחזוקה";
       finalData = {
         is_valid_issue: true,
@@ -344,7 +399,7 @@ export const analyzeImage = onRequest({ cors: true, secrets: ["GEMINI_API_KEY"] 
 
     finalData.createdAt = new Date().toISOString();
     finalData.updatedAt = finalData.createdAt;
-    finalData.status = 'open';
+    finalData.status = "open";
     finalData.location = location || null;
     finalData.subLocation = subLocation || null;
 
@@ -2156,8 +2211,20 @@ async function transcribeAudioGemini(audioBuffer: Buffer, mimeType: string): Pro
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not configured for audio transcription");
   }
+
+  // Audio size guardrail: max 5MB audio buffer
+  if (audioBuffer.length > 5 * 1024 * 1024) {
+    throw new Error("Audio buffer exceeds maximum allowed size of 5MB");
+  }
+
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 300
+    }
+  });
 
   const result = await model.generateContent([
     "Please transcribe the following Hebrew audio text exactly as spoken. Return only the transcription text, with no formatting, notes, or commentary. If you hear nothing, return empty.",
@@ -2214,72 +2281,61 @@ async function analyzeIncidentAI(params: {
   imageMime?: string;
   textInput?: string;
 }): Promise<{ is_valid_issue: boolean; summary: string; category: string; urgency: string }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY secret is not configured");
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
   const tenantDoc = await db.collection("tenants").doc(params.tenantId).get();
   const tData = tenantDoc.data() || {};
-  const categories = (tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"]).join(", ");
-  const lang = tData.language || 'he';
-  const type = tData.type || 'building';
+  const rawCategories: string[] = tData.config?.categories || ["חשמל", "אינסטלציה", "מעלית", "ניקיון", "בטיחות", "תחזוקה", "גינון", "אחר"];
+  const lang = tData.language || "he";
+  const type = tData.type || "building";
+  const entityContext = type === "municipality"
+    ? "a public space, street, facility, or municipal infrastructure hazard (e.g. electrical wiring, lighting defect, pothole, street light, waste, safety hazard)"
+    : "a building or facility maintenance issue (e.g. electrical wiring, lighting defect, leak, broken bulb, elevator failure, safety hazard)";
 
-  const langNote = lang === 'he'
-    ? "Respond in Hebrew ONLY. Summarize as a short Hebrew sentence."
-    : "Respond in English ONLY. Summarize as a short English sentence.";
+  try {
+    const aiResult = await classifyMaintenanceIncident({
+      tenantId: params.tenantId,
+      categoriesList: rawCategories,
+      entityContext,
+      language: lang,
+      imageBuffer: params.imageBuffer,
+      imageMime: params.imageMime,
+      textInput: params.textInput
+    });
 
-  const entityContext = type === 'municipality'
-    ? "a public space or city maintenance hazard (e.g. pothole, broken street light, waste)"
-    : "a building maintenance issue (e.g. leak, broken bulb, elevator failure)";
-
-  const prompt = `
-    You are TikTak AI, an efficient and accurate maintenance assistant.
-    Analyze the attached report inputs describing ${entityContext}.
-    ${langNote}
-
-    Return a JSON object only. Choose the most appropriate Hebrew category from the exact provided list: [${categories}].
-
-    Include the following keys:
-    1. 'is_valid_issue': Boolean (true/false). If the input is empty, chaotic, or clearly not a maintenance issue, set to false.
-    2. 'summary': A concise summary (3-10 words) describing the primary problem in detail.
-    3. 'category': One of [${categories}]. Choose the most appropriate Hebrew category name from this list.
-    4. 'urgency': One of [High, Moderate, Low]. High means critical danger or failure.
-    
-    Respond ONLY with the RAW JSON object.
-  `;
-
-  const contentParts: any[] = [prompt];
-  if (params.textInput) {
-    contentParts.push(`Resident description: "${params.textInput}"`);
-  }
-  if (params.imageBuffer) {
-    contentParts.push({
-      inlineData: {
-        data: params.imageBuffer.toString("base64"),
-        mimeType: params.imageMime || "image/jpeg"
+    // Record AI Telemetry into Audit Logs
+    await recordAuditLog({
+      tenantId: params.tenantId,
+      action: "AI_INCIDENT_CLASSIFICATION",
+      level: "INFO",
+      actor: { uid: "system", name: "TikTak AI", type: "system" as any },
+      details: {
+        channel: "whatsapp",
+        engine: aiResult.telemetry.engine,
+        model: aiResult.telemetry.model,
+        promptTokens: aiResult.telemetry.promptTokens,
+        candidatesTokens: aiResult.telemetry.candidatesTokens,
+        totalTokens: aiResult.telemetry.totalTokens,
+        durationMs: aiResult.telemetry.durationMs,
+        category: aiResult.category,
+        urgency: aiResult.urgency,
+        is_valid_issue: aiResult.is_valid_issue
       }
     });
-  }
 
-  const result = await model.generateContent(contentParts);
-  const responseText = result.response.text();
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-  const cleanJson = jsonMatch ? jsonMatch[0] : responseText;
-
-  const finalData = JSON.parse(cleanJson || "{}");
-  if (!finalData.urgency && (finalData as any).severity) {
-    finalData.urgency = (finalData as any).severity;
+    return {
+      is_valid_issue: aiResult.is_valid_issue,
+      summary: aiResult.summary,
+      category: aiResult.category,
+      urgency: aiResult.urgency
+    };
+  } catch (err: any) {
+    logger.warn("analyzeIncidentAI fallback", { tenantId: params.tenantId, error: err.message });
+    return {
+      is_valid_issue: true,
+      summary: lang === "he" ? "דיווח תחזוקה" : "Maintenance issue",
+      category: rawCategories[0] || "אחר",
+      urgency: "Low"
+    };
   }
-  return {
-    is_valid_issue: finalData.is_valid_issue !== false,
-    summary: finalData.summary || "דיווח תחזוקה",
-    category: finalData.category || "אחר",
-    urgency: finalData.urgency || "Low"
-  };
 }
 
 function buildPaginatedList(
@@ -2461,15 +2517,15 @@ async function sendWhatsAppButtons(to: string, text: string, buttons: { id: stri
   }, phoneNumberId, token);
 }
 
-export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN", "GEMINI_API_KEY"] }, async (req, res) => {
+export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN", "GEMINI_API_KEY", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] }, async (req, res) => {
   // 1. Handle Meta Webhook Verification (GET)
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-    const VERIFY_TOKEN = "tiktak_webhook_verify_token_2026";
+    const expectedVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN || "tiktak_webhook_verify_token_2026";
 
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    if (mode === "subscribe" && token === expectedVerifyToken) {
       logger.info("WhatsApp Webhook verified successfully");
       res.status(200).send(challenge);
     } else {
@@ -2481,6 +2537,15 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
 
   // 2. Handle Incoming WhatsApp Message (POST)
   if (req.method === "POST") {
+    // 2.1 Cryptographic Signature Verification (HMAC-SHA256)
+    const signature = req.headers["x-hub-signature-256"] as string | undefined;
+    const sigCheck = verifyMetaWebhookSignature(req.rawBody, signature, process.env.WHATSAPP_APP_SECRET);
+    if (!sigCheck.valid) {
+      logger.warn("WhatsApp Webhook rejected: signature mismatch or missing", { reason: sigCheck.reason });
+      res.status(401).send("Unauthorized: Invalid webhook signature");
+      return;
+    }
+
     try {
       const body = req.body;
       logger.info("Received WhatsApp Webhook POST payload", { structuredData: true, body: JSON.stringify(body) });
@@ -3243,6 +3308,12 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                   }
                   textInput = messageText;
                 } else {
+                  logger.warn(`WhatsApp received unsupported media type: ${message.type}`, {
+                    from,
+                    tenantId: session.tenantId,
+                    messageType: message.type,
+                    unsupportedFileName: message[message.type]?.filename || null
+                  });
                   await sendWhatsAppText(from, "אנא שלח תמונה, הקלטה קולית או הודעת טקסט תקינה.", phoneNumberId, token);
                   res.status(200).send("EVENT_RECEIVED");
                   return;
@@ -3457,6 +3528,12 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
               }
 
               case 'AWAITING_CATEGORY': {
+                if (interactiveId.startsWith("nav:next:category:") || interactiveId.startsWith("nav:prev:category:")) {
+                  const targetPage = parseInt(interactiveId.split(":")[3]) || 0;
+                  await promptCategorySelection(session, from, phoneNumberId, token, targetPage);
+                  break;
+                }
+
                 let selectedCategory = "";
                 if (interactiveId.startsWith("select_category:")) {
                   selectedCategory = interactiveId.split(":")[1];
@@ -3691,21 +3768,31 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     // Call Gemini to refine summary including the comment
                     try {
                       await sendWhatsAppText(from, "מעדכן את התקציר עם המידע החדש... ⚡", phoneNumberId, token);
-                      const apiKey = process.env.GEMINI_API_KEY!;
-                      const genAI = new GoogleGenerativeAI(apiKey);
-                      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                      const refineRes = await refineSummaryWithAI({
+                        currentSummary: session.draftTicket.summary || "",
+                        newComment: messageText
+                      });
+                      session.draftTicket.summary = refineRes.summary;
 
-                      const refinePrompt = `
-                        Original Summary: "${session.draftTicket.summary}"
-                        Additional comment added by resident: "${messageText}"
-                        Refine the summary into a single, clean Hebrew sentence combining both contexts. Do not add formatting or intros. Max 8 words.
-                      `;
-                      const result = await model.generateContent(refinePrompt);
-                      session.draftTicket.summary = result.response.text().trim().replace(/[\\'"`;]/g, "");
+                      await recordAuditLog({
+                        tenantId: session.tenantId,
+                        action: "AI_SUMMARY_REFINEMENT",
+                        level: "INFO",
+                        actor: { uid: "system", name: "TikTak AI", type: "system" as any },
+                        details: {
+                          channel: "whatsapp",
+                          engine: refineRes.telemetry.engine,
+                          model: refineRes.telemetry.model,
+                          promptTokens: refineRes.telemetry.promptTokens,
+                          candidatesTokens: refineRes.telemetry.candidatesTokens,
+                          totalTokens: refineRes.telemetry.totalTokens,
+                          durationMs: refineRes.telemetry.durationMs
+                        }
+                      });
                     } catch (e) {
-                      logger.error("Gemini summary refinement failed", e);
+                      logger.error("AI summary refinement failed", e);
                       // Fallback: just append comment to summary
-                      session.draftTicket.summary = `${session.draftTicket.summary} - ${messageText}`.substring(0, 80);
+                      session.draftTicket.summary = `${session.draftTicket.summary} - ${messageText.substring(0, 40)}`.substring(0, 80);
                     }
 
                     await sendVerificationPreview(from, session, phoneNumberId, token);
@@ -3828,10 +3915,10 @@ async function promptPrioritySelection(session: any, from: string, phoneNumberId
   );
 }
 
-async function promptCategorySelection(session: any, from: string, phoneNumberId: string, token: string) {
+async function promptCategorySelection(session: any, from: string, phoneNumberId: string, token: string, pageIndex: number = 0) {
   const tenantSnap = await db.collection("tenants").doc(session.tenantId).get();
   const tData = tenantSnap.data() || {};
-  const categories = tData.config?.categories || [];
+  const categories: string[] = tData.config?.categories || [];
 
   if (categories.length > 0) {
     session.state = 'AWAITING_CATEGORY';
@@ -3842,20 +3929,50 @@ async function promptCategorySelection(session: any, from: string, phoneNumberId
       }));
       await sendWhatsAppButtons(from, "אנא בחר קטגוריה מתאימה לדיווח:", buttons, phoneNumberId, token);
     } else {
-      const rows = categories.map((cat: string) => ({
+      // Meta WhatsApp interactive list strictly limits rows to 10 maximum!
+      const PAGE_SIZE = 8;
+      const totalPages = Math.ceil(categories.length / PAGE_SIZE);
+      const safePageIndex = Math.max(0, Math.min(pageIndex, totalPages - 1));
+      const startIndex = safePageIndex * PAGE_SIZE;
+      const sliced = categories.slice(startIndex, startIndex + PAGE_SIZE);
+
+      const rows: any[] = sliced.map((cat: string) => ({
         id: `select_category:${cat}`,
         title: `בחירה: ${cat}`.substring(0, 24)
       }));
+
+      if (safePageIndex < totalPages - 1) {
+        rows.push({
+          id: `nav:next:category:${safePageIndex + 1}`,
+          title: "➡️ לעמוד הבא",
+          description: `הצג עמוד ${safePageIndex + 2} מתוך ${totalPages}`
+        });
+      }
+
+      if (safePageIndex > 0) {
+        rows.push({
+          id: `nav:prev:category:${safePageIndex - 1}`,
+          title: "< חזרה",
+          description: `חזור לעמוד ${safePageIndex}`
+        });
+      }
+
+      session.pagination = { items: categories, pageIndex: safePageIndex, fieldType: 'category' };
+
       const listPayload = {
         type: "interactive",
         interactive: {
           type: "list",
           header: { type: "text", text: "בחירת קטגוריית הדיווח" },
-          body: { text: "אנא בחר את הקטגוריה המתאימה ביותר מהרשימה:" },
+          body: {
+            text: totalPages > 1
+              ? `אנא בחר את הקטגוריה המתאימה (עמוד ${safePageIndex + 1} מתוך ${totalPages}):`
+              : "אנא בחר את הקטגוריה המתאימה ביותר מהרשימה:"
+          },
           action: {
             button: "בחר קטגוריה",
             sections: [{
-              title: "קטגוריות זמינות",
+              title: totalPages > 1 ? `קטגוריות (עמוד ${safePageIndex + 1}/${totalPages})` : "קטגוריות זמינות",
               rows: rows
             }]
           }

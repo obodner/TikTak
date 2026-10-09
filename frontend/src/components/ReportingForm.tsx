@@ -140,7 +140,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
   }
 
   return (
-    <div className="w-full max-w-sm flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="w-full flex flex-col gap-3.5 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {showAiFallbackNotice && (
         <div className="bg-amber-500 text-white px-4 py-3 rounded-2xl font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 animate-pulse transition-all duration-300 text-center">
           <AlertCircle size={18} className="shrink-0" />
@@ -148,9 +148,9 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
         </div>
       )}
 
-      <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100 relative">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm sm:shadow-md border border-slate-100 relative">
         <div className="flex justify-between items-center mb-2">
-          <label className="text-sm font-black text-blue-900/40 block">
+          <label className="text-sm font-black text-blue-900/60 block">
             {t('editing')}
           </label>
           <button 
@@ -170,7 +170,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
             if (e.target.value.length <= MAX_CHARS) setSummary(e.target.value);
           }}
           maxLength={MAX_CHARS}
-          className="w-full text-xl font-bold text-blue-900 border-none focus:ring-0 p-0 resize-none min-h-[100px] outline-none mb-1"
+          className="w-full text-lg sm:text-xl font-bold text-blue-900 border-none focus:ring-0 p-0 resize-none min-h-[90px] outline-none mb-1"
           placeholder={t('summary_placeholder') || 'סיכום התקלה...'}
           dir="rtl"
         />
@@ -186,11 +186,11 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
         </div>
 
         {/* Editable Context Area */}
-        <div className="space-y-4 pt-4 border-t border-slate-50">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-3.5 sm:space-y-4 pt-4 border-t border-slate-100">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
             {showLocation && (
               <div>
-                <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">{locationLabel}</label>
+                <label className="text-xs font-bold text-slate-500 block mb-1 px-1">{locationLabel}</label>
                 <SearchableSelect
                   label={locationLabel}
                   value={initialData.location || ''}
@@ -204,7 +204,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
             )}
 
             <div className={!showLocation ? 'col-span-2' : ''}>
-              <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">{subLocationLabel}</label>
+              <label className="text-xs font-bold text-slate-500 block mb-1 px-1">{subLocationLabel}</label>
               <SearchableSelect
                 label={subLocationLabel}
                 value={initialData.subLocation || ''}
@@ -218,7 +218,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
           </div>
 
           <div>
-            <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">{t('category_label') || 'קטגוריה'}</label>
+            <label className="text-xs font-bold text-slate-500 block mb-1 px-1">{t('category_label') || 'קטגוריה'}</label>
             <SearchableSelect
               label={t('category_label') || 'קטגוריה'}
               value={initialData.category || ''}
@@ -231,7 +231,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
           </div>
 
           <div className="relative">
-            <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-1 px-1">
+            <label className="text-xs font-bold text-slate-500 block mb-1 px-1">
               {t('phone_label') || 'מספר טלפון'} *
             </label>
             <input
@@ -242,29 +242,29 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
                 if (val.length <= 10) setPhone(val);
               }}
               onBlur={() => setIsPhoneTouched(true)}
-              className={`w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 font-bold text-sm outline-none text-right ${
+              className={`w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 font-bold text-base outline-none text-right ${
                 !phone ? 'text-slate-400' : 'text-blue-900'
               } ${isPhoneTouched && !isPhoneValid ? 'ring-2 ring-red-500' : ''}`}
               placeholder={t('phone_placeholder') || '0501234567'}
               dir="ltr"
             />
             {isPhoneTouched && !isPhoneValid && (
-              <span className="text-[10px] text-red-500 font-bold block mt-1 px-1">
+              <span className="text-xs text-red-500 font-bold block mt-1 px-1">
                 {t('phone_error') || 'מספר תקין מתחיל ב-0 ומכיל 9-10 ספרות'}
               </span>
             )}
           </div>
 
           <div>
-            <label className="text-[10px] font-black text-blue-900/40 uppercase block mb-2 px-1">{t('urgency_label') || 'דחיפות הדיווח'}</label>
+            <label className="text-xs font-bold text-slate-500 block mb-2 px-1">{t('urgency_label') || 'דחיפות הדיווח'}</label>
             <div className="flex gap-2" dir="rtl">
               {(['High', 'Moderate', 'Low'] as const).map((level) => {
                 const isActive = initialData.urgency === level;
                 const labels = { High: 'דחוף', Moderate: 'רגיל', Low: 'נמוך' };
                 const colors = {
-                  High: isActive ? 'bg-red-500 text-white ring-red-200 shadow-lg' : 'bg-red-50 text-red-600 hover:bg-red-100',
-                  Moderate: isActive ? 'bg-amber-500 text-white ring-amber-200 shadow-lg' : 'bg-amber-50 text-amber-600 hover:bg-amber-100',
-                  Low: isActive ? 'bg-green-500 text-white ring-green-200 shadow-lg' : 'bg-green-50 text-green-600 hover:bg-green-100',
+                  High: isActive ? 'bg-red-500 text-white ring-red-200 shadow-md' : 'bg-red-50 text-red-600 hover:bg-red-100',
+                  Moderate: isActive ? 'bg-amber-500 text-white ring-amber-200 shadow-md' : 'bg-amber-50 text-amber-600 hover:bg-amber-100',
+                  Low: isActive ? 'bg-green-500 text-white ring-green-200 shadow-md' : 'bg-green-50 text-green-600 hover:bg-green-100',
                 };
 
                 return (
@@ -272,7 +272,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
                     key={level}
                     type="button"
                     onClick={() => onUpdate({ urgency: level })}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-sm ${colors[level]} ${isActive ? 'ring-4 scale-105 z-10' : ''}`}
+                    className={`flex-1 py-3 rounded-xl text-sm font-black transition-all shadow-xs ${colors[level]} ${isActive ? 'ring-4 scale-105 z-10' : ''}`}
                   >
                     {labels[level]}
                   </button>
@@ -289,7 +289,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
         disabled={status === 'sending' || !isFormValid}
         className={`
           flex items-center justify-center gap-3
-          w-full h-16 rounded-2xl font-extrabold text-xl
+          w-full h-14 sm:h-16 rounded-2xl font-black text-lg sm:text-xl
           transition-all
           ${status === 'sending' || !isFormValid
             ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
@@ -297,7 +297,7 @@ export const ReportingForm: React.FC<ReportingFormProps> = ({
           }
         `}
       >
-        <Send size={24} />
+        <Send size={22} />
         {status === 'sending' ? (t('sending') || 'שולח...') : t('send')}
       </button>
     </div>

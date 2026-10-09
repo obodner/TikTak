@@ -269,13 +269,17 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'CONTRACTOR_AUTH_SUCCESS', 'CONTRACTOR_AUTH_FAILED', 'QUOTE_NOTIFICATION_SENT',
         'VENDORS_BULK_IMPORTED', 'TAG_MERGED', 'TAG_DELETED',
         'TENANT_FROZEN', 'TENANT_UNFROZEN', 'TENANT_CREATED', 'FLEET_CREATED',
-        'LICENSE_UPDATED', 'TENANT_DELETED'
+        'LICENSE_UPDATED', 'TENANT_DELETED',
+        'AI_IMAGE_ANALYSIS', 'AI_INCIDENT_CLASSIFICATION', 'AI_SUMMARY_REFINEMENT'
     ];
 
     const actionLabels: Record<string, { he: string; en: string }> = {
         'TICKET_CREATED': { he: 'דיווח ע״י תושב', en: 'Ticket Created' },
         'TICKET_STATUS_UPDATE': { he: 'עדכון סטטוס פנייה', en: 'Ticket Status Update' },
         'TICKET_URGENCY_UPDATE': { he: 'עדכון דחיפות פנייה', en: 'Ticket Urgency Update' },
+        'AI_IMAGE_ANALYSIS': { he: 'ניתוח תמונה ע״י AI', en: 'AI Image Analysis' },
+        'AI_INCIDENT_CLASSIFICATION': { he: 'סיווג תקלה ע״י AI', en: 'AI Incident Classification' },
+        'AI_SUMMARY_REFINEMENT': { he: 'דיוק תקציר ע״י AI', en: 'AI Summary Refinement' },
         'COMMENT_CREATED': { he: 'הוספת הערה ניהולית', en: 'Comment Created' },
         'COMMENT_DELETED': { he: 'מחיקת הערה', en: 'Comment Deleted' },
         'WHATSAPP_UPDATE_SENT': { he: 'עדכון וואטסאפ לתושב', en: 'WhatsApp Update Sent' },
@@ -1001,6 +1005,64 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `System alert: RFQ annual license for ${tenantName} expires ${dayStr}${tier}`
                     : `התראת מערכת: רישוי ה-RFQ השנתי עבור ${tenantName} פג ${dayStr}${tier}`;
+            }
+            case 'AI_IMAGE_ANALYSIS': {
+                const isValid = log.details?.is_valid_issue !== false;
+                const cat = log.details?.category ? `"${log.details.category}"` : '';
+                const urgencyRaw = (log.details?.urgency || '').toLowerCase();
+                const urgencyLabels: Record<string, { he: string; en: string }> = {
+                    'urgent': { he: 'דחוף', en: 'Urgent' },
+                    'high': { he: 'גבוהה', en: 'High' },
+                    'medium': { he: 'רגילה', en: 'Medium' },
+                    'low': { he: 'נמוכה', en: 'Low' },
+                };
+                const urgLabel = urgencyRaw ? (isEn ? (urgencyLabels[urgencyRaw]?.en || urgencyRaw) : (urgencyLabels[urgencyRaw]?.he || urgencyRaw)) : '';
+                const urgStr = urgLabel ? (isEn ? ` (Urgency: ${urgLabel})` : ` (דחיפות: ${urgLabel})`) : '';
+                const secStr = log.details?.durationMs !== undefined && log.details?.durationMs !== null
+                    ? (isEn ? ` [${(log.details.durationMs / 1000).toFixed(1)}s]` : ` [${(log.details.durationMs / 1000).toFixed(1)} שנ׳]`)
+                    : '';
+
+                if (!isValid) {
+                    return isEn
+                        ? `TikTak AI analyzed report photo: no valid maintenance issue detected (unrelated image)${locStr}${secStr}`
+                        : `TikTak AI ניתח תמונת דיווח: לא זוהה מפגע תחזוקה מובהק (תמונה לא רלוונטית)${locStr}${secStr}`;
+                }
+
+                const catStr = cat ? (isEn ? ` as ${cat}` : ` כ-${cat}`) : '';
+                return isEn
+                    ? `TikTak AI analyzed report photo: categorized${catStr}${urgStr}${locStr}${secStr}`
+                    : `TikTak AI ניתח תמונת דיווח: זוהתה וסווגה תקלה${catStr}${urgStr}${locStr}${secStr}`;
+            }
+            case 'AI_INCIDENT_CLASSIFICATION': {
+                const isValid = log.details?.is_valid_issue !== false;
+                const cat = log.details?.category ? `"${log.details.category}"` : '';
+                const urgencyRaw = (log.details?.urgency || '').toLowerCase();
+                const urgencyLabels: Record<string, { he: string; en: string }> = {
+                    'urgent': { he: 'דחוף', en: 'Urgent' },
+                    'high': { he: 'גבוהה', en: 'High' },
+                    'medium': { he: 'רגילה', en: 'Medium' },
+                    'low': { he: 'נמוכה', en: 'Low' },
+                };
+                const urgLabel = urgencyRaw ? (isEn ? (urgencyLabels[urgencyRaw]?.en || urgencyRaw) : (urgencyLabels[urgencyRaw]?.he || urgencyRaw)) : '';
+                const urgStr = urgLabel ? (isEn ? ` (Urgency: ${urgLabel})` : ` (דחיפות: ${urgLabel})`) : '';
+                const channel = log.details?.channel === 'whatsapp' ? (isEn ? ' via WhatsApp' : ' מוואטסאפ') : '';
+
+                if (!isValid) {
+                    return isEn
+                        ? `TikTak AI classified incident${channel}: no valid maintenance issue detected${locStr}`
+                        : `TikTak AI סיווג פנייה${channel}: לא זוהה מפגע תחזוקה מובהק${locStr}`;
+                }
+
+                const catStr = cat ? (isEn ? ` as ${cat}` : ` כ-${cat}`) : '';
+                return isEn
+                    ? `TikTak AI classified incident${channel}: categorized${catStr}${urgStr}${locStr}`
+                    : `TikTak AI סיווג פנייה${channel}: זוהתה תקלה${catStr}${urgStr}${locStr}`;
+            }
+            case 'AI_SUMMARY_REFINEMENT': {
+                const channel = log.details?.channel === 'whatsapp' ? (isEn ? ' via WhatsApp' : ' מוואטסאפ') : '';
+                return isEn
+                    ? `TikTak AI refined incident summary with resident follow-up details${channel}${locStr}`
+                    : `TikTak AI דייק ועידכן את תקציר הפנייה על בסיס מידע משלים מהתושב${channel}${locStr}`;
             }
             default: {
                 const actionLabel = isEn

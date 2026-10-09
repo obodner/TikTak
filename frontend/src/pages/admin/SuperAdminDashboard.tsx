@@ -848,7 +848,14 @@ export default function SuperAdminDashboard() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-                                    <span className="truncate">{tenant.name}</span>
+                                    <Link
+                                      to={`/admin/${tenant.id}/dashboard`}
+                                      className="truncate hover:text-blue-600 hover:underline transition-colors flex items-center gap-1 group/name cursor-pointer"
+                                      title={!isRtl ? `Open dashboard for ${tenant.name}` : `מעבר ללוח הבקרה של ${tenant.name}`}
+                                    >
+                                      <span className="truncate">{tenant.name}</span>
+                                      <ExternalLink size={12} className="opacity-0 group-hover/name:opacity-100 text-blue-600 transition-opacity shrink-0" />
+                                    </Link>
                                     <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1 py-0.2 rounded border border-slate-200 shrink-0">
                                       {t('super_badge_child')}
                                     </span>
@@ -896,7 +903,14 @@ export default function SuperAdminDashboard() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                                    <span className="truncate">{tenant.name}</span>
+                                    <Link
+                                      to={`/admin/${tenant.id}/dashboard`}
+                                      className="truncate hover:text-blue-600 hover:underline transition-colors flex items-center gap-1 group/name cursor-pointer"
+                                      title={!isRtl ? `Open dashboard for ${tenant.name}` : `מעבר ללוח הבקרה של ${tenant.name}`}
+                                    >
+                                      <span className="truncate">{tenant.name}</span>
+                                      <ExternalLink size={12} className="opacity-0 group-hover/name:opacity-100 text-blue-600 transition-opacity shrink-0" />
+                                    </Link>
                                     {tenant.isPoolMaster && (
                                       <button
                                         type="button"

@@ -481,20 +481,24 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
           )}
 
           {/* Embedded Audio Player (Direct HTML5 audio player, Not a Link!) */}
-          {ticket.audioId && typeof ticket.audioId === 'string' && ticket.audioId.length > 3 && (
-            <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100">
-              <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Volume2 size={16} className="text-blue-600 animate-pulse" />
-                {t.audioRecording}
-              </h4>
-              <audio
-                controls
-                src={`/audio/${tenantId}/${ticket.audioId}`}
-                className="w-full rounded-xl focus:outline-none"
-                preload="metadata"
-              />
-            </div>
-          )}
+          {ticket.audioId && typeof ticket.audioId === 'string' && ticket.audioId.length > 3 && (() => {
+            const rawAudioId = String(ticket.audioId);
+            const cleanAudioId = rawAudioId.split('/').pop()?.replace(/\.[^/.]+$/, '') || rawAudioId;
+            return (
+              <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100">
+                <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Volume2 size={16} className="text-blue-600 animate-pulse" />
+                  {t.audioRecording}
+                </h4>
+                <audio
+                  controls
+                  src={`/aud/${tenantId}/${cleanAudioId}`}
+                  className="w-full rounded-xl focus:outline-none"
+                  preload="metadata"
+                />
+              </div>
+            );
+          })()}
 
           {/* Metadata Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

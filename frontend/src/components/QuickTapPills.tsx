@@ -63,7 +63,7 @@ export const QuickTapPills: React.FC<QuickTapPillsProps> = ({
   return (
     <div className="w-full space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-blue-900/60 text-xs font-black uppercase tracking-widest">{title}</h3>
+        <h3 className="text-blue-950 font-black text-sm sm:text-base tracking-wide">{title}</h3>
       </div>
       
       <div className="relative group">
@@ -85,22 +85,22 @@ export const QuickTapPills: React.FC<QuickTapPillsProps> = ({
 
         <div 
           ref={scrollRef}
-          className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 px-1 snap-x"
+          className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-2 px-1 snap-x"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {sortedItems.map((item) => (
             <button
               key={item.id}
               onClick={() => onSelect(item)}
-              className="flex-shrink-0 flex items-center gap-3 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 px-5 py-3 rounded-2xl shadow-sm active:scale-95 transition-all snap-start"
+              className="flex-shrink-0 flex items-center gap-3.5 bg-slate-50 hover:bg-blue-50 border-2 border-slate-200/80 hover:border-blue-300 px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl shadow-sm active:scale-95 transition-all snap-start"
             >
-              <span className="text-2xl shrink-0">{item.emoji}</span>
+              <span className="text-3xl sm:text-4xl shrink-0">{item.emoji}</span>
               <div className="flex flex-col items-start text-right">
-                <span className="text-sm font-black text-slate-900 leading-tight whitespace-nowrap">
+                <span className="text-base sm:text-lg font-black text-slate-950 leading-tight whitespace-nowrap">
                   {item.summary}
                 </span>
                 {(item.location || item.subLocation) && (
-                  <span className="text-[10px] font-bold text-slate-500 leading-tight mt-0.5">
+                  <span className="text-xs sm:text-sm font-bold text-slate-600 leading-tight mt-1">
                     {[item.location, item.subLocation].filter(Boolean).join(' • ')}
                   </span>
                 )}

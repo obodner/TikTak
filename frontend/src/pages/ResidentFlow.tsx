@@ -272,6 +272,15 @@ export default function ResidentFlow() {
 
             // If backend returned invalid issue explicitly (e.g. blank photo)
             if (responseOk && data && data.is_valid_issue === false) {
+                setTicketData({
+                    summary: '',
+                    category: config.categories?.[0] || 'תחזוקה',
+                    urgency: 'Low',
+                    imageId: data.imageId || undefined,
+                    location: selectedLocation || location || undefined,
+                    subLocation: selectedSubLocation || subLocation || undefined,
+                    ticketType: 'visible'
+                });
                 setState('invalid');
                 return;
             }
@@ -500,21 +509,32 @@ export default function ResidentFlow() {
     }
 
     return (
-        <div className="flex flex-col min-h-[100dvh] bg-white relative overflow-hidden" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        <div 
+            className={`flex flex-col bg-white relative ${
+                state === 'idle' || state === 'analyzing'
+                    ? 'h-[100dvh] max-h-[100dvh] overflow-hidden'
+                    : 'min-h-[100dvh]'
+            }`} 
+            dir={i18n.language === 'he' ? 'rtl' : 'ltr'}
+        >
             {/* 1. TOP BAR (IDENTITY + CONTEXT) - Persistent across all states */}
-            <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md px-6 py-2 flex flex-col items-center border-b border-slate-50">
+            <header className="sticky top-0 shrink-0 bg-white/95 backdrop-blur-md px-4 py-2 sm:py-3 flex flex-col items-center justify-center border-b border-slate-100 shadow-xs z-20">
                 <div className="select-none">
-                    <img src="/logo_transparent.png" alt="TikTak" className="h-[100px] w-auto object-contain" />
+                    <img src="/logo_transparent.png" alt="TikTak" className="h-20 sm:h-24 w-auto object-contain" />
                 </div>
-                <p className="text-slate-600 text-lg font-bold tracking-tight -mt-1">
+                <p className="text-slate-950 text-xl sm:text-2xl font-black tracking-tight mt-0.5">
                     {address || tenantName || '...'}
                 </p>
             </header>
 
             {/* Main Flow Area */}
-            <main className="flex-1 flex flex-col items-center pt-[160px] pb-10 px-6 w-full max-w-sm mx-auto">
+            <main className={`flex-1 flex flex-col items-center px-4 w-full max-w-md mx-auto ${
+                state === 'idle' || state === 'analyzing'
+                    ? 'justify-between py-1 overflow-hidden'
+                    : 'pt-6 pb-8'
+            }`}>
                 {tenantId === 'default-tenant' && state === 'idle' && (
-                    <div className="mb-6 bg-red-50 px-6 py-4 rounded-3xl border-2 border-red-200 shadow-xl animate-pulse w-full">
+                    <div className="mb-4 bg-red-50 px-6 py-3 rounded-2xl border-2 border-red-200 shadow-lg animate-pulse w-full">
                         <p className="text-red-700 font-black text-sm text-center">
                             ⚠️ {i18n.language === 'he' ? 'שגיאה: לא נבחר מזהה (סרוק קוד QR שוב)' : 'Error: No ID Selected (Rescan QR)'}
                         </p>
@@ -522,7 +542,7 @@ export default function ResidentFlow() {
                 )}
 
                 {state === 'idle' || state === 'analyzing' ? (
-                    <div className="flex-1 flex flex-col items-center justify-between w-full">
+                    <div className="flex-1 flex flex-col items-center justify-between w-full h-full py-1">
 
                         {/* Pinned Resident Notice Banner */}
                         {(() => {
@@ -603,11 +623,11 @@ export default function ResidentFlow() {
                         })()}
 
                         {/* 2. HERO SECTION */}
-                        <section className="text-center mb-4 animate-in fade-in slide-in-from-top-4 duration-1000">
-                            <h1 className="text-blue-900 font-black text-2xl mb-2 leading-tight tracking-tight">
+                        <section className="text-center shrink-0 pt-1 sm:pt-2 px-2 animate-in fade-in slide-in-from-top-2 duration-500">
+                            <h1 className="text-blue-950 font-black text-3xl sm:text-4xl mb-1.5 leading-tight tracking-tight">
                                 {t('hero_headline')}
                             </h1>
-                            <p className="text-blue-700/60 text-lg font-bold">
+                            <p className="text-blue-900 text-lg sm:text-xl font-extrabold">
                                 {t('hero_subheadline')}
                             </p>
                         </section>
@@ -626,6 +646,16 @@ export default function ResidentFlow() {
                                 ) : null
                             }
                         />
+
+                        {/* Unobtrusive link for Resident Dashboard */}
+                        <div className="shrink-0 text-center pb-2.5">
+                            <Link
+                                to={`/report/${tenantId}/dashboard`}
+                                className="text-base sm:text-lg font-black text-blue-600 hover:text-blue-800 hover:underline transition-colors py-2 px-5 inline-block"
+                            >
+                                {isMunicipality ? t('view_previous_reports_municipality') : t('view_previous_reports_building')}
+                            </Link>
+                        </div>
                     </div>
                 ) : state === 'invalid' ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl animate-in zoom-in duration-300 text-center">
@@ -636,13 +666,24 @@ export default function ResidentFlow() {
                             <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
                                 {t('invalid_issue')}
                             </h2>
+                            <p className="text-sm text-slate-500 font-medium">
+                                לא זוהה מפגע תחזוקה מובהק בתמונה. ניתן לצלם מחדש או להמשיך לדיווח ידני.
+                            </p>
                         </div>
-                        <button
-                            onClick={() => setState('idle')}
-                            className="w-full bg-amber-500 hover:bg-amber-600 text-white px-8 py-4 rounded-2xl font-extrabold text-xl shadow-lg active:scale-95 transition-all"
-                        >
-                            {t('try_again')}
-                        </button>
+                        <div className="w-full flex flex-col gap-3">
+                            <button
+                                onClick={() => setState('idle')}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-2xl font-extrabold text-lg shadow-lg active:scale-95 transition-all"
+                            >
+                                📸 {t('try_again')}
+                            </button>
+                            <button
+                                onClick={() => setState('editing')}
+                                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 px-8 py-3 rounded-2xl font-bold text-base active:scale-95 transition-all"
+                            >
+                                ✏️ המשך בדיווח ידני
+                            </button>
+                        </div>
                     </div>
                 ) : state === 'success' ? (
                     <div className="w-full flex flex-col items-center justify-center gap-8 py-12 px-6 animate-in zoom-in duration-300 text-center" dir="rtl">
@@ -817,17 +858,6 @@ export default function ResidentFlow() {
                 </div>
             )}
 
-            {/* Unobtrusive hyperlink bar for Resident Dashboard at the bottom viewport edge */}
-            {state === 'idle' && (
-                <div className="absolute bottom-4 left-0 right-0 text-center z-10">
-                    <Link
-                        to={`/report/${tenantId}/dashboard`}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors py-2 px-4"
-                    >
-                        {isMunicipality ? t('view_previous_reports_municipality') : t('view_previous_reports_building')}
-                    </Link>
-                </div>
-            )}
 
             {/* Centered Warning Modal for Auth Errors */}
             {authError && (

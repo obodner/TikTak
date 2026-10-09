@@ -36,7 +36,7 @@ export const CameraTrigger: React.FC<CameraTriggerProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full animate-in fade-in slide-in-from-bottom-4 duration-700 pb-4">
+    <div className="flex-1 flex flex-col items-center justify-evenly w-full animate-in fade-in slide-in-from-bottom-2 duration-500 py-1">
       <input
         type="file"
         accept="image/*"
@@ -48,49 +48,49 @@ export const CameraTrigger: React.FC<CameraTriggerProps> = ({
       />
       
       {/* Red Circle: Snap & Send Now */}
-      <div className="flex flex-col items-center gap-6">
+      <div className="flex flex-col items-center gap-2 sm:gap-3">
         <div className="relative">
           {isLoading && <div className="ring-container" />}
           <button
             onClick={() => handleActionClick('camera')}
             disabled={isLoading}
             className={`
-              w-48 h-48 rounded-full text-white cta-circle cta-red
-              flex items-center justify-center relative group
+              w-56 h-56 sm:w-64 sm:h-64 rounded-full text-white cta-circle cta-red
+              flex items-center justify-center relative group shadow-2xl
               ${isLoading ? 'opacity-80 pointer-events-none' : 'cursor-pointer animate-cta-pulse'}
             `}
           >
-            <Camera size={64} className="drop-shadow-lg group-hover:scale-110 transition-transform" />
+            <Camera size={76} className="drop-shadow-lg group-hover:scale-110 transition-transform" />
           </button>
         </div>
-        <div className="text-center">
-          <span className="block font-black text-2xl text-slate-800 mb-1">
+        <div className="text-center mt-1 sm:mt-1.5">
+          <span className="block font-black text-3xl sm:text-4xl text-slate-950 tracking-tight">
             {t('snap_and_send')}
           </span>
-          <p className="text-slate-400 font-bold text-sm uppercase tracking-wider">
+          <p className="text-slate-700 font-extrabold text-lg sm:text-xl tracking-normal mt-1">
             {t('ai_tagline')}
           </p>
         </div>
       </div>
 
       {middleContent && (
-        <div className="w-full">
+        <div className="w-full shrink-0">
           {middleContent}
         </div>
       )}
 
       {/* Blue Circle: Manual Report */}
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-2">
         <button
           onClick={() => handleActionClick('manual')}
           disabled={isLoading}
-          className="w-24 h-24 rounded-full text-white cta-circle cta-blue flex items-center justify-center group"
+          className="w-20 h-20 sm:w-24 sm:h-24 rounded-full text-white cta-circle cta-blue flex items-center justify-center group shadow-md"
         >
-          <Wrench size={32} className="group-hover:rotate-12 transition-transform" />
+          <Wrench size={34} className="group-hover:rotate-12 transition-transform" />
         </button>
         <button 
           onClick={() => handleActionClick('manual')}
-          className="text-slate-500 font-black text-lg hover:text-blue-600 transition-colors"
+          className="text-slate-800 font-black text-lg sm:text-xl hover:text-blue-600 transition-colors mt-0.5"
         >
           {t('describe_briefly')}
         </button>

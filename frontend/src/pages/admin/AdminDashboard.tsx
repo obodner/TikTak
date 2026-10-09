@@ -118,9 +118,10 @@ const CustomTooltip = ({ active, payload, label, isEn }: any) => {
   if (active && payload && payload.length) {
     const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
     const isHe = !isEn;
+    const headerTitle = payload[0]?.payload?.fullTitle || label;
     return (
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-lg text-right" dir={isHe ? 'rtl' : 'ltr'}>
-        <p className="font-bold text-slate-800 mb-1 text-xs">{label}</p>
+        <p className="font-bold text-slate-800 mb-1 text-xs">{headerTitle}</p>
         <div className="space-y-1 text-[11px]">
           {payload.map((entry: any, index: number) => (
             <div key={index} className="flex justify-between gap-4 items-center">
@@ -1322,27 +1323,48 @@ export default function AdminDashboard() {
     });
     const categoryData = Object.entries(cats).map(([name, value]) => ({ name, value }));
 
-    const months: Record<string, { ai: number; quicktap: number; manual: number }> = {};
+    const months: Record<string, { ai: number; quicktap: number; manual: number; date: Date }> = {};
     filteredTickets.forEach(t => {
-      const mo = format(parseISO(t.createdAt), 'MMM yyyy', { locale: isEn ? undefined : he });
-      if (!months[mo]) {
-        months[mo] = { ai: 0, quicktap: 0, manual: 0 };
+      let parsedDate: Date;
+      try {
+        parsedDate = parseISO(t.createdAt);
+        if (isNaN(parsedDate.getTime())) return;
+      } catch {
+        return;
+      }
+
+      const key = format(parsedDate, 'yyyy-MM');
+      if (!months[key]) {
+        months[key] = { ai: 0, quicktap: 0, manual: 0, date: parsedDate };
       }
       const method = t.reportingMethod || t.source || 'manual';
       if (method === 'ai_camera') {
-        months[mo].ai += 1;
+        months[key].ai += 1;
       } else if (method === 'quicktap') {
-        months[mo].quicktap += 1;
+        months[key].quicktap += 1;
       } else {
-        months[mo].manual += 1;
+        months[key].manual += 1;
       }
     });
-    const monthlyData = Object.entries(months).map(([name, data]) => ({
-      name,
-      ai: data.ai,
-      quicktap: data.quicktap,
-      manual: data.manual
-    })).reverse();
+
+    const monthlyData = Object.entries(months)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([_, data]) => {
+        const isJanuary = data.date.getMonth() === 0;
+        // Show the year only for January; strip year from all other months to prevent label overlap on X axis
+        const name = isJanuary
+          ? format(data.date, 'MMM yyyy', { locale: isEn ? undefined : he })
+          : format(data.date, 'MMM', { locale: isEn ? undefined : he });
+        const fullTitle = format(data.date, 'MMMM yyyy', { locale: isEn ? undefined : he });
+
+        return {
+          name,
+          fullTitle,
+          ai: data.ai,
+          quicktap: data.quicktap,
+          manual: data.manual
+        };
+      });
 
     return { open, resolved, categoryData, monthlyData };
   }, [filteredTickets, isEn]);
