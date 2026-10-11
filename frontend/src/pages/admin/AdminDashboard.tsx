@@ -20,6 +20,7 @@ import { HelpModal } from '../../components/admin/HelpModal';
 import { MonthYearRangePicker } from '../../components/admin/MonthYearRangePicker';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
 import { QuotaProgressWidget } from '../../components/admin/QuotaProgressWidget';
+import { RfqQuotaProgressWidget } from '../../components/admin/RfqQuotaProgressWidget';
 import { he } from 'date-fns/locale';
 
 const InlineAudioPlayer = ({ src, isEn }: { src: string; isEn?: boolean }) => {
@@ -152,6 +153,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tenantConfig, setTenantConfig] = useState<any>(null);
+  const [parentTenantConfig, setParentTenantConfig] = useState<any>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'new' | 'progress' | 'resolved'>('new');
   const [commentTicketId, setCommentTicketId] = useState<string | null>(null);
@@ -448,6 +450,19 @@ export default function AdminDashboard() {
       const currentTenant = bDoc.exists() ? bDoc.data() : null;
       setTenantConfig(currentTenant);
 
+      if (currentTenant?.parentEnterpriseId) {
+        try {
+          const pDoc = await getDoc(doc(db, "tenants", currentTenant.parentEnterpriseId));
+          if (pDoc.exists()) {
+            setParentTenantConfig(pDoc.data());
+          }
+        } catch (pe) {
+          console.warn("Failed to load parent tenant config:", pe);
+        }
+      } else {
+        setParentTenantConfig(null);
+      }
+
       if (currentTenant) {
         const country = currentTenant.country || 'IL';
         const hDoc = await getDoc(doc(db, "holidays", country));
@@ -535,10 +550,17 @@ export default function AdminDashboard() {
     if (isManual) setIsRefreshing(true);
 
     try {
-      // Re-fetch tenant document to update subscription quota and exclusions in real time
       const tSnap = await getDoc(doc(db, "tenants", tenantId as string));
       if (tSnap.exists()) {
-        setTenantConfig(tSnap.data());
+        const curData = tSnap.data();
+        setTenantConfig(curData);
+        if (curData.parentEnterpriseId) {
+          getDoc(doc(db, "tenants", curData.parentEnterpriseId))
+            .then(pSnap => {
+              if (pSnap.exists()) setParentTenantConfig(pSnap.data());
+            })
+            .catch(pe => console.warn("Silent refresh parent tenant error:", pe));
+        }
       }
 
       const q = query(
@@ -1793,25 +1815,76 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Live Quota Meter Widget */}
-        <QuotaProgressWidget
-          tenantData={liveTenantConfig || tenantConfig}
-          onExclusionsClick={() => {
-            const cycleStart = tenantConfig?.subscription?.cycleStartDate;
-            const cycleDate = cycleStart ? parseTicketDate(cycleStart) : null;
-            const startDateStr = cycleDate && !isNaN(cycleDate.getTime()) ? format(cycleDate, 'yyyy-MM-dd') : '';
-            const endDateStr = format(new Date(), 'yyyy-MM-dd');
+        {/* Live Quota Meter Widget(s) */}
+        {(() => {
+          const currentTenantData = liveTenantConfig || tenantConfig;
+          const isChildTenant = Boolean(currentTenantData?.parentEnterpriseId);
+          // For child tenants in a fleet, RFQ licensing status is governed strictly by the parent fleet
+          const effectiveTenantData = (isChildTenant && parentTenantConfig)
+            ? parentTenantConfig
+            : currentTenantData;
+          const rfqLic = effectiveTenantData?.rfqLicensing;
+          const isRfqActive = isChildTenant && !parentTenantConfig
+            ? false
+            : Boolean(
+                rfqLic &&
+                rfqLic.status === 'active' &&
+                rfqLic.tier &&
+                rfqLic.tier !== 'disabled'
+              );
 
-            setFilters(prev => ({
-              ...prev,
-              timeRange: startDateStr ? 'custom' : 'all',
-              startDate: startDateStr,
-              endDate: endDateStr,
-              closureReason: 'exclusions',
-              statuses: ['new', 'in-progress', 'closed']
-            }));
-          }}
-        />
+          if (isRfqActive) {
+            return (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+                <QuotaProgressWidget
+                  tenantData={currentTenantData}
+                  className="mb-0 h-full"
+                  onExclusionsClick={() => {
+                    const cycleStart = tenantConfig?.subscription?.cycleStartDate;
+                    const cycleDate = cycleStart ? parseTicketDate(cycleStart) : null;
+                    const startDateStr = cycleDate && !isNaN(cycleDate.getTime()) ? format(cycleDate, 'yyyy-MM-dd') : '';
+                    const endDateStr = format(new Date(), 'yyyy-MM-dd');
+
+                    setFilters(prev => ({
+                      ...prev,
+                      timeRange: startDateStr ? 'custom' : 'all',
+                      startDate: startDateStr,
+                      endDate: endDateStr,
+                      closureReason: 'exclusions',
+                      statuses: ['new', 'in-progress', 'closed']
+                    }));
+                  }}
+                />
+                <RfqQuotaProgressWidget
+                  tenantData={currentTenantData}
+                  tenantId={tenantId}
+                  className="mb-0 h-full"
+                />
+              </div>
+            );
+          }
+
+          return (
+            <QuotaProgressWidget
+              tenantData={currentTenantData}
+              onExclusionsClick={() => {
+                const cycleStart = tenantConfig?.subscription?.cycleStartDate;
+                const cycleDate = cycleStart ? parseTicketDate(cycleStart) : null;
+                const startDateStr = cycleDate && !isNaN(cycleDate.getTime()) ? format(cycleDate, 'yyyy-MM-dd') : '';
+                const endDateStr = format(new Date(), 'yyyy-MM-dd');
+
+                setFilters(prev => ({
+                  ...prev,
+                  timeRange: startDateStr ? 'custom' : 'all',
+                  startDate: startDateStr,
+                  endDate: endDateStr,
+                  closureReason: 'exclusions',
+                  statuses: ['new', 'in-progress', 'closed']
+                }));
+              }}
+            />
+          );
+        })()}
 
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100 shadow-sm flex flex-col justify-center">
@@ -1883,7 +1956,9 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <section className="bg-slate-50/50 p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm backdrop-blur-sm space-y-3">
+        <section className={`relative bg-slate-50/50 p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 ${
+          showCustomDashboardPicker || isStatusFilterOpen ? 'z-50' : 'z-20'
+        }`}>
           {(searchParams.get('sla') || (filters.sla && filters.sla !== 'all')) && (
             <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
               <div className="flex items-center gap-2">
@@ -1940,7 +2015,7 @@ export default function AdminDashboard() {
 
           <div className="flex flex-wrap items-end gap-3 w-full">
             {/* 1. Time Range */}
-            <div className="flex flex-col gap-1.5 min-w-[130px] flex-1 sm:flex-initial relative">
+            <div className={`flex flex-col gap-1.5 min-w-[130px] flex-1 sm:flex-initial relative ${showCustomDashboardPicker ? 'z-50' : ''}`}>
               <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.time}</label>
               <select
                 value={filters.timeRange}
@@ -1998,7 +2073,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* 2. Status Dropdown */}
-            <div className="flex flex-col gap-1.5 min-w-[120px] flex-1 sm:flex-initial relative">
+            <div className={`flex flex-col gap-1.5 min-w-[120px] flex-1 sm:flex-initial relative ${isStatusFilterOpen ? 'z-50' : ''}`}>
               <label className="text-xs font-bold text-slate-500 px-1 whitespace-nowrap">{uiLabels.filters.status}</label>
               <button
                 onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
@@ -2015,10 +2090,10 @@ export default function AdminDashboard() {
               {isStatusFilterOpen && (
                 <>
                   <div
-                    className="fixed inset-0 z-10"
+                    className="fixed inset-0 z-40"
                     onClick={() => setIsStatusFilterOpen(false)}
                   />
-                  <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl z-20 py-2 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
                     {statusOptions.map(option => (
                       <label
                         key={option.id}

@@ -7,9 +7,10 @@ import { CreditCard, AlertTriangle, Clock, CheckCircle2, RotateCcw, AlertCircle,
 interface QuotaProgressWidgetProps {
   tenantData: any;
   onExclusionsClick?: () => void;
+  className?: string;
 }
 
-export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenantData, onExclusionsClick }) => {
+export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenantData, onExclusionsClick, className }) => {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language === 'en';
 
@@ -79,28 +80,36 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
   const isPooled = Boolean(tenantData?.usesParentPool);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 mb-6 transition-all duration-200 hover:shadow-md">
-      {/* Header Row */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-            <CreditCard className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900 text-base">
-                {tierNames[tier] || tier.toUpperCase()}
-              </span>
-              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
-                {monthlyQuota} {t('Reporting.send', 'פניות')}/{isEn ? 'mo' : 'חודש'}
-              </span>
-              {isPooled && (
-                <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
-                  <Layers className="w-3 h-3" />
-                  {isEn ? 'Shared Fleet Pool' : 'מאגר משותף'}
-                </span>
-              )}
+    <div
+      className={`bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 transition-all duration-200 hover:shadow-md flex flex-col justify-between ${
+        className !== undefined ? className : 'mb-6'
+      }`}
+    >
+      <div>
+        {/* Header Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+              <CreditCard className="w-5 h-5" />
             </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 tracking-wider">
+                  TikTak
+                </span>
+                <span className="font-bold text-slate-900 text-base">
+                  {tierNames[tier] || tier.toUpperCase()}
+                </span>
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                  {monthlyQuota} {t('Reporting.send', 'פניות')}/{isEn ? 'mo' : 'חודש'}
+                </span>
+                {isPooled && (
+                  <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
+                    <Layers className="w-3 h-3" />
+                    {isEn ? 'Shared Fleet Pool' : 'מאגר משותף'}
+                  </span>
+                )}
+              </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {t('Quota.monthlyQuota', 'מכסה חודשית')}: <strong className="text-slate-700">{monthlyQuota}</strong>
               {rolloverTickets > 0 && (
@@ -123,12 +132,13 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
         </div>
       </div>
 
-      {/* Progress Bar Container */}
-      <div className="relative w-full bg-slate-100 rounded-full h-3.5 overflow-hidden mb-3">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor()}`}
-          style={{ width: `${usagePercentage}%` }}
-        />
+        {/* Progress Bar Container */}
+        <div className="relative w-full bg-slate-100 rounded-full h-3.5 overflow-hidden mb-3">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor()}`}
+            style={{ width: `${usagePercentage}%` }}
+          />
+        </div>
       </div>
 
       {/* Footer Stats Row */}

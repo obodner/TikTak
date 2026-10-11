@@ -5,6 +5,7 @@ import { db } from '../../lib/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { Building2, ShieldAlert, ChevronRight, ExternalLink, Activity } from 'lucide-react';
 import { QuotaProgressWidget } from '../../components/admin/QuotaProgressWidget';
+import { RfqQuotaProgressWidget } from '../../components/admin/RfqQuotaProgressWidget';
 
 export default function EnterpriseFleetDashboard() {
   const params = useParams();
@@ -130,7 +131,28 @@ export default function EnterpriseFleetDashboard() {
         </div>
 
         {/* Aggregate Parent Quota Widget */}
-        {parentTenant && <QuotaProgressWidget tenantData={parentTenant} />}
+        {parentTenant && (
+          (() => {
+            const rfqLic = parentTenant?.rfqLicensing;
+            const isRfqActive = Boolean(
+              rfqLic &&
+              rfqLic.status === 'active' &&
+              rfqLic.tier &&
+              rfqLic.tier !== 'disabled'
+            );
+
+            if (isRfqActive) {
+              return (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+                  <QuotaProgressWidget tenantData={parentTenant} className="mb-0 h-full" />
+                  <RfqQuotaProgressWidget tenantData={parentTenant} tenantId={targetId} className="mb-0 h-full" />
+                </div>
+              );
+            }
+
+            return <QuotaProgressWidget tenantData={parentTenant} />;
+          })()
+        )}
 
         {/* Fleet Urgent Alerts Banner */}
         {urgentTickets.length > 0 && (

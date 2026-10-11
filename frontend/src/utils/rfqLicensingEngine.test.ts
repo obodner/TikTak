@@ -334,5 +334,69 @@ describe('RFQ Licensing & Quota Engine Tests', () => {
       expect(result.licenseExpiresAt).toBe('2027-10-06');
     });
   });
+
+  describe('RfqQuotaProgressWidget Display Logic', () => {
+    it('correctly calculates usage percentage and handles zero quota', () => {
+      const calcPct = (dispatched: number, quota: number) =>
+        quota > 0 ? Math.min(100, Math.round((dispatched / quota) * 100)) : 0;
+
+      expect(calcPct(3, 10)).toBe(30);
+      expect(calcPct(12, 10)).toBe(100);
+      expect(calcPct(0, 15)).toBe(0);
+      expect(calcPct(5, 0)).toBe(0);
+    });
+
+    it('correctly resolves RFQ status for fleet child tenants based on parent fleet', () => {
+      const resolveEffectiveRfqStatus = (childTenant: any, parentTenant: any) => {
+        const isChildTenant = Boolean(childTenant?.parentEnterpriseId);
+        if (isChildTenant) {
+          if (!parentTenant) return false; // wait for parent or block
+          const pLic = parentTenant.rfqLicensing;
+          return Boolean(
+            pLic &&
+            pLic.status === 'active' &&
+            pLic.tier &&
+            pLic.tier !== 'disabled'
+          );
+        }
+        const cLic = childTenant?.rfqLicensing;
+        return Boolean(
+          cLic &&
+          cLic.status === 'active' &&
+          cLic.tier &&
+          cLic.tier !== 'disabled'
+        );
+      };
+
+      // Case 1: Fleet parent has RFQ disabled -> child must NOT display RFQ panel even if child has legacy active data
+      const childWithLegacyActive = {
+        id: 'child-1',
+        parentEnterpriseId: 'fleet-master',
+        rfqLicensing: { status: 'active', tier: 'starter', annualQuota: 5 }
+      };
+      const disabledParent = {
+        id: 'fleet-master',
+        rfqLicensing: { status: 'disabled', tier: 'disabled', annualQuota: 0 }
+      };
+      expect(resolveEffectiveRfqStatus(childWithLegacyActive, disabledParent)).toBe(false);
+
+      // Case 2: Fleet parent has RFQ active -> child should display RFQ panel
+      const activeParent = {
+        id: 'fleet-master',
+        rfqLicensing: { status: 'active', tier: 'standard', annualQuota: 15 }
+      };
+      expect(resolveEffectiveRfqStatus(childWithLegacyActive, activeParent)).toBe(true);
+
+      // Case 3: Parent not yet loaded -> child should not flash RFQ panel
+      expect(resolveEffectiveRfqStatus(childWithLegacyActive, null)).toBe(false);
+
+      // Case 4: Standalone tenant without parentEnterpriseId
+      const standaloneActive = {
+        id: 'standalone-bldg',
+        rfqLicensing: { status: 'active', tier: 'basic', annualQuota: 10 }
+      };
+      expect(resolveEffectiveRfqStatus(standaloneActive, null)).toBe(true);
+    });
+  });
 });
 

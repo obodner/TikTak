@@ -238,11 +238,25 @@ export default function ActiveQuotesPage() {
           if (d.address) resolvedAddress = d.address;
           if (d.logoUrl) resolvedLogoUrl = d.logoUrl;
           if (d.vaadPhone) resolvedVaadPhone = d.vaadPhone;
-          if (d.rfqLicensing && d.rfqLicensing.status === 'active' && d.rfqLicensing.tier && d.rfqLicensing.tier !== 'disabled') {
-            setRfqLicensing(d.rfqLicensing);
+          let licSource = d.rfqLicensing;
+          if (d.parentEnterpriseId) {
+            try {
+              const pSnap = await getDoc(doc(db, "tenants", d.parentEnterpriseId));
+              if (pSnap.exists()) {
+                const pData = pSnap.data();
+                if (pData.rfqLicensing) {
+                  licSource = pData.rfqLicensing;
+                }
+              }
+            } catch (pErr) {
+              console.warn("Could not load parent tenant RFQ licensing:", pErr);
+            }
+          }
+          if (licSource && licSource.status === 'active' && licSource.tier && licSource.tier !== 'disabled') {
+            setRfqLicensing(licSource);
           } else {
             setRfqLicensing({
-              ...(d.rfqLicensing || {}),
+              ...(licSource || {}),
               tier: 'disabled',
               status: 'disabled',
               annualQuota: 0

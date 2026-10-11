@@ -460,7 +460,7 @@ export default function NewRfqPage() {
             });
           }
           let frozen = tData.isActive === false || tData.subscription?.status === 'frozen';
-          if (!frozen && tData.parentEnterpriseId) {
+          if (tData.parentEnterpriseId) {
             try {
               const parentSnap = await getDoc(doc(db, "tenants", tData.parentEnterpriseId));
               if (parentSnap.exists()) {
@@ -468,9 +468,22 @@ export default function NewRfqPage() {
                 if (pData.isActive === false || pData.subscription?.status === 'frozen') {
                   frozen = true;
                 }
+                if (pData.rfqLicensing) {
+                  const pLic = pData.rfqLicensing;
+                  if (pLic.status === 'active' && pLic.tier && pLic.tier !== 'disabled') {
+                    setRfqLicensing(pLic);
+                  } else {
+                    setRfqLicensing({
+                      ...pLic,
+                      tier: 'disabled',
+                      status: 'disabled',
+                      annualQuota: 0
+                    });
+                  }
+                }
               }
             } catch (pErr) {
-              console.warn("Could not check parent enterprise freeze status:", pErr);
+              console.warn("Could not check parent enterprise freeze status or RFQ licensing:", pErr);
             }
           }
           setIsTenantFrozen(frozen);

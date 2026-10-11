@@ -3941,6 +3941,7 @@ exports.dispatchRfqToVendors = (0, https_1.onRequest)({ cors: true, secrets: ["W
             });
             return;
         }
+        let rfqLic = tenantData.rfqLicensing;
         if (tenantData.parentEnterpriseId) {
             const parentSnap = await db.collection("tenants").doc(tenantData.parentEnterpriseId).get();
             if (parentSnap.exists) {
@@ -3952,9 +3953,11 @@ exports.dispatchRfqToVendors = (0, https_1.onRequest)({ cors: true, secrets: ["W
                     });
                     return;
                 }
+                if (parentData.rfqLicensing) {
+                    rfqLic = parentData.rfqLicensing;
+                }
             }
         }
-        const rfqLic = tenantData.rfqLicensing;
         const isRfqActive = Boolean(rfqLic &&
             rfqLic.status === 'active' &&
             rfqLic.tier &&
@@ -4862,6 +4865,30 @@ exports.updateTenantLicensing = (0, https_1.onRequest)({ cors: true }, async (re
             }
         }
         await tenantRef.update(updates);
+        if (Array.isArray(currentData.childTenantIds) && currentData.childTenantIds.length > 0) {
+            const childBatch = db.batch();
+            for (const childId of currentData.childTenantIds) {
+                const childRef = db.collection("tenants").doc(childId);
+                const childUpdates = {
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                };
+                if (rfqLicensing) {
+                    if (rfqLicensing.tier !== undefined)
+                        childUpdates["rfqLicensing.tier"] = rfqLicensing.tier;
+                    if (rfqLicensing.status !== undefined)
+                        childUpdates["rfqLicensing.status"] = rfqLicensing.status;
+                    if (rfqLicensing.enforcementMode !== undefined)
+                        childUpdates["rfqLicensing.enforcementMode"] = rfqLicensing.enforcementMode;
+                    if (rfqLicensing.licenseExpiresAt !== undefined)
+                        childUpdates["rfqLicensing.licenseExpiresAt"] = rfqLicensing.licenseExpiresAt;
+                }
+                if (ticketSubscription && ticketSubscription.tier !== undefined) {
+                    childUpdates["subscription.tier"] = ticketSubscription.tier;
+                }
+                childBatch.update(childRef, childUpdates);
+            }
+            await childBatch.commit().catch(err => logger.warn("Failed to cascade license updates to children:", err));
+        }
         await recordAuditLog({
             tenantId,
             action: "LICENSE_UPDATED",
@@ -5209,17 +5236,20 @@ exports.recordRfqDispatch = (0, https_1.onRequest)({ cors: true, secrets: ["WHAT
             res.status(403).send({ error: "Tenant is frozen. Cannot dispatch RFQs." });
             return;
         }
+        let parentData = null;
         if (tenantData.parentEnterpriseId) {
             const parentDoc = await db.collection("tenants").doc(tenantData.parentEnterpriseId).get();
             if (parentDoc.exists) {
-                const parentData = parentDoc.data() || {};
+                parentData = parentDoc.data() || {};
                 if (parentData.isActive === false || parentData.subscription?.status === 'frozen') {
                     res.status(403).send({ error: "Fleet master is frozen. Cannot dispatch RFQs." });
                     return;
                 }
             }
         }
-        const rfqLicensing = tenantData.rfqLicensing;
+        const rfqLicensing = (tenantData.parentEnterpriseId && parentData?.rfqLicensing)
+            ? parentData.rfqLicensing
+            : tenantData.rfqLicensing;
         const isRfqActive = Boolean(rfqLicensing &&
             rfqLicensing.status === 'active' &&
             rfqLicensing.tier &&
@@ -5249,12 +5279,18 @@ exports.recordRfqDispatch = (0, https_1.onRequest)({ cors: true, secrets: ["WHAT
         }
         const newUsage = currentUsage + 1;
         const nowIso = new Date().toISOString();
-        await tenantRef.update({
+        const isPoolChild = Boolean(tenantData.parentEnterpriseId && tenantData.usesParentPool);
+        const targetQuotaRef = isPoolChild
+            ? db.collection("tenants").doc(tenantData.parentEnterpriseId)
+            : tenantRef;
+        const targetTenantId = isPoolChild ? tenantData.parentEnterpriseId : tenantId;
+        const targetTenantData = (isPoolChild && parentData) ? parentData : tenantData;
+        await targetQuotaRef.update({
             "rfqLicensing.currentAnnualUsage.dispatchedCount": newUsage,
             "rfqLicensing.currentAnnualUsage.lastDispatchedAt": nowIso,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        await checkAndDispatchRfqQuotaAlerts(tenantId, tenantData, newUsage);
+        await checkAndDispatchRfqQuotaAlerts(targetTenantId, targetTenantData, newUsage);
         res.status(200).send({
             success: true,
             tenantId,

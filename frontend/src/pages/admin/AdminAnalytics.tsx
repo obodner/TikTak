@@ -928,7 +928,7 @@ export default function AdminAnalytics() {
         {/* Action Controls: Date Range & PDF Export */}
         <div className="flex items-center flex-wrap gap-2.5">
           {/* Range Selector */}
-          <div className="relative">
+          <div className={`relative ${showCustomPicker ? 'z-50' : 'z-20'}`}>
             <div className="bg-white border border-slate-200 rounded-xl p-1 shadow-sm flex items-center gap-1 text-xs font-bold flex-wrap sm:flex-nowrap">
               {(['current_month', 'last_3_months', 'last_12_months', 'this_year', 'all'] as DateRange[]).map((r) => (
                 <button
