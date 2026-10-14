@@ -2232,11 +2232,11 @@ export default function WorkOrderContractModal({
                 </div>
               </div>
 
-              {/* Section 4: Warranty, Cleanliness, Safety & Independence */}
+              {/* Section 4: Warranty, Insurance, Safety, Waste & Independence */}
               <div className="space-y-2">
                 <h2 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
                   <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px]">4</span>
-                  <span>תנאי אחריות, בטיחות, פינוי פסולת ומעמד הקבלן</span>
+                  <span>תנאי אחריות, ביטוח, בטיחות, פינוי פסולת ומעמד הקבלן</span>
                 </h2>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5 contract-border leading-relaxed">
                   {submission.notes ? (
@@ -2250,6 +2250,29 @@ export default function WorkOrderContractModal({
                     <p className="text-slate-600">• הקבלן מתחייב לאחריות מלאה על טיב העבודה והחלקים למשך שנה ממועד המסירה כחוק.</p>
                   )}
 
+                  {/* Safety & Damage Responsibility Clauses */}
+                  <div className="space-y-1.5 text-slate-700 text-[11px] pt-0.5">
+                    <p className="leading-relaxed">
+                      • הקבלן נושא באחריות בלעדית, מלאה ומוחלטת לבטיחות עובדיו, שלוחיו וכל אדם הנמצא באתר מטעמו, לרבות עמידה בכל דיני ותקנות הבטיחות בעבודה, הדרכות, עבודה בגובה ושימוש באמצעי מיגון אישיים תקניים.
+                    </p>
+                    <p className="leading-relaxed">
+                      • הקבלן אחראי באופן בלעדי לכל נזק, פגיעה, אובדן או קלקול שייגרמו לגוף או לרכוש (לרבות רכוש משותף, תשתיות היישוב או דירות/מבנים סמוכים) עקב ביצוע העבודה או בקשר עמה, ומתחייב לתקן כל נזק כאמור באופן מיידי ועל חשבונו הבלעדי, או לשאת במלוא עלות התיקון.
+                    </p>
+                  </div>
+
+                  {/* Contractor Insurances (ביטוחי הקבלן) */}
+                  <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-[11px] text-slate-800 space-y-1.5">
+                    <div className="font-bold flex items-center gap-1.5 text-slate-900">
+                      <ShieldCheck size={14} className="text-blue-600 shrink-0" />
+                      <span>ביטוחי הקבלן:</span>
+                    </div>
+                    <p className="leading-relaxed text-slate-700">
+                      • הקבלן מצהיר כי הוא מחזיק (או ימציא טרם תחילת העבודה) פוליסות ביטוח תקפות ומקיפות התואמות את היקף ואופי העבודה בחברת ביטוח מורשית: ביטוח חבות מעבידים, ביטוח אחריות כלפי צד שלישי (צד ג') וכן ביטוח עבודות קבלניות לפי הצורך.
+                    </p>
+                    <p className="leading-relaxed text-slate-700">
+                      • פוליסות הביטוח יכללו סעיף מפורש של ויתור על זכות תחלוף (שיבוב) כלפי המזמין, נציגיו ותושביו, וכן סעיף אחריות צולבת (Cross Liability). המזמין יצורף כמבוטח נוסף בפוליסה בגין אחריותו לשלום האתר.
+                    </p>
+                  </div>
 
                   {/* Dynamic Waste Disposal & Cleanliness Clause */}
                   {wasteClauseText && (
@@ -2261,12 +2284,6 @@ export default function WorkOrderContractModal({
                       <div className="leading-relaxed text-slate-700">{wasteClauseText}</div>
                     </div>
                   )}
-
-                  <p className="text-slate-600 text-[11px] pt-0.5">
-                    • הקבלן נושא באחריות בלעדית לבטיחות עובדיו, לרבות עבודה בגובה ושימוש באמצעי מיגון תקניים.
-                    <br />
-                    • הקבלן אחראי לתיקון כל נזק שייגרם לרכוש המשותף או לדירות פרטיות בעת ביצוע העבודה.
-                  </p>
 
                   {/* Employer Waiver Clause */}
                   {includeEmployerWaiver && employerWaiverText && (

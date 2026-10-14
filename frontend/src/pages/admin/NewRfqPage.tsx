@@ -35,7 +35,9 @@ import {
   Pause,
   ExternalLink,
   Save,
-  Star
+  Star,
+  HelpCircle,
+  Copy
 } from 'lucide-react';
 import { Vendor, VendorType, RfqAttachment, DispatchedVendorRecord, PaymentPhaseItem } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
@@ -66,6 +68,23 @@ const DEFAULT_CATEGORIES = [
   'משאבות מים',
   'איטום וגגות'
 ];
+
+const WORK_DESCRIPTION_GUIDELINES_TEXT = `יש לפרט באופן ברור את תכולת העבודה. מומלץ להימנע מניסוחים כלליים כגון "שיפוץ כללי" ולהגדיר במדויק:
+
+פירוט כתב כמויות והיקף העבודה:
+  1. היקף העבודה (לדוגמא):
+    1.0 - פירוק, הריסה והכנה.
+    1.1 - הקמת קיר גבס ירוק כפול כולל בידוד צמר סלעים
+    1.2 - שפכטל אמריקאי (2 שכבות) וצבע אקרילי (טמבור/נירלט) בגוון נבחר
+    1.3 - אספקה והתקנת נקודת מאור (כולל חציבה, צנרת והשחלה)
+  2. מושלמות העבודה: העבודה כוללת את כל החומרים, הציוד, עבודות ההכנה, החציבה, השפכטל, הגימורים, החיבורים ואביזרי העזר הנדרשים להשלמת המלאכה באופן מלא, מושלם ותקין, גם אם פריט מסוים לא פורט במפורש במילים בכתב הכמויות.
+  3. תקנים והוראות יצרן: כלל החומרים והעבודות יבוצעו בהתאם לתקן הישראלי הרלוונטי (ת"י), להוראות יצרני החומרים ולכללי המקצוע המקובלים.
+
+הנחיות והוראות להגשת ההצעה לקבלן:
+  1. סיור קבלנים / עיון בתוכניות: (אם רלוונטי) חובה לסייר באתר או לעיין בשרטוטים האדריכליים טרם מתן הצעת המחיר.
+  2. פירוט רכיבים: על ההצעה לכלול תמחור פרטני לכל סעיף בכתב הכמויות. המחירים יכללו את כל עלויות העבודה, אספקת החומרים (לרבות 'חומר שחור' ולבן אלא אם צוין אחרת), שינוע, פריקה ופינוי פסולת מלא.
+  3. אחריות וביטוחים: על הקבלן לצרף אישור ביטוח צד ג' וחבות מעבידים בתוקף, וכן להעניק אחריות מלאה למשך 12 חודשים על כל עבודות הביצוע והגמר.`;
+
 
 const ALLOWED_EXTENSIONS = [
   'pdf',
@@ -190,6 +209,19 @@ export default function NewRfqPage() {
   const [category, setCategory] = useState<string>('אינסטלציה');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [showDescriptionHelp, setShowDescriptionHelp] = useState(false);
+  const [copiedGuidelines, setCopiedGuidelines] = useState(false);
+  const helpPopoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleCopyGuidelines = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    navigator.clipboard.writeText(WORK_DESCRIPTION_GUIDELINES_TEXT);
+    setCopiedGuidelines(true);
+    setTimeout(() => setCopiedGuidelines(false), 2500);
+  };
   const [location, setLocation] = useState('');
 
   // Payment Terms & Milestones
@@ -1635,10 +1667,209 @@ export default function NewRfqPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-extrabold text-slate-700 mb-1.5 px-1">
-              פירוט והנחיות לביצוע
-            </label>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <div className="flex items-center gap-1.5">
+                <label className="text-sm font-extrabold text-slate-700">
+                  פירוט והנחיות לביצוע
+                </label>
+
+                {/* Help Icon with Tooltip / Popover */}
+                <div
+                  className="relative inline-flex items-center"
+                  onMouseEnter={() => {
+                    if (helpPopoverTimeoutRef.current) clearTimeout(helpPopoverTimeoutRef.current);
+                    setShowDescriptionHelp(true);
+                  }}
+                  onMouseLeave={() => {
+                    helpPopoverTimeoutRef.current = setTimeout(() => {
+                      setShowDescriptionHelp(false);
+                    }, 250);
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowDescriptionHelp(prev => !prev);
+                    }}
+                    title="הנחיות ודוגמה לניסוח כתב כמויות (לחץ או רחף)"
+                    aria-label="הנחיות ודוגמה לניסוח כתב כמויות"
+                    className="p-1 rounded-full text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                  </button>
+
+                  {/* Popover Card */}
+                  {showDescriptionHelp && (
+                    <div
+                      role="tooltip"
+                      onMouseEnter={() => {
+                        if (helpPopoverTimeoutRef.current) clearTimeout(helpPopoverTimeoutRef.current);
+                        setShowDescriptionHelp(true);
+                      }}
+                      onMouseLeave={() => {
+                        helpPopoverTimeoutRef.current = setTimeout(() => {
+                          setShowDescriptionHelp(false);
+                        }, 250);
+                      }}
+                      className="absolute right-0 top-full mt-2 w-[340px] sm:w-[500px] max-w-[calc(100vw-2.5rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 text-right animate-in fade-in zoom-in-95 duration-150"
+                      style={{ direction: 'rtl' }}
+                    >
+                      {/* Header */}
+                      <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-800 font-extrabold text-xs sm:text-sm">
+                          <span className="p-1.5 bg-blue-50 text-blue-600 rounded-lg shrink-0">
+                            <HelpCircle className="w-4 h-4" />
+                          </span>
+                          <span>הנחיות ודוגמה לניסוח כתב כמויות</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleCopyGuidelines}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                              copiedGuidelines
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
+                            }`}
+                          >
+                            {copiedGuidelines ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>הועתק ללוח!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>העתק נוסח</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowDescriptionHelp(false)}
+                            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                            aria-label="סגור"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Content text - beautifully structured for readability */}
+                      <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-3.5 text-xs text-slate-700 font-sans select-text max-h-[340px] overflow-y-auto space-y-3.5">
+                        {/* Intro banner */}
+                        <div className="bg-blue-50/80 border border-blue-200/70 rounded-lg p-2.5 text-blue-950 leading-relaxed font-medium">
+                          יש לפרט באופן ברור את תכולת העבודה. מומלץ להימנע מניסוחים כלליים כגון <span className="font-bold underline decoration-blue-300">"שיפוץ כללי"</span> ולהגדיר במדויק:
+                        </div>
+
+                        {/* Section 1: כתב כמויות והיקף העבודה */}
+                        <div className="pt-1 space-y-2">
+                          <div className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 pb-1 border-b border-slate-200/80">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+                            <span>פירוט כתב כמויות והיקף העבודה:</span>
+                          </div>
+
+                          <div className="space-y-2.5 ms-1 text-slate-800 leading-relaxed">
+                            {/* Bullet 1 */}
+                            <div>
+                              <div className="font-bold text-slate-900">1. היקף העבודה (לדוגמא):</div>
+                              <div className="ms-4 mt-1 space-y-1 text-slate-600 italic text-[11px] sm:text-xs font-mono bg-white/80 p-2.5 rounded-lg border border-slate-200/60">
+                                <div>• 1.0 - פירוק, הריסה והכנה.</div>
+                                <div>• 1.1 - הקמת קיר גבס ירוק כפול כולל בידוד צמר סלעים</div>
+                                <div>• 1.2 - שפכטל אמריקאי (2 שכבות) וצבע אקרילי (טמבור/נירלט) בגוון נבחר</div>
+                                <div>• 1.3 - אספקה והתקנת נקודת מאור (כולל חציבה, צנרת והשחלה)</div>
+                              </div>
+                            </div>
+
+                            {/* Bullet 2 */}
+                            <div>
+                              <span className="font-bold text-slate-900">2. מושלמות העבודה: </span>
+                              <span className="italic text-slate-700">
+                                העבודה כוללת את כל החומרים, הציוד, עבודות ההכנה, החציבה, השפכטל, הגימורים, החיבורים ואביזרי העזר הנדרשים להשלמת המלאכה באופן מלא, מושלם ותקין, גם אם פריט מסוים לא פורט במפורש במילים בכתב הכמויות.
+                              </span>
+                            </div>
+
+                            {/* Bullet 3 */}
+                            <div>
+                              <span className="font-bold text-slate-900">3. תקנים והוראות יצרן: </span>
+                              <span className="italic text-slate-700">
+                                כלל החומרים והעבודות יבוצעו בהתאם לתקן הישראלי הרלוונטי (ת"י), להוראות יצרני החומרים ולכללי המקצוע המקובלים.
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section 2: הנחיות והוראות להגשת ההצעה לקבלן */}
+                        <div className="pt-2 space-y-2 border-t border-slate-200/70">
+                          <div className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 pb-1 border-b border-slate-200/80">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+                            <span>הנחיות והוראות להגשת ההצעה לקבלן:</span>
+                          </div>
+
+                          <div className="space-y-2.5 ms-1 text-slate-800 leading-relaxed">
+                            {/* Bullet 1 */}
+                            <div>
+                              <span className="font-bold text-slate-900">1. סיור קבלנים / עיון בתוכניות: </span>
+                              <span className="italic text-slate-700">
+                                (אם רלוונטי) חובה לסייר באתר או לעיין בשרטוטים האדריכליים טרם מתן הצעת המחיר.
+                              </span>
+                            </div>
+
+                            {/* Bullet 2 */}
+                            <div>
+                              <span className="font-bold text-slate-900">2. פירוט רכיבים: </span>
+                              <span className="italic text-slate-700">
+                                על ההצעה לכלול תמחור פרטני לכל סעיף בכתב הכמויות. המחירים יכללו את כל עלויות העבודה, אספקת החומרים (לרבות 'חומר שחור' ולבן אלא אם צוין אחרת), שינוע, פריקה ופינוי פסולת מלא.
+                              </span>
+                            </div>
+
+                            {/* Bullet 3 */}
+                            <div>
+                              <span className="font-bold text-slate-900">3. אחריות וביטוחים: </span>
+                              <span className="italic text-slate-700">
+                                על הקבלן לצרף אישור ביטוח צד ג' וחבות מעבידים בתוקף, וכן להעניק אחריות מלאה למשך 12 חודשים על כל עבודות הביצוע והגמר.
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>ניתן לסמן ולהעתיק חלקים או להעתיק הכל</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!description) {
+                              setDescription(WORK_DESCRIPTION_GUIDELINES_TEXT);
+                            } else {
+                              setDescription(prev => prev + '\n\n' + WORK_DESCRIPTION_GUIDELINES_TEXT);
+                            }
+                            setShowDescriptionHelp(false);
+                          }}
+                          className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        >
+                          הדבק לתוך הטופס
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick action: Copy sample */}
+              <button
+                type="button"
+                onClick={handleCopyGuidelines}
+                className="text-xs text-blue-600 hover:text-blue-800 font-bold inline-flex items-center gap-1 hover:underline cursor-pointer"
+              >
+                <Copy className="w-3 h-3" />
+                <span>{copiedGuidelines ? 'הועתק ללוח!' : 'העתק דוגמה'}</span>
+              </button>
+            </div>
+
             <textarea
               rows={3}
               value={description}
