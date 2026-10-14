@@ -1076,18 +1076,21 @@ export default function WorkOrderContractModal({
         ? ` (ב-${milestones.length} שלבי ביצוע לפי אבני דרך)`
         : '';
 
-    const isCommitteeSigned = contractExecution?.status === 'signed_by_admin';
-    const isFullySigned = contractExecution?.status === 'fully_signed';
+    const isCommitteeSigned = contractExecution?.status === 'signed_by_admin' || Boolean(contractExecution?.committeeSignature);
+    const isFullySigned = contractExecution?.status === 'fully_signed' || Boolean(contractExecution?.committeeSignature && contractExecution?.vendorSignature);
 
-    let actionPrompt = `\n📄 לצפייה בהסכם המלא, בהזמנת העבודה ולהורדת ה-PDF:\n${contractPortalUrl}\n\n`;
-    if (isCommitteeSigned) {
-      actionPrompt = 
-        `\n✍️ *הסכם העבודה נחתם דיגיטלית ע״י הנהלת ${siteName}!*` +
-        `\nלחתימתך הדיגיטלית המאשרת את תנאי העבודה והתשלום:\n${contractPortalUrl}\n\n`;
-    } else if (isFullySigned) {
+    let actionPrompt = '';
+    if (isFullySigned) {
       actionPrompt = 
         `\n✅ *הסכם העבודה חתום במלואו ע״י שני הצדדים ומחייב כדין.*` +
         `\nלצפייה ולהורדת עותק חתום:\n${contractPortalUrl}\n\n`;
+    } else if (isCommitteeSigned) {
+      actionPrompt = 
+        `\n✍️ *הסכם העבודה נחתם דיגיטלית ע״י הנהלת ${siteName}!*` +
+        `\n*נא להיכנס לקישור לצפייה בהסכם, חתימה ואישור דיגיטלי של תנאי העבודה והתשלום, ולהורדת ה-PDF:*\n${contractPortalUrl}\n\n`;
+    } else {
+      actionPrompt = 
+        `\n✍️ *נא להיכנס לקישור לצפייה בהסכם העבודה, חתימה ואישור דיגיטלי, ולהורדת ה-PDF:*\n${contractPortalUrl}\n\n`;
     }
 
     const message =
@@ -1152,14 +1155,29 @@ export default function WorkOrderContractModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Top Header Sign Button for Contractor */}
+            {isReadOnly && onContractorSignClick && !contractExecution?.vendorSignature && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onContractorSignClick();
+                }}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer animate-pulse whitespace-nowrap"
+              >
+                <PenTool size={14} />
+                <span>חתום ואשר הסכם ✍️</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handlePrint}
-              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
               title="הדפס או שמור כ-PDF"
             >
               <Printer size={15} />
-              <span>הדפסה / PDF</span>
+              <span className="hidden sm:inline">הדפסה / PDF</span>
             </button>
             <button
               type="button"
@@ -2485,7 +2503,7 @@ export default function WorkOrderContractModal({
                       </div>
                     ) : (
                       <div className="pt-2">
-                        {contractExecution?.status === 'signed_by_admin' && onContractorSignClick ? (
+                        {onContractorSignClick && !contractExecution?.vendorSignature ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -2495,11 +2513,11 @@ export default function WorkOrderContractModal({
                             className="no-print mt-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer animate-pulse"
                           >
                             <PenTool size={12} />
-                            <span>לחץ כאן לחתימת אישור ✍️</span>
+                            <span>חתום ואשר הסכם ✍️</span>
                           </button>
                         ) : (
                           <div className="text-[10px] text-slate-400 pt-3">
-                            {contractExecution?.status === 'signed_by_admin' 
+                            {contractExecution?.committeeSignature 
                               ? 'ממתין לחתימת הקבלן המבצע...' 
                               : 'חתימה וחותמת: ____________________'}
                           </div>
@@ -2522,12 +2540,21 @@ export default function WorkOrderContractModal({
         {/* Modal Bottom Actions - Not visible on print */}
         <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 no-print">
           <div className="text-[11px] text-slate-500 font-medium space-y-0.5 text-right w-full sm:w-auto">
-            {contractExecution?.status === 'fully_signed' ? (
+            {contractExecution?.status === 'fully_signed' || (contractExecution?.committeeSignature && contractExecution?.vendorSignature) ? (
               <div className="text-emerald-700 font-bold flex items-center gap-1.5">
                 <CheckCircle2 size={14} />
                 <span>ההסכם נחתם סופית ע״י שני הצדדים! ניתן להדפיס או לשמור כ-PDF.</span>
               </div>
-            ) : contractExecution?.status === 'signed_by_admin' ? (
+            ) : isReadOnly && onContractorSignClick && !contractExecution?.vendorSignature ? (
+              <div className="text-blue-700 font-bold flex items-center gap-1">
+                <span>✍️</span>
+                <span>
+                  {contractExecution?.committeeSignature 
+                    ? 'ההסכם נחתם ע״י הוועד. אנא לחץ ״חתום ואשר הסכם״ לאישור סופי.'
+                    : 'אנא קרא את פרטי ההסכם ולחץ ״חתום ואשר הסכם״ לאישור וחתימה דיגיטלית.'}
+                </span>
+              </div>
+            ) : contractExecution?.committeeSignature ? (
               <div>
                 <div className="text-blue-700 font-bold flex items-center gap-1">
                   <span>✍️ נחתם ע״י הוועד.</span>
@@ -2545,8 +2572,8 @@ export default function WorkOrderContractModal({
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 flex-wrap justify-end">
-            {/* Contractor Sign Button (Visible when contractor opens contract and it has been signed by admin) */}
-            {isReadOnly && onContractorSignClick && contractExecution?.status === 'signed_by_admin' && !contractExecution.vendorSignature && (
+            {/* Contractor Sign Button (Visible when contractor opens contract and has not yet signed) */}
+            {isReadOnly && onContractorSignClick && !contractExecution?.vendorSignature && (
               <button
                 type="button"
                 onClick={() => {
@@ -2556,7 +2583,7 @@ export default function WorkOrderContractModal({
                 className="flex-1 sm:flex-initial px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer animate-pulse"
               >
                 <PenTool size={14} />
-                <span>חתימה ואישור ההסכם ✍️</span>
+                <span>חתום ואשר הסכם ✍️</span>
               </button>
             )}
 

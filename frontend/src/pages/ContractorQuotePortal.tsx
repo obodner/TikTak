@@ -607,6 +607,11 @@ export default function ContractorQuotePortal() {
     setVendorLast4Error('');
     setShowPhoneChallengeModal(false);
     setShowVendorSignModal(true);
+    // Authenticate device so contractor is recognized seamlessly
+    try {
+      localStorage.setItem('tiktak_contractor_phone', cleanRegistered);
+    } catch (_) {}
+    setIsDeviceAuthenticated(true);
   };
 
   // Handler for Contractor Online Signature Submission
@@ -634,10 +639,10 @@ export default function ContractorQuotePortal() {
       }
 
       const updatedExecution: any = {
-        status: 'fully_signed',
+        status: committeeSig ? 'fully_signed' : 'signed_by_vendor',
         contractVersion: (rfq.contractExecution?.contractVersion || 1),
         vendorSignature: vendorSignatureObj,
-        fullySignedAt: signedAt
+        ...(committeeSig ? { fullySignedAt: signedAt } : {})
       };
       if (committeeSig) {
         updatedExecution.committeeSignature = committeeSig;
@@ -1095,8 +1100,8 @@ export default function ContractorQuotePortal() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                  {/* Action 1: Sign button if signed by admin and not yet signed by vendor */}
-                  {rfq.contractExecution?.status === 'signed_by_admin' && !rfq.contractExecution.vendorSignature && (
+                  {/* Action 1: Sign button if not yet signed by vendor */}
+                  {!rfq.contractExecution?.vendorSignature && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1104,10 +1109,10 @@ export default function ContractorQuotePortal() {
                         setVendorLast4Error('');
                         setShowPhoneChallengeModal(true);
                       }}
-                      className="flex-1 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                      className="flex-1 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer animate-pulse"
                     >
                       <PenTool size={16} />
-                      <span>אישור וחתימה על ההסכם ✍️</span>
+                      <span>חתום ואשר הסכם ✍️</span>
                     </button>
                   )}
 
@@ -1116,7 +1121,7 @@ export default function ContractorQuotePortal() {
                     type="button"
                     onClick={() => setShowContractModal(true)}
                     className={`py-3.5 rounded-2xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
-                      rfq.contractExecution?.status === 'signed_by_admin' && !rfq.contractExecution.vendorSignature
+                      !rfq.contractExecution?.vendorSignature
                         ? 'px-4 bg-white/80 hover:bg-white text-emerald-900 border border-emerald-300'
                         : 'w-full bg-emerald-600 hover:bg-emerald-700 text-white'
                     }`}
