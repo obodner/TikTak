@@ -116,6 +116,7 @@ export interface ContractCustomizationData {
   singlePaymentTerm?: string;
   milestones?: any[];
   wasteClauseText?: string;
+  appendixNotes?: string;
   updatedAt?: string;
 }
 

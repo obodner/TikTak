@@ -18,6 +18,7 @@ import { randomUUID } from "crypto";
 initializeApp();
 const db = getFirestore();
 const storage = getStorage();
+const APP_BASE_URL = (process.env.APP_BASE_URL || "https://mytiktak.com").replace(/\/+$/, "");
 
 async function recordAuditLog(params: {
   tenantId: string;
@@ -80,7 +81,7 @@ async function sendQuotaWhatsAppAlertTemplate(params: {
   }
 
   const tenantTypeLabel = params.tenantType === 'municipality' ? 'יישוב' : 'בניין';
-  const dashboardLink = "https://tiktak2026.web.app/admin";
+  const dashboardLink = `${APP_BASE_URL}/admin`;
 
   const payload = {
     messaging_product: "whatsapp",
@@ -4057,14 +4058,14 @@ export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP
 
     let param8_image = "אין";
     if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
-      param8_image = `(https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId})`;
+      param8_image = `(${APP_BASE_URL}/img/${tenantIdStr}/${ticketData.imageId})`;
     }
 
     const resolvedAudioId = ticketData.audioId || ticketData.audioUrl || ticketData.audio;
     let param9_audio = "אין";
     if (resolvedAudioId && typeof resolvedAudioId === 'string' && resolvedAudioId.length > 5 && resolvedAudioId !== 'null') {
       const audioCleanId = String(resolvedAudioId).replace(/\.[^/.]+$/, "");
-      param9_audio = `(https://tiktak2026.web.app/aud/${tenantIdStr}/${audioCleanId})`;
+      param9_audio = `(${APP_BASE_URL}/aud/${tenantIdStr}/${audioCleanId})`;
     }
 
     const templateParams = [
@@ -4134,7 +4135,7 @@ export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP
 
     // 4c. Dispatch attached media files (image & audio) as native WhatsApp media messages
     if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
-      const imageUrl = `https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId}`;
+      const imageUrl = `${APP_BASE_URL}/img/${tenantIdStr}/${ticketData.imageId}`;
       try {
         await sendWhatsAppImage(cleanPhone, imageUrl, phoneNumberId, token);
         logger.info(`Dispatched ticket image attachment to vendor ${cleanPhone}: ${imageUrl}`);
@@ -4185,7 +4186,7 @@ export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP
         logger.warn(`Failed to generate signed URL for audio ${audioCleanId}`, signErr);
       }
 
-      const audioPublicUrl = `https://tiktak2026.web.app/aud/${tenantIdStr}/${audioCleanId}.${foundExt}`;
+      const audioPublicUrl = `${APP_BASE_URL}/aud/${tenantIdStr}/${audioCleanId}.${foundExt}`;
 
       try {
         await sendWhatsAppDocument(cleanPhone, audioPublicUrl, `הקלטה_קולית.${foundExt}`, phoneNumberId, token);
@@ -4982,7 +4983,7 @@ export const notifyQuoteSubmission = onRequest({ cors: true, secrets: ["WHATSAPP
     const durationStr = subData.estimatedDuration || "לפי תיאום";
     const titleWithNum = rfqData.ticketNumber ? `${rfqData.title} (#${rfqData.ticketNumber})` : rfqData.title;
 
-    // Dynamic Link Button Suffix (fills {{1}} in Meta template button URL: https://tiktak2026.web.app/q/{{1}})
+    // Dynamic Link Button Suffix (fills {{1}} in Meta template button URL: ${APP_BASE_URL}/q/{{1}})
     const buttonSuffix = `${tenantId}__${rfqId}`;
 
     const templateParams = [
@@ -5024,7 +5025,7 @@ export const notifyQuoteSubmission = onRequest({ cors: true, secrets: ["WHATSAPP
         `⏱️ *משך ביצוע:* ${durationStr}\n` +
         (subData.notes ? `💬 *הערות הקבלן:* ${subData.notes}\n` : '') +
         `\n📊 *לצפייה בהצעה והשוואה במערכת:*\n` +
-        `https://tiktak2026.web.app/q/${buttonSuffix}`;
+        `${APP_BASE_URL}/q/${buttonSuffix}`;
 
       try {
         const textResp: any = await sendWhatsAppText(cleanPhone, fallbackText, phoneNumberId, token);
@@ -5967,7 +5968,7 @@ async function checkAndDispatchRfqQuotaAlerts(tenantId: string, tenantData: any,
         const admins = await getTenantAdminsWithPhones(tenantId, tenantData.parentEnterpriseId);
         const tenantName = tenantData.name || tenantId;
         for (const adminItem of admins) {
-          const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-80% מנצולת בנק הצעות המחיר השנתי (נוצלו ${newCount} מתוך ${annualQuota} בקשות).\n\nלצפייה בפרטים וניהול המכרזים:\nhttps://tiktak2026.web.app/admin/${tenantId}/dashboard`;
+          const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-80% מנצולת בנק הצעות המחיר השנתי (נוצלו ${newCount} מתוך ${annualQuota} בקשות).\n\nלצפייה בפרטים וניהול המכרזים:\n${APP_BASE_URL}/admin/${tenantId}/dashboard`;
           await sendWhatsAppText(adminItem.phone, text, phoneNumberId, token).catch((e: any) =>
             logger.warn(`Failed to send 80% RFQ alert to ${adminItem.phone}`, e)
           );
@@ -6012,7 +6013,7 @@ async function checkAndDispatchRfqQuotaAlerts(tenantId: string, tenantData: any,
           : `כל בקשה נוספת תחויב בתעריף חריגה של ₪${rfqLicensing.overageRate ?? 45}.`;
 
         for (const adminItem of admins) {
-          const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-100% מנצולת בנק הצעות המחיר השנתי (${newCount}/${annualQuota}).\n${overageNote}\n\nלשדרוג חבילה וניהול:\nhttps://tiktak2026.web.app/admin/${tenantId}/dashboard`;
+          const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-100% מנצולת בנק הצעות המחיר השנתי (${newCount}/${annualQuota}).\n${overageNote}\n\nלשדרוג חבילה וניהול:\n${APP_BASE_URL}/admin/${tenantId}/dashboard`;
           await sendWhatsAppText(adminItem.phone, text, phoneNumberId, token).catch((e: any) =>
             logger.warn(`Failed to send 100% RFQ alert to ${adminItem.phone}`, e)
           );

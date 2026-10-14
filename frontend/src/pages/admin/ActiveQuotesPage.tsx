@@ -43,7 +43,8 @@ import {
   ShieldAlert,
   AlertCircle,
   PenTool,
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
 import { WorkQuoteRequest, VendorQuoteSubmission, RfqStatus, RfqRating } from '../../types/rfq';
 import { logAction } from '../../utils/auditLogger';
@@ -156,8 +157,19 @@ export default function ActiveQuotesPage() {
   const [statusConfirmModal, setStatusConfirmModal] = useState<{
     rfq: WorkQuoteRequest;
     newStatus: RfqStatus;
+    extensionDays?: number;
+    customDeadlineIso?: string;
+    copyLinkForVendorId?: string;
+    copyLinkTokenHash?: string;
   } | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
+  const [expiredCopyPrompt, setExpiredCopyPrompt] = useState<{
+    rfq: WorkQuoteRequest;
+    vendorId: string;
+    tokenHash?: string;
+    vendorName?: string;
+    portalUrl: string;
+  } | null>(null);
   const [dispatchingVendorId, setDispatchingVendorId] = useState<string | null>(null);
 
   // Contractor Rating & RFQ Completion State
@@ -464,13 +476,94 @@ export default function ActiveQuotesPage() {
     );
   };
 
-  // Helper: Copy contractor link
-  const handleCopyContractorLink = (rfqId: string, vendorId: string, tokenHash?: string) => {
+  // Helpers for datetime formatting & defaults
+  const formatIsoToDatetimeLocal = (isoString?: string) => {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const year = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const getDefaultReopenDeadline = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    d.setHours(19, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  // Helper: Copy contractor link with expired RFQ guard
+  const handleCopyContractorLink = (rfq: WorkQuoteRequest, vendor: any) => {
     const origin = window.location.origin;
-    const portalUrl = `${origin}/quote/${rfqId}?tid=${tenantId}&v=${vendorId}${tokenHash ? `&t=${tokenHash}` : ''}`;
+    const effectiveTenantId = rfq.tenantId || tenantId;
+    const vendorId = vendor.vendorId;
+    const tokenHash = vendor.tokenHash;
+    const portalUrl = `${origin}/quote/${rfq.id}?tid=${effectiveTenantId}&v=${vendorId}${tokenHash ? `&t=${tokenHash}` : ''}`;
+
+    if (isRfqExpired(rfq)) {
+      setExpiredCopyPrompt({
+        rfq,
+        vendorId,
+        tokenHash,
+        vendorName: vendor.vendorName,
+        portalUrl
+      });
+      return;
+    }
+
     navigator.clipboard.writeText(portalUrl);
-    setCopiedTokenId(`${rfqId}-${vendorId}`);
+    setCopiedTokenId(`${rfq.id}-${vendorId}`);
     setTimeout(() => setCopiedTokenId(null), 2500);
+  };
+
+  // Quick 1-click reopen & copy handler for expired RFQs
+  const handleQuickReopenAndCopy = async (rfq: WorkQuoteRequest, vendorId: string, tokenHash?: string, daysToAdd = 7) => {
+    if (!tenantId) return;
+    setStatusChanging(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const extendedDate = new Date();
+      extendedDate.setDate(extendedDate.getDate() + daysToAdd);
+      extendedDate.setHours(19, 0, 0, 0);
+      const newDeadlineIso = extendedDate.toISOString();
+
+      const effectiveTenantId = rfq.tenantId || tenantId;
+      const rfqRef = doc(db, "tenants", effectiveTenantId, "rfqs", rfq.id);
+      const updates: Record<string, any> = {
+        status: 'open',
+        deadlineAt: newDeadlineIso,
+        updatedAt: nowIso
+      };
+      if (rfq.awardedVendorId || rfq.status === 'awarded') {
+        updates.awardedVendorId = null;
+        updates.awardedVendorName = null;
+        updates.awardedPrice = null;
+        updates.awardedQuoteId = null;
+        updates.awardedAt = null;
+        updates.awardReasoning = null;
+      }
+
+      await updateDoc(rfqRef, updates);
+      setRfqs(prev => prev.map(r => r.id === rfq.id ? { ...r, ...updates } : r));
+
+      const origin = window.location.origin;
+      const portalUrl = `${origin}/quote/${rfq.id}?tid=${effectiveTenantId}&v=${vendorId}${tokenHash ? `&t=${tokenHash}` : ''}`;
+      await navigator.clipboard.writeText(portalUrl);
+      setCopiedTokenId(`${rfq.id}-${vendorId}`);
+      setTimeout(() => setCopiedTokenId(null), 3000);
+
+      setExpiredCopyPrompt(null);
+    } catch (err: any) {
+      console.error("Error quick-reopening RFQ:", err);
+      alert("שגיאה בפתיחה מחדש: " + (err.message || ''));
+    } finally {
+      setStatusChanging(false);
+    }
   };
 
   // Helper: Generate WhatsApp link for vendor
@@ -857,37 +950,62 @@ export default function ActiveQuotesPage() {
   };
 
   // Open Status Confirmation Modal (replaces browser confirm)
-  const handleOpenStatusConfirmModal = (rfq: WorkQuoteRequest, newStatus: RfqStatus) => {
+  const handleOpenStatusConfirmModal = (
+    rfq: WorkQuoteRequest,
+    newStatus: RfqStatus,
+    options?: { copyLinkForVendorId?: string; copyLinkTokenHash?: string }
+  ) => {
     if (rfq.contractExecution?.status === 'fully_signed') {
       alert('לא ניתן לפתוח מחדש או לשנות סטטוס: קיים חוזה חתום ונעול משפטית על ידי שני הצדדים 🔒.');
       return;
     }
-    setStatusConfirmModal({ rfq, newStatus });
+    const defaultDeadline = getDefaultReopenDeadline();
+    setStatusConfirmModal({
+      rfq,
+      newStatus,
+      extensionDays: 7,
+      customDeadlineIso: defaultDeadline,
+      copyLinkForVendorId: options?.copyLinkForVendorId,
+      copyLinkTokenHash: options?.copyLinkTokenHash
+    });
   };
 
   // Confirm Status Change
   const handleConfirmStatusChange = async () => {
     if (!tenantId || !statusConfirmModal) return;
-    const { rfq, newStatus } = statusConfirmModal;
+    const { rfq, newStatus, customDeadlineIso, copyLinkForVendorId, copyLinkTokenHash } = statusConfirmModal;
 
     setStatusChanging(true);
     try {
       const nowIso = new Date().toISOString();
-      const rfqRef = doc(db, "tenants", tenantId, "rfqs", rfq.id);
+      const effectiveTenantId = rfq.tenantId || tenantId;
+      const rfqRef = doc(db, "tenants", effectiveTenantId, "rfqs", rfq.id);
       const updates: Record<string, any> = {
         status: newStatus,
         updatedAt: nowIso
       };
-      if (newStatus === 'open' && isRfqExpired(rfq)) {
-        const extendedDate = new Date();
-        extendedDate.setDate(extendedDate.getDate() + 7);
-        updates.deadlineAt = extendedDate.toISOString();
+
+      if (newStatus === 'open') {
+        const finalDeadline = customDeadlineIso || getDefaultReopenDeadline();
+        updates.deadlineAt = finalDeadline;
+        if (rfq.awardedVendorId || rfq.status === 'awarded') {
+          updates.awardedVendorId = null;
+          updates.awardedVendorName = null;
+          updates.awardedPrice = null;
+          updates.awardedQuoteId = null;
+          updates.awardedAt = null;
+          updates.awardReasoning = null;
+        }
       }
+
       await updateDoc(rfqRef, updates);
+
+      // Immediately update local state
+      setRfqs(prev => prev.map(r => r.id === rfq.id ? { ...r, ...updates } : r));
 
       // Audit Log
       await logAction({
-        tenantId,
+        tenantId: effectiveTenantId,
         action: newStatus === 'cancelled' ? 'RFQ_CANCELLED' : 'RFQ_CREATED',
         actor: {
           uid: user?.uid || 'admin',
@@ -898,9 +1016,19 @@ export default function ActiveQuotesPage() {
         details: {
           rfqId: rfq.id,
           rfqTitle: rfq.title,
-          newStatus
+          newStatus,
+          deadlineAt: updates.deadlineAt
         }
       });
+
+      // If triggered from "Copy Link", copy active link to clipboard
+      if (copyLinkForVendorId) {
+        const origin = window.location.origin;
+        const portalUrl = `${origin}/quote/${rfq.id}?tid=${effectiveTenantId}&v=${copyLinkForVendorId}${copyLinkTokenHash ? `&t=${copyLinkTokenHash}` : ''}`;
+        await navigator.clipboard.writeText(portalUrl);
+        setCopiedTokenId(`${rfq.id}-${copyLinkForVendorId}`);
+        setTimeout(() => setCopiedTokenId(null), 3000);
+      }
 
       setStatusConfirmModal(null);
     } catch (err: any) {
@@ -1512,10 +1640,24 @@ export default function ActiveQuotesPage() {
                                     בוטל / נסגר
                                   </span>
                                 ) : isRfqExpired(rfq) ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200 text-xs font-bold flex items-center gap-1">
-                                    <Clock size={12} />
-                                    <span>פג תוקף (נסגר להצעות)</span>
-                                  </span>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200 text-xs font-bold flex items-center gap-1">
+                                        <Clock size={12} />
+                                        <span>פג תוקף (נסגר להצעות)</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenStatusConfirmModal(rfq, 'open');
+                                        }}
+                                        className="px-2.5 py-0.5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                                        title="פתח מחדש והארך את מועד הגשת ההצעות לקבלנים"
+                                      >
+                                        <RefreshCw size={12} />
+                                        <span>פתח מחדש והארך מועד 🔄</span>
+                                      </button>
+                                    </div>
                                 ) : (
                                   <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
                                     פתוח להצעות
@@ -1614,6 +1756,16 @@ export default function ActiveQuotesPage() {
                                       <ShieldCheck size={12} className="text-emerald-500" />
                                       <span>הסכם עבודה חתום • המפרט נעול</span>
                                     </span>
+                                  ) : isRfqExpired(rfq) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenStatusConfirmModal(rfq, 'open')}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs hover:border-blue-300"
+                                      title="פתח מחדש את הפנייה והארך את מועד הגשת ההצעות לקבלנים"
+                                    >
+                                      <RefreshCw size={13} className="text-blue-600" />
+                                      <span>פתח מחדש והארך מועד הגשה 🔄</span>
+                                    </button>
                                   ) : !isRfqClosed(rfq) ? (
                                     <button
                                       type="button"
@@ -2075,7 +2227,7 @@ export default function ActiveQuotesPage() {
 
                                               <button
                                                 type="button"
-                                                onClick={() => handleCopyContractorLink(rfq.id, vendor.vendorId, vendor.tokenHash)}
+                                                onClick={() => handleCopyContractorLink(rfq, vendor)}
                                                 className="text-slate-400 hover:text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0 px-2 py-1 rounded hover:bg-white"
                                                 title="העתק קישור ישיר להגשה (למקרה שהקבלן מבקש שוב)"
                                               >
@@ -2661,22 +2813,102 @@ export default function ActiveQuotesPage() {
               </div>
             </div>
 
-            {/* Explanation Warning */}
-            <div className="text-xs text-slate-600 leading-relaxed font-medium">
-              {statusConfirmModal.newStatus === 'cancelled' ? (
+            {/* Explanation Warning & Reopen Controls */}
+            {statusConfirmModal.newStatus === 'cancelled' ? (
+              <div className="text-xs text-slate-600 leading-relaxed font-medium">
                 <p>
                   האם ברצונך לסגור ולבטל בקשה זו?
                   <br />
-                  לאחר הסגירה, הבקשה תעבור ללשונית <strong>"הצעות סגורות"</strong> וקבלנים לא יוכלו להגיש הצעות חדשות דרך הקישור הישיר.
+                  לאחר הסגירה, הבקשה תעבור ללשונית <strong>"הושלמו ונסגרו"</strong> וקבלנים לא יוכלו להגיש הצעות חדשות דרך הקישור הישיר.
                 </p>
-              ) : (
-                <p>
-                  האם ברצונך לפתוח מחדש בקשה זו?
-                  <br />
-                  הבקשה תחזור להיות פעילה, וקבלנים יוכלו שוב להגיש הצעות מחיר דרך הקישור.
-                </p>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                <div className="text-xs text-slate-600 leading-relaxed font-medium">
+                  <p>
+                    פתיחת הבקשה מחדש תאפשר לקבלנים להגיש או לעדכן הצעות מחיר דרך הקישור הישיר.
+                    {isRfqExpired(statusConfirmModal.rfq) && (
+                      <span className="text-amber-800 font-bold block pt-1">
+                        ⚠️ מועד ההגשה הקודם פג. יש לבחור מועד סגירה חדש להפעלת קישורי ההגשה לקבלנים:
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Deadline selection presets */}
+                <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Calendar size={14} className="text-blue-600" />
+                      <span>הארכת מועד הגשה לקבלנים:</span>
+                    </label>
+                    <span className="text-[10px] text-blue-700 font-bold bg-blue-100/70 px-2 py-0.5 rounded-md">
+                      מועד חדש
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { days: 3, label: '+3 ימים' },
+                      { days: 7, label: '+7 ימים (מומלץ)' },
+                      { days: 14, label: '+14 ימים' }
+                    ].map(preset => {
+                      const isSelected = statusConfirmModal.extensionDays === preset.days;
+                      return (
+                        <button
+                          key={preset.days}
+                          type="button"
+                          onClick={() => {
+                            const d = new Date();
+                            d.setDate(d.getDate() + preset.days);
+                            d.setHours(19, 0, 0, 0);
+                            setStatusConfirmModal(prev => prev ? {
+                              ...prev,
+                              extensionDays: preset.days,
+                              customDeadlineIso: d.toISOString()
+                            } : null);
+                          }}
+                          className={`py-2 px-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-black'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <div className="text-[11px] text-slate-500 font-bold">או בחר מועד ושעה מדויקים:</div>
+                    <input
+                      type="datetime-local"
+                      value={formatIsoToDatetimeLocal(statusConfirmModal.customDeadlineIso || '')}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val) {
+                          const d = new Date(val);
+                          setStatusConfirmModal(prev => prev ? {
+                            ...prev,
+                            extensionDays: -1,
+                            customDeadlineIso: d.toISOString()
+                          } : null);
+                        }
+                      }}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                    />
+                  </div>
+                </div>
+
+                {statusConfirmModal.copyLinkForVendorId && (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-bold flex items-center gap-2">
+                    <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                    <span>בסיום הפתיחה מחדש, הקישור הפעיל יועתק אוטומטית ללוח שלך 📋</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -2703,8 +2935,91 @@ export default function ActiveQuotesPage() {
                 <span>
                   {statusConfirmModal.newStatus === 'cancelled'
                     ? 'סגור וסיים בקשה זו'
-                    : 'פתח מחדש לקבלת הצעות'}
+                    : 'פתח מחדש והארך מועד הגשה'}
                 </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expired RFQ Copy Prompt Modal */}
+      {expiredCopyPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right animate-in zoom-in-95 duration-200" dir="rtl">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-amber-100 text-amber-700 rounded-2xl">
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    מועד הגשת ההצעות הסתיים
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {expiredCopyPrompt.vendorName ? `עבור הקבלן: ${expiredCopyPrompt.vendorName}` : 'פתיחה מחדש והארכת מועד'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpiredCopyPrompt(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5 text-xs text-amber-900 leading-relaxed font-medium">
+              <div className="font-extrabold text-sm text-amber-950 flex items-center gap-1.5">
+                <Clock size={15} className="text-amber-700" />
+                <span>מועד ההגשה פג ב-{new Date(expiredCopyPrompt.rfq.deadlineAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <p>
+                הקישור להגשת הצעה חסום כרגע ולא מאפשר לקבלן להגיש מחיר.
+                כדי לאפשר הגשת הצעות מחדש, יש לפתוח את הפנייה ולהאריך את מועד הסגירה.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                disabled={statusChanging}
+                onClick={() => handleQuickReopenAndCopy(expiredCopyPrompt.rfq, expiredCopyPrompt.vendorId, expiredCopyPrompt.tokenHash, 7)}
+                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {statusChanging ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                <span>פתח מחדש ל-7 ימים והעתק קישור פעיל ⚡</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={statusChanging}
+                onClick={() => {
+                  const prompt = expiredCopyPrompt;
+                  setExpiredCopyPrompt(null);
+                  handleOpenStatusConfirmModal(prompt.rfq, 'open', {
+                    copyLinkForVendorId: prompt.vendorId,
+                    copyLinkTokenHash: prompt.tokenHash
+                  });
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Calendar size={14} />
+                <span>הגדר מועד סגירה מותאם אישית...</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(expiredCopyPrompt.portalUrl);
+                  setCopiedTokenId(`${expiredCopyPrompt.rfq.id}-${expiredCopyPrompt.vendorId}`);
+                  setExpiredCopyPrompt(null);
+                  setTimeout(() => setCopiedTokenId(null), 2500);
+                }}
+                className="w-full py-2 px-3 text-slate-400 hover:text-slate-600 font-medium text-[11px] transition-colors cursor-pointer"
+              >
+                העתק קישור בכל זאת (ללא הארכת מועד)
               </button>
             </div>
           </div>

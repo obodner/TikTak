@@ -13,14 +13,14 @@ body {
 
 .cta-red {
   background: radial-gradient(circle at 30% 30%, #ff4d4d 0%, #ef4444 60%, #991b1b 100%);
-  box-shadow: 
+  box-shadow:
     0 10px 25px rgba(239, 68, 68, 0.4),
     inset 0 -4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .cta-blue {
   background: radial-gradient(circle at 30% 30%, #60a5fa 0%, #3b82f6 60%, #1d4ed8 100%);
-  box-shadow: 
+  box-shadow:
     0 8px 20px rgba(59, 130, 246, 0.3),
     inset 0 -3px 6px rgba(0, 0, 0, 0.2);
 }
@@ -32,9 +32,17 @@ body {
 
 /* Pulse animation for the main CTA */
 @keyframes cta-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-  70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+
+  70% {
+    box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
 }
 
 .animate-cta-pulse {
@@ -57,6 +65,11 @@ body {
 }
 
 @keyframes ring-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }

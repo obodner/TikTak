@@ -15,7 +15,10 @@ import {
   Trash2,
   Truck,
   PenTool,
-  CheckCircle2
+  CheckCircle2,
+  FileText,
+  Paperclip,
+  ExternalLink
 } from 'lucide-react';
 import { doc, getDoc, collection, getDocs, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
@@ -23,6 +26,7 @@ import { WorkQuoteRequest, VendorQuoteSubmission, ContractExecutionData } from '
 import { normalizePhone } from '../../utils/whatsapp';
 import { numberToHebrewWords } from '../../utils/hebrewNumberWords';
 import { logAction } from '../../utils/auditLogger';
+import { getPublicAppUrl } from '../../utils/config';
 import SignaturePadModal from '../common/SignaturePadModal';
 
 export interface ContractPaymentMilestone {
@@ -387,8 +391,14 @@ export default function WorkOrderContractModal({
 
   // Customization drawer & tab states
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
-  const [customizeTab, setCustomizeTab] = useState<'payments' | 'schedule' | 'waste' | 'clauses'>('payments');
-
+  const [customizeTab, setCustomizeTab] = useState<'payments' | 'schedule' | 'waste' | 'clauses' | 'attachments'>('payments');
+  const [appendixNotes, setAppendixNotes] = useState<string>(
+    rfq.contractCustomizations?.appendixNotes ?? ''
+  );
+  const totalAttachmentsCount =
+    (rfq.attachments?.length || 0) +
+    (rfq.imageId ? 1 : 0) +
+    (submission.quoteDocumentUrl ? 1 : 0);
   // Work dates & schedule (from RFQ, contractCustomizations, or agreed with contractor)
   const [workStartDate, setWorkStartDate] = useState<string>(
     rfq.contractCustomizations?.workStartDate ?? (rfq.workStartDate || '')
@@ -402,10 +412,10 @@ export default function WorkOrderContractModal({
     rfq.contractCustomizations?.scopeText ?? (rfq.description || '')
   );
 
-  // Custom agreement clauses added between contractor and admin pre-signature
   const [customClauses, setCustomClauses] = useState<ContractCustomClause[]>(
     rfq.contractCustomizations?.customClauses ?? []
   );
+  const appendixSectionNumber = 5 + customClauses.length;
 
   const handleAddCustomClause = () => {
     setCustomClauses(prev => [
@@ -520,6 +530,7 @@ export default function WorkOrderContractModal({
           singlePaymentTerm,
           milestones,
           wasteClauseText,
+          appendixNotes,
           updatedAt: new Date().toISOString()
         }
       };
@@ -571,6 +582,7 @@ export default function WorkOrderContractModal({
           singlePaymentTerm: singlePaymentTerm || '',
           milestones: milestones || [],
           wasteClauseText: wasteClauseText || '',
+          appendixNotes: appendixNotes || '',
           updatedAt: signedAt
         }
       };
@@ -958,7 +970,7 @@ export default function WorkOrderContractModal({
             }
 
             /* Prevent multi-page overlap and ensure natural page breaks */
-            .contract-border, .grid, .border, .rounded-xl, .rounded-2xl, .parties-grid, .financial-grid, .space-y-2, .space-y-6, .audit-vault-block, .signatures-block {
+            .contract-border, .grid, .border, .rounded-xl, .rounded-2xl, .parties-grid, .financial-grid, .space-y-2, .space-y-6, .audit-vault-block, .signatures-block, .contract-attachment-card, .contract-appendix-box {
               break-inside: avoid !important;
               page-break-inside: avoid !important;
             }
@@ -1056,7 +1068,7 @@ export default function WorkOrderContractModal({
       '';
     const cleanPhone = normalizePhone(rawPhone);
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tiktak2026.web.app';
+    const origin = getPublicAppUrl();
     const contractPortalUrl = `${origin}/quote/${rfq.id}?tid=${rfq.tenantId}&v=${submission.vendorId}${submission.tokenHash ? `&t=${submission.tokenHash}` : ''}&view=contract`;
 
     const paymentNote =
@@ -1245,6 +1257,15 @@ export default function WorkOrderContractModal({
                     }`}
                   >
                     ⚖️ סעיפים מותאמים {customClauses.length > 0 ? `(${customClauses.length})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomizeTab('attachments')}
+                    className={`px-3 py-1 text-xs font-bold rounded-md transition-colors cursor-pointer ${
+                      customizeTab === 'attachments' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-300'
+                    }`}
+                  >
+                    📎 נספחים ומסמכים {totalAttachmentsCount > 0 ? `(${totalAttachmentsCount})` : ''}
                   </button>
                 </div>
 
@@ -1556,6 +1577,107 @@ export default function WorkOrderContractModal({
                       }}
                       className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-800 leading-relaxed focus:outline-blue-500"
                       placeholder="רשום כאן הנחיות ספציפיות לפינוי פסולת, מקום המכולה וכיוצ״ב..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 5: Attachments & Appendices */}
+              {customizeTab === 'attachments' && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-950 space-y-1">
+                    <div className="font-extrabold flex items-center gap-1.5">
+                      <Paperclip size={14} className="text-blue-700" />
+                      <span>מסמכים, מפרטים ותמונות המהווים חלק בלתי נפרד מהחוזה:</span>
+                    </div>
+                    <p className="text-[11px] text-blue-900/80 leading-relaxed">
+                      מסמכים אלו מוטמעים אוטומטית בסעיף הנספחים של ההסכם ומחייבים את שני הצדדים.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {/* Admin side */}
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                      <div className="font-black text-slate-800 flex items-center gap-1.5">
+                        <Building2 size={14} className="text-blue-600" />
+                        <span>מסמכים ומפרטי האתר מטעם המזמין</span>
+                      </div>
+                      {rfq.imageId && (
+                        <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                          <span className="font-bold text-[11px] text-slate-700">תמונת מוקד התקלה</span>
+                          <a
+                            href={`/img/${rfq.tenantId}/${rfq.imageId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline font-bold text-[11px] flex items-center gap-1"
+                          >
+                            <span>צפה ↗</span>
+                          </a>
+                        </div>
+                      )}
+                      {rfq.attachments && rfq.attachments.length > 0 ? (
+                        <div className="space-y-1">
+                          {rfq.attachments.map((att, idx) => (
+                            <div key={idx} className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                              <span className="truncate font-bold text-[11px] text-slate-700">{att.name}</span>
+                              <a
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline font-bold text-[11px] shrink-0"
+                              >
+                                פתח ↗
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      ) : !rfq.imageId ? (
+                        <span className="text-slate-400 text-[11px] italic block">לא צורפו קבצים ע"י המזמין</span>
+                      ) : null}
+                    </div>
+
+                    {/* Contractor side */}
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                      <div className="font-black text-slate-800 flex items-center gap-1.5">
+                        <ShieldCheck size={14} className="text-emerald-600" />
+                        <span>מסמכי הצעת המחיר מטעם הקבלן</span>
+                      </div>
+                      {submission.quoteDocumentUrl ? (
+                        <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                          <span className="font-bold text-[11px] text-slate-700">קובץ הצעת מחיר רשמי</span>
+                          <a
+                            href={submission.quoteDocumentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-emerald-700 hover:underline font-black text-[11px] flex items-center gap-1"
+                          >
+                            <span>צפה בהצעה ↗</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px] italic block">ההצעה הוגשה דיגיטלית בטופס ללא קובץ מצורף</span>
+                      )}
+
+                      {submission.notes && (
+                        <div className="p-2 bg-white rounded-lg border border-slate-200 text-[11px] text-slate-700">
+                          <span className="font-bold text-slate-800 block">הערות שהוגשו ע"י הקבלן:</span>
+                          <span className="italic whitespace-pre-line">"{submission.notes}"</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Optional Appendix Notes */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      הערות והנחיות נוספות לנספח המסמכים (אופציונלי):
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={appendixNotes}
+                      onChange={(e) => setAppendixNotes(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-800 leading-relaxed focus:outline-blue-500"
+                      placeholder="הוסף הערות או קישורים נוספים שיצורפו כחלק מנספח המסמכים בהסכם..."
                     />
                   </div>
                 </div>
@@ -1946,11 +2068,10 @@ export default function WorkOrderContractModal({
                       <span>מיקום מדויק בבניין: {rfq.location}</span>
                     </div>
                   )}
-                  {rfq.attachments && rfq.attachments.length > 0 && (
-                    <div className="pt-1 text-[11px] text-slate-500">
-                      <strong>מסמכים ומפרטים שצורפו למכרז:</strong> {rfq.attachments.map(a => a.name).join(', ')}
-                    </div>
-                  )}
+                  {/* Appendices Reference Notice in Section 1 */}
+                  <div className="pt-2 text-[11px] text-slate-600 border-t border-slate-100 font-medium leading-relaxed">
+                    <strong>נספחי המפרט וההצעה:</strong> מסמכי המפרט, התוכניות, תמונות האתר ומסמכי הצעת המחיר המפורטים בסעיף ${appendixSectionNumber} להלן מהווים חלק בלתי נפרד מהסכם זה ומחייבים את הצדדים לכל דבר ועניין.
+                  </div>
                 </div>
               </div>
 
@@ -2152,6 +2273,147 @@ export default function WorkOrderContractModal({
                   </div>
                 </div>
               ))}
+
+              {/* Section: Appendices & Attached Documents (Admin & Contractor) */}
+              <div className="space-y-2 contract-appendix-box">
+                <h2 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px]">
+                    {appendixSectionNumber}
+                  </span>
+                  <span>סעיף {appendixSectionNumber}: נספח מסמכים ומפרטים מצורפים (חלק בלתי נפרד מההסכם)</span>
+                </h2>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3.5 contract-border leading-relaxed">
+                  <div className="text-[11px] text-slate-600 font-medium">
+                    הצדדים מאשרים כי המסמכים, התוכניות, התמונות והצעת המחיר המפורטים להלן צורפו להליך המכרז ומהווים חלק בלתי נפרד מהוראות הסכם זה:
+                  </div>
+
+                  {/* Part A: Client / Admin Documents */}
+                  <div className="space-y-2 pt-1 border-t border-slate-200">
+                    <div className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+                      <Building2 size={14} className="text-blue-600 shrink-0" />
+                      <span>חלק א': מסמכים ומפרטי האתר מטעם המזמין ({customerTypeLabel})</span>
+                    </div>
+
+                    {/* Site Image if present */}
+                    {rfq.imageId && (
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 contract-attachment-card">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={`/img/${rfq.tenantId}/${rfq.imageId}`}
+                            alt="תמונת מוקד התקלה"
+                            className="w-14 h-14 object-cover rounded-lg border border-slate-200 shrink-0"
+                          />
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs">תמונת מוקד התקלה ושטח העבודה</div>
+                            <div className="text-[10px] text-slate-500">תועדה ע"י המזמין ונמסרה לקבלן כחלק מהמפרט המקורי</div>
+                          </div>
+                        </div>
+                        <a
+                          href={`/img/${rfq.tenantId}/${rfq.imageId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors self-end sm:self-center shrink-0 no-print"
+                        >
+                          <ExternalLink size={12} />
+                          <span>צפה בתמונה המלאה ↗</span>
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Attachments from Admin */}
+                    {rfq.attachments && rfq.attachments.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                        {rfq.attachments.map((att, idx) => (
+                          <div
+                            key={idx}
+                            className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 contract-attachment-card"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <Paperclip size={14} className="text-blue-600 shrink-0" />
+                              <div className="truncate">
+                                <div className="font-bold text-slate-900 truncate text-[11px]">{att.name}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  {att.sizeBytes ? `${(att.sizeBytes / 1024).toFixed(0)} KB • ` : ''}מסמך מפרט רשמי
+                                </div>
+                              </div>
+                            </div>
+                            <a
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-0.5 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-md text-[11px] font-bold shrink-0 flex items-center gap-1 transition-colors no-print"
+                            >
+                              <span>פתח ↗</span>
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    ) : !rfq.imageId ? (
+                      <div className="text-[11px] text-slate-500 italic pr-2">
+                        לא צורפו קבצים חיצוניים נוספים ע"י המזמין; העבודה תבוצע לפי הפירוט המילולי בסעיף 1.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Part B: Contractor Documents */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    <div className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                      <span>חלק ב': מסמכי הצעת המחיר והתחייבויות הקבלן ({submission.vendorName})</span>
+                    </div>
+
+                    {/* Contractor Quote Document */}
+                    {submission.quoteDocumentUrl ? (
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 contract-attachment-card">
+                        <div className="flex items-center gap-3 truncate">
+                          <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg shrink-0">
+                            <FileText size={18} />
+                          </div>
+                          <div className="truncate">
+                            <div className="font-bold text-slate-900 text-xs truncate">
+                              מסמך הצעת המחיר הרשמי שהוגש ע"י הקבלן
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              קובץ הצעת מחיר / כתב כמויות שהועלה בטופס הגשת ההצעה
+                            </div>
+                          </div>
+                        </div>
+                        <a
+                          href={submission.quoteDocumentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition-colors no-print"
+                        >
+                          <ExternalLink size={12} />
+                          <span>צפה בהצעה המקורית ↗</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-600 pr-2">
+                        הצעת המחיר הוגשה דיגיטלית ישירות במערכת TikTak בהתאם למחיר המוסכם בסך ₪{totalWithVat.toLocaleString()} כולל מע"מ.
+                      </div>
+                    )}
+
+                    {/* Contractor Notes/Exclusions if any */}
+                    {submission.notes && (
+                      <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] text-slate-800 space-y-0.5">
+                        <span className="font-bold text-slate-900 block">הערות והסתייגויות שהוגשו עם הצעת הקבלן:</span>
+                        <div className="text-slate-700 italic font-medium whitespace-pre-line">"{submission.notes}"</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Part C: Optional Appendix Notes if configured by Admin */}
+                  {appendixNotes && (
+                    <div className="space-y-1 pt-2 border-t border-slate-200">
+                      <div className="font-bold text-slate-900 text-[11px]">הערות והנחיות מיוחדות לנספח המסמכים:</div>
+                      <div className="p-2.5 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 whitespace-pre-line leading-relaxed">
+                        {appendixNotes}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Signatures Block */}
               <div className="pt-4 border-t-2 border-slate-300">

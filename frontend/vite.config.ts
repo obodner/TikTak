@@ -59,7 +59,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/landingMetrics/, '')
       },
       '/img': {
-        target: 'https://tiktak2026.web.app',
+        target: 'https://mytiktak.com',
         changeOrigin: true
       }
     }

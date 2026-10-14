@@ -1,3 +1,5 @@
+import { getPublicAppUrl } from './config';
+
 export const normalizePhone = (phone: string) => {
   let cleaned = (phone || '').replace(/\D/g, '');
   if (cleaned.startsWith('00')) {
@@ -61,16 +63,18 @@ export const generateWhatsAppLink = (params: {
   if (subLocation) body += `*${subLocationLabel}:* ${subLocation}\n`;
   if (reporterName) body += `*מדווח:* ${reporterName}\n`;
 
+  const publicAppUrl = getPublicAppUrl();
+
   if (imageId) {
-    body += `\n*תמונה:* https://tiktak2026.web.app/img/${tenantId}/${imageId}\n`;
+    body += `\n*תמונה:* ${publicAppUrl}/img/${tenantId}/${imageId}\n`;
   }
 
   if (params.audioId) {
-    body += `*הקלטה:* https://tiktak2026.web.app/aud/${tenantId}/${params.audioId}\n`;
+    body += `*הקלטה:* ${publicAppUrl}/aud/${tenantId}/${params.audioId}\n`;
   }
 
   body += `\n____________________\n`;
-  body += `לניהול בפורטל: https://tiktak2026.web.app/admin`;
+  body += `לניהול בפורטל: ${publicAppUrl}/admin`;
 
   const encodedBody = encodeURIComponent(body);
   const normalizedPhone = normalizePhone(phone);

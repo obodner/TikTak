@@ -1644,7 +1644,7 @@ export default function NewRfqPage() {
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="תאר את הבעיה, גישה למקום, חלקי חילוף נדרשים וכל מידע חשוב לקבלן..."
-              className="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 resize-none text-slate-800 placeholder:text-slate-400 font-medium"
+              className="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 resize-y min-h-[90px] text-slate-800 placeholder:text-slate-400 font-medium"
             />
           </div>
 

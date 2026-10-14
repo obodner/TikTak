@@ -3,6 +3,7 @@ import { X, BookOpen, User, Shield, Settings, Database, Copy, Check, ExternalLin
 import { toPng } from 'html-to-image';
 import heMessages from '../../locales/he.json';
 import enMessages from '../../locales/en.json';
+import { getPublicAppUrl } from '../../utils/config';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, language,
   if (!isOpen) return null;
 
   const isHe = language === 'he';
-  const reportUrl = `https://tiktak2026.web.app/report/${tenantId}`;
+  const reportUrl = `${getPublicAppUrl()}/report/${tenantId}`;
   const dict = (isHe ? (heMessages as any).HelpGuide : (enMessages as any).HelpGuide) || {};
 
   const handleCopy = () => {

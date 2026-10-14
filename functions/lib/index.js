@@ -55,6 +55,7 @@ const crypto_1 = require("crypto");
 (0, app_1.initializeApp)();
 const db = (0, firestore_2.getFirestore)();
 const storage = (0, storage_1.getStorage)();
+const APP_BASE_URL = (process.env.APP_BASE_URL || "https://mytiktak.com").replace(/\/+$/, "");
 async function recordAuditLog(params) {
     const { tenantId, action, level, actor, details } = params;
     const createdAt = new Date().toISOString();
@@ -94,7 +95,7 @@ async function sendQuotaWhatsAppAlertTemplate(params) {
         cleanPhone = "972" + cleanPhone.substring(1);
     }
     const tenantTypeLabel = params.tenantType === 'municipality' ? 'יישוב' : 'בניין';
-    const dashboardLink = "https://tiktak2026.web.app/admin";
+    const dashboardLink = `${APP_BASE_URL}/admin`;
     const payload = {
         messaging_product: "whatsapp",
         to: cleanPhone,
@@ -3542,13 +3543,13 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
         const param7_summary = sanitizeParam(ticketData.summary || "אין תיאור");
         let param8_image = "אין";
         if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
-            param8_image = `(https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId})`;
+            param8_image = `(${APP_BASE_URL}/img/${tenantIdStr}/${ticketData.imageId})`;
         }
         const resolvedAudioId = ticketData.audioId || ticketData.audioUrl || ticketData.audio;
         let param9_audio = "אין";
         if (resolvedAudioId && typeof resolvedAudioId === 'string' && resolvedAudioId.length > 5 && resolvedAudioId !== 'null') {
             const audioCleanId = String(resolvedAudioId).replace(/\.[^/.]+$/, "");
-            param9_audio = `(https://tiktak2026.web.app/aud/${tenantIdStr}/${audioCleanId})`;
+            param9_audio = `(${APP_BASE_URL}/aud/${tenantIdStr}/${audioCleanId})`;
         }
         const templateParams = [
             param1_ticketNum,
@@ -3601,7 +3602,7 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
             }
         }
         if (ticketData.imageId && typeof ticketData.imageId === 'string' && ticketData.imageId.length > 5 && ticketData.imageId !== 'null') {
-            const imageUrl = `https://tiktak2026.web.app/img/${tenantIdStr}/${ticketData.imageId}`;
+            const imageUrl = `${APP_BASE_URL}/img/${tenantIdStr}/${ticketData.imageId}`;
             try {
                 await sendWhatsAppImage(cleanPhone, imageUrl, phoneNumberId, token);
                 logger.info(`Dispatched ticket image attachment to vendor ${cleanPhone}: ${imageUrl}`);
@@ -3648,7 +3649,7 @@ exports.forwardTicketToVendor = (0, https_1.onRequest)({ cors: true, secrets: ["
             catch (signErr) {
                 logger.warn(`Failed to generate signed URL for audio ${audioCleanId}`, signErr);
             }
-            const audioPublicUrl = `https://tiktak2026.web.app/aud/${tenantIdStr}/${audioCleanId}.${foundExt}`;
+            const audioPublicUrl = `${APP_BASE_URL}/aud/${tenantIdStr}/${audioCleanId}.${foundExt}`;
             try {
                 await sendWhatsAppDocument(cleanPhone, audioPublicUrl, `הקלטה_קולית.${foundExt}`, phoneNumberId, token);
                 logger.info(`Dispatched ticket audio document attachment to vendor ${cleanPhone}: ${audioPublicUrl}`);
@@ -4341,7 +4342,7 @@ exports.notifyQuoteSubmission = (0, https_1.onRequest)({ cors: true, secrets: ["
                 `⏱️ *משך ביצוע:* ${durationStr}\n` +
                 (subData.notes ? `💬 *הערות הקבלן:* ${subData.notes}\n` : '') +
                 `\n📊 *לצפייה בהצעה והשוואה במערכת:*\n` +
-                `https://tiktak2026.web.app/q/${buttonSuffix}`;
+                `${APP_BASE_URL}/q/${buttonSuffix}`;
             try {
                 const textResp = await sendWhatsAppText(cleanPhone, fallbackText, phoneNumberId, token);
                 metaMessageId = textResp?.messages?.[0]?.id || null;
@@ -5171,7 +5172,7 @@ async function checkAndDispatchRfqQuotaAlerts(tenantId, tenantData, newCount) {
                 const admins = await getTenantAdminsWithPhones(tenantId, tenantData.parentEnterpriseId);
                 const tenantName = tenantData.name || tenantId;
                 for (const adminItem of admins) {
-                    const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-80% מנצולת בנק הצעות המחיר השנתי (נוצלו ${newCount} מתוך ${annualQuota} בקשות).\n\nלצפייה בפרטים וניהול המכרזים:\nhttps://tiktak2026.web.app/admin/${tenantId}/dashboard`;
+                    const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-80% מנצולת בנק הצעות המחיר השנתי (נוצלו ${newCount} מתוך ${annualQuota} בקשות).\n\nלצפייה בפרטים וניהול המכרזים:\n${APP_BASE_URL}/admin/${tenantId}/dashboard`;
                     await sendWhatsAppText(adminItem.phone, text, phoneNumberId, token).catch((e) => logger.warn(`Failed to send 80% RFQ alert to ${adminItem.phone}`, e));
                 }
             }
@@ -5208,7 +5209,7 @@ async function checkAndDispatchRfqQuotaAlerts(tenantId, tenantData, newCount) {
                     ? "משלוח בקשות נוספות נחסם עד לשדרוג החבילה (Hard Cap)."
                     : `כל בקשה נוספת תחויב בתעריף חריגה של ₪${rfqLicensing.overageRate ?? 45}.`;
                 for (const adminItem of admins) {
-                    const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-100% מנצולת בנק הצעות המחיר השנתי (${newCount}/${annualQuota}).\n${overageNote}\n\nלשדרוג חבילה וניהול:\nhttps://tiktak2026.web.app/admin/${tenantId}/dashboard`;
+                    const text = `שלום ${adminItem.name},\nהתראת מכסה ממערכת TikTak:\nמתחם/בניין "${tenantName}" הגיע ל-100% מנצולת בנק הצעות המחיר השנתי (${newCount}/${annualQuota}).\n${overageNote}\n\nלשדרוג חבילה וניהול:\n${APP_BASE_URL}/admin/${tenantId}/dashboard`;
                     await sendWhatsAppText(adminItem.phone, text, phoneNumberId, token).catch((e) => logger.warn(`Failed to send 100% RFQ alert to ${adminItem.phone}`, e));
                 }
             }

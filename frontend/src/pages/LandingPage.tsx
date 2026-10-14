@@ -700,7 +700,7 @@ export default function LandingPage() {
                     <div className="w-3 h-3 rounded-full bg-green-400" />
                   </div>
                   <div className="bg-slate-200/60 rounded-lg px-4 py-0.5 text-[10px] text-slate-500 font-bold tracking-tight mx-auto select-none">
-                    {dashboardPreviewTab === 'operations' ? 'dashboard.tiktak2026.web.app' : 'analytics.tiktak2026.web.app'}
+                    {dashboardPreviewTab === 'operations' ? 'dashboard.mytiktak.com' : 'analytics.mytiktak.com'}
                   </div>
                 </div>
 
