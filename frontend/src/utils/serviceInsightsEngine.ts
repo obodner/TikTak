@@ -35,7 +35,8 @@ export function generateServiceInsights(input: ServiceInsightInput): ServiceInsi
     firstTouchAvgHours,
     firstTouchCount,
     noiseRatio,
-    outsideScopeCount,
+    duplicateCount = 0,
+    outsideScopeCount = 0,
     totalClosed,
     hotspots,
     vendorScorecard,
@@ -116,18 +117,55 @@ export function generateServiceInsights(input: ServiceInsightInput): ServiceInsi
   }
 
   // 4. Noise & Scope Optimization
-  if (totalClosed > 0 && (noiseRatio >= 20 || outsideScopeCount >= 2)) {
+  if (totalClosed > 0 && (noiseRatio >= 20 || outsideScopeCount >= 2 || duplicateCount >= 2)) {
+    const hasOutside = outsideScopeCount > 0;
+    const hasDuplicates = duplicateCount > 0;
+
+    let title = '';
+    let description = '';
+    let recommendation = '';
+
+    if (hasOutside && hasDuplicates) {
+      title = isEn ? 'Deter Duplicates & Out-of-Scope Reports' : 'הפחתת כפילויות ופניות מחוץ לאחריות';
+      description = isEn
+        ? `${noiseRatio}% of closed tickets are duplicates or outside building committee scope.`
+        : `${noiseRatio}% מהפניות הסגורות הן כפילויות או מחוץ לאחריות ועד.`;
+      recommendation = isEn
+        ? 'Place a pinned notice on the reporting page: urge residents to check open tickets and prefer "Me Too" (📢) over opening duplicates, and direct municipal/street issues to the 106 hotline.'
+        : 'הציבו באנר הודעות בדף הדיווח: בקשו מהדיירים לעיין בפניות הפתוחות ולהעדיף סימון "גם אצלי" (📢) במקום פתיחת פנייה כפולה, והפנו מפגעי רחוב ועירייה למוקד 106.';
+    } else if (hasOutside) {
+      title = isEn ? 'Deter Out-of-Scope Reports' : 'הפחתת פניות מחוץ לאחריות הוועד';
+      description = isEn
+        ? `${noiseRatio}% of closed tickets are outside building committee scope (municipal/street issues).`
+        : `${noiseRatio}% מהפניות הסגורות הן מחוץ לאחריות ועד (מפגעי עירייה ורחוב).`;
+      recommendation = isEn
+        ? 'Place a pinned notice at the top of the reporting form directing municipal issues to the 106 city hotline. This cuts up to 30% of committee triage workload.'
+        : 'הציבו באנר הודעות בדף הדיווח שמפנה מפגעי רחוב/עירייה למוקד 106. פעולה זו חוסכת עד 30% מעומס הטיפול של הוועד.';
+    } else if (hasDuplicates) {
+      title = isEn ? 'Reduce Duplicate Reports ("Me Too" 📢)' : 'הפחתת דיווחים כפולים ("גם אצלי" 📢)';
+      description = isEn
+        ? `${noiseRatio}% of closed tickets are duplicate reports for already known issues.`
+        : `${noiseRatio}% מהפניות הסגורות הן כפילויות של תקלות שכבר דווחו.`;
+      recommendation = isEn
+        ? 'Place a pinned notice on the reporting page urging residents to check open tickets and prefer the "Me Too" (📢) option over opening a new ticket.'
+        : 'הציבו באנר הודעות בדף הדיווח שקורא לדיירים לבדוק פניות פתוחות ולהעדיף לחיצה על "גם אצלי" (📢) במקום פתיחת פנייה חדשה על תקלה קיימת.';
+    } else {
+      title = isEn ? 'Deter Non-Relevant Reports' : 'הפחתת דיווחי סרק';
+      description = isEn
+        ? `${noiseRatio}% of closed tickets are non-relevant or noise.`
+        : `${noiseRatio}% מהפניות הסגורות סווגו כדיווחי סרק או לא רלוונטיות.`;
+      recommendation = isEn
+        ? 'Place a pinned notice at the top of the reporting form guiding residents to report issues in common property areas only.'
+        : 'הציבו באנר הסבר בדף הדיווח להכוונת הדיירים לדיווח על תקלות ברכוש המשותף בלבד.';
+    }
+
     insights.push({
       id: 'noise_reduction_tip',
       category: 'noise',
       type: 'tip',
-      title: isEn ? 'Deter Non-Relevant Reports' : 'הפחתת דיווחי סרק ומחוץ לאחריות',
-      description: isEn
-        ? `${noiseRatio}% of tickets are duplicates, municipal scope, or irrelevant.`
-        : `${noiseRatio}% מהפניות הסגורות הן כפילויות, מחוץ לאחריות ועד או לא רלוונטיות.`,
-      recommendation: isEn
-        ? 'Place a pinned notice at the top of the reporting form directing municipal issues to the 106 city hotline.'
-        : 'הציבו באנר הודעות בדף הדיווח שמפנה מפגעי רחוב/עירייה למוקד 106. פעולה זו חוסכת עד 30% מעומס הטיפול של הוועד.',
+      title,
+      description,
+      recommendation,
       actionType: 'pin_notice',
       actionPayload: { location: '', category: '' }
     });

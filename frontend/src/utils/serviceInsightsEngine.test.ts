@@ -42,7 +42,7 @@ describe('serviceInsightsEngine', () => {
     expect(hotspotInsight?.actionPayload.location).toBe('מעלית B');
   });
 
-  it('detects high noise ratio', () => {
+  it('detects both outsideScope and duplicateCount: recommends both Me Too and 106', () => {
     const insights = generateServiceInsights({
       firstTouchAvgHours: 1.0,
       firstTouchCount: 3,
@@ -59,6 +59,48 @@ describe('serviceInsightsEngine', () => {
     const noiseInsight = insights.find(i => i.category === 'noise');
     expect(noiseInsight).toBeDefined();
     expect(noiseInsight?.type).toBe('tip');
+    expect(noiseInsight?.recommendation).toContain('גם אצלי');
+    expect(noiseInsight?.recommendation).toContain('106');
+  });
+
+  it('detects outsideScopeCount only: recommends calling 106 without Me Too', () => {
+    const insights = generateServiceInsights({
+      firstTouchAvgHours: 1.0,
+      firstTouchCount: 3,
+      noiseRatio: 25,
+      duplicateCount: 0,
+      outsideScopeCount: 4,
+      irrelevantCount: 0,
+      totalClosed: 16,
+      hotspots: [],
+      vendorScorecard: [],
+      meTooTickets: []
+    });
+
+    const noiseInsight = insights.find(i => i.category === 'noise');
+    expect(noiseInsight).toBeDefined();
+    expect(noiseInsight?.recommendation).toContain('106');
+    expect(noiseInsight?.recommendation).not.toContain('גם אצלי');
+  });
+
+  it('detects duplicateCount only: recommends Me Too without 106', () => {
+    const insights = generateServiceInsights({
+      firstTouchAvgHours: 1.0,
+      firstTouchCount: 3,
+      noiseRatio: 30,
+      duplicateCount: 5,
+      outsideScopeCount: 0,
+      irrelevantCount: 0,
+      totalClosed: 15,
+      hotspots: [],
+      vendorScorecard: [],
+      meTooTickets: []
+    });
+
+    const noiseInsight = insights.find(i => i.category === 'noise');
+    expect(noiseInsight).toBeDefined();
+    expect(noiseInsight?.recommendation).toContain('גם אצלי');
+    expect(noiseInsight?.recommendation).not.toContain('106');
   });
 
   it('returns fallback healthy insight when data is quiet', () => {
