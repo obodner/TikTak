@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTak - מדריך אימון לפגישת Pre-Sale: פלטפורמת התפעול וה-BI</title>
+    <style>
+        :root {
+            --primary: #2563EB;
+            --primary-dark: #1E40AF;
+            --secondary: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --purple: #7C3AED;
+            --bg-main: #F8FAFC;
+            --card-bg: #FFFFFF;
+            --text-dark: #1E293B;
+            --text-muted: #64748B;
+            --border: #E2E8F0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-dark);
+            line-height: 1.6;
+            margin: 0;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 950px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #ffffff;
+            padding: 32px 24px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 24px;
+        }
+
+        header h1 {
+            margin: 0 0 8px 0;
+            font-size: 28px;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            margin: 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .mantra-banner {
+            background: linear-gradient(135deg, #1E3A8A, #2563EB);
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+            border: 1px solid #1D4ED8;
+        }
+
+        .mantra-banner .mantra-label {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.85;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .mantra-banner .mantra-text {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            color: var(--primary);
+            font-size: 20px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pillars-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .pillar-item {
+            background: #F1F5F9;
+            border-radius: 8px;
+            padding: 16px;
+            border-top: 4px solid var(--primary);
+        }
+
+        .pillar-item.field { border-color: var(--secondary); }
+        .pillar-item.bi { border-color: var(--purple); }
+        .pillar-item.rfq { border-color: var(--warning); }
+
+        .pillar-item h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            color: var(--text-dark);
+        }
+
+        .pillar-item p {
+            margin: 0;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* ===== כיווץ / הרחבה של שלבי הפגישה ===== */
+        .timeline-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .timeline-controls button {
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--primary);
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            border-radius: 8px;
+            padding: 6px 14px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .timeline-controls button:hover {
+            background: #DBEAFE;
+        }
+
+        .timeline-step {
+            margin-bottom: 14px;
+            border-right: 3px solid var(--primary);
+            padding-right: 16px;
+        }
+
+        .timeline-step > summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            list-style: none;
+            padding: 8px 0;
+            border-radius: 6px;
+            user-select: none;
+        }
+
+        .timeline-step > summary::-webkit-details-marker { display: none; }
+
+        .timeline-step > summary:hover h4 { color: var(--primary); }
+
+        .timeline-step > summary:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .timeline-time {
+            font-weight: bold;
+            color: var(--primary);
+            min-width: 110px;
+            font-size: 14px;
+        }
+
+        .timeline-step > summary h4 {
+            margin: 0;
+            font-size: 16px;
+            flex-grow: 1;
+            transition: color 0.15s;
+        }
+
+        .chevron {
+            width: 10px;
+            height: 10px;
+            border-left: 2px solid var(--text-muted);
+            border-bottom: 2px solid var(--text-muted);
+            transform: rotate(-45deg);
+            transition: transform 0.2s;
+            margin-left: 6px;
+            flex-shrink: 0;
+        }
+
+        .timeline-step[open] > summary .chevron {
+            transform: rotate(135deg);
+        }
+
+        .timeline-content {
+            padding: 4px 0 8px 0;
+            margin-right: 122px;
+        }
+
+        .timeline-content p { margin-top: 0; }
+
+        @media (max-width: 640px) {
+            .timeline-content { margin-right: 0; }
+            .timeline-step > summary { flex-wrap: wrap; gap: 4px 12px; }
+            .timeline-time { min-width: 0; }
+        }
+
+        .script-quote {
+            background-color: #EFF6FF;
+            border-right: 4px solid var(--primary);
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-style: italic;
+            margin: 8px 0;
+            color: #1E3A8A;
+        }
+
+        .scenario-box {
+            background: #FFFBEB;
+            border: 1px solid #FDE68A;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .scenario-title {
+            font-weight: bold;
+            color: #B45309;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .scenario-reply {
+            background: #FFFFFF;
+            border-right: 3px solid var(--secondary);
+            padding: 10px 14px;
+            border-radius: 4px;
+            margin-top: 8px;
+            color: #065F46;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid var(--border);
+            padding: 10px 12px;
+            text-align: right;
+        }
+
+        th {
+            background-color: #F1F5F9;
+            color: var(--text-dark);
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-blue { background: #DBEAFE; color: #1E40AF; }
+        .badge-green { background: #D1FAE5; color: #065F46; }
+
+        .tips-list {
+            padding-right: 20px;
+            margin: 0;
+        }
+
+        .tips-list li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>TikTak - תסריט פגישת Pre-Sale מכויל ליבה</h1>
+        <p>איך להציג שליטה תפעולית מלאה: דיווחים שקטים, ניתוב לאנשי שטח, בקלוג, BI ומודול מכרזים</p>
+    </header>
+
+    <!-- מנטרת הפתרון -->
+    <div class="mantra-banner">
+        <div class="mantra-label">💎 מסגור העל של המערכת (The Core Mantra)</div>
+        <div class="mantra-text">
+            "TikTak היא לא לוח מודעות ולא עוד קבוצת וואטסאפ. זו מערכת שמקצרת את המרחק בין מפגע בשטח לגורם המבצע שלו."
+        </div>
+    </div>
+
+    <!-- 4 עמודי התווך של ה-Core -->
+    <div class="card">
+        <h2>🏛️ מפת היכולות של TikTak: מה אנחנו באמת מוכרים?</h2>
+        <div class="pillars-grid">
+            <div class="pillar-item">
+                <h3>1. קליטת שטח ב-15 שניות</h3>
+                <p>דיווח ללא אפליקציות, פענוח AI ויזואלי/קולי, אימות Whitelist שקט, והודעות הרגעה אוטומטיות בוואטסאפ שמחסלות שיחות טלפון.</p>
+            </div>
+            <div class="pillar-item field">
+                <h3>2. שליטה, בקלוג ואנשי שטח</h3>
+                <p>לוח קנבן עם מעקב SLA ימי עבודה, גשר וואטסאפ מהיר להזנקת איש אחזקה/גנן, ומצבור משימות לפי דחיפות וחשיבות.</p>
+            </div>
+            <div class="pillar-item bi">
+                <h3>3. מרכז מודיעין ו-BI</h3>
+                <p>מפות חום לאיתור כשלים כרוניים (משאבות/מעליות/גנ"ש), מדד MTTR, סינון כפילויות ("Me Too") ובקרה על ביצועי ספקים.</p>
+            </div>
+            <div class="pillar-item rfq">
+                <h3>4. מודול RFQ לפרויקטים</h3>
+                <p>מכרזים ב-48 שעות לפרויקטים גדולים, מפרט תחרותי אחיד, נעילת מע"מ, חוזים חתומים דיגיטלית ומדד העסקה חוזרת (Rehire).</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- מהלך הפגישה דקה-אחר-דקה -->
+    <div class="card">
+        <h2>⏱️ מהלך הפגישה המכויל (20 דקות מדודות)</h2>
+
+        <div class="timeline-controls">
+            <button type="button" id="expandAll">הרחב הכול</button>
+            <button type="button" id="collapseAll">כווץ הכול</button>
+        </div>
+
+        <!-- שלב 1 -->
+        <details class="timeline-step" open>
+            <summary>
+                <span class="timeline-time">00-03 דק'</span>
+                <h4>1. הצפת הכאב הניהולי</h4>
+                <span class="chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="timeline-content">
+                <p>חיבור ישיר לעומס הניהול השוטף: קבוצות וואטסאפ רועשות, תלונות שחוזרות על עצמן, וחוסר יכולת לדעת מה קורה בשטח.</p>
+                <div class="script-quote">
+                    "אתם מנהלים את הבניין או היישוב כדי לדאוג לתשתיות, לא כדי לעבוד כמוקד 106 ידני. היום כל נורה שרופה, צינור מטפטף או נדנדה שבורה מייצרים 20 הודעות וואטסאפ, אתם צריכים לזכור למי להעביר את זה, לרדוף אחרי איש האחזקה, ובסוף גם לספוג תלונות מהדיירים שלא יודעים מה הסטטוס."
+                </div>
+            </div>
+        </details>
+
+        <!-- שלב 2 -->
+        <details class="timeline-step" open>
+            <summary>
+                <span class="timeline-time">03-08 דק'</span>
+                <h4>2. הליבה התפעולית: דיווח דייר, קנבן ושיגור לאנשי שטח</h4>
+                <span class="chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="timeline-content">
+                <p>הדגימו את עקרון "חוק 5-ל-2" ואת הזרימה השקטה של התפעול היומיומי:</p>
+                <ul>
+                    <li><strong>צד הדייר:</strong> פתיחת קישור ישיר, צילום מפגע, AI שמסווג ומנסח בתוך 15 שניות – <strong>ללא אפליקציה וללא סיסמאות</strong>.</li>
+                    <li><strong>דשבורד המנהל:</strong> הקריאה נוחתת בלוח הקנבן עם שעון SLA שמחשב ימי עבודה בישראל וצובע ברמזור תקלות שנתקעו.</li>
+                    <li><strong>גשר לאנשי שטח (Vendor Bridge):</strong> לחיצה על כפתור שיגור לאיש האחזקה או הגנן – הוא מקבל ישירות לוואטסאפ הודעה מובנית עם מיקום ותמונה וכפתור אישור, ללא צורך בכניסה למערכת.</li>
+                    <li><strong>מצבור משימות (Backlog):</strong> הראו איך מנקים את הלוח היומי ע"י העברת פרויקטים גדולים (איטום לקראת חורף, שדרוג גינה) למטריצת עדיפויות (דחוף/חשוב).</li>
+                </ul>
+            </div>
+        </details>
+
+        <!-- שלב 3 -->
+        <details class="timeline-step" open>
+            <summary>
+                <span class="timeline-time">08-13 דק'</span>
+                <h4>3. מרכז ה-BI: מניהול "כיבוי שריפות" להבנת דפוסים ושליטה</h4>
+                <span class="chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="timeline-content">
+                <p>הראו למנהל איך TikTak הופכת אותו למנהל נכסים חכם ומקצועי:</p>
+                <div class="script-quote">
+                    "במקום לטפל באותה תקלה 10 פעמים, מרכז ה-BI מציג לכם מפת חום שמראה איפה התשתיות שלכם קורסות: האם משאבת מים ספציפית מייצרת תקלות חוזרות? האם יש שחיקה במעלית מסוימת? אתם רואים את זמן הטיפול הממוצע (MTTR), מנטרלים תקלות כפולות עם מנגנון 'Me Too', ומקבלים כרטיס ביצועים שמודד בדיוק כמה מהר אנשי השירות שלכם מגיבים."
+                </div>
+            </div>
+        </details>
+
+        <!-- שלב 4 -->
+        <details class="timeline-step" open>
+            <summary>
+                <span class="timeline-time">13-16 דק'</span>
+                <h4>4. מודול המכרזים (RFQ): השלב הסופי לפרויקטים גדולים</h4>
+                <span class="chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="timeline-content">
+                <p>חברו את הדיווח והבקלוג לעבודות הכבדות שדורשות איסוף הצעות מחיר:</p>
+                <div class="script-quote">
+                    "וכשמשימה מהבקלוג הופכת לפרויקט יקר (איטום גג, שיפוץ מעלית או גיזום מורכב) – לא צריך להתחיל סבב טלפונים. בלחיצת כפתור מתוך כרטיס המשימה, מודול ה-RFQ מפיץ מכרז ל-3 קבלנים בוואטסאפ, נועל הצעות מחיר כולל מע״מ, מפיק חוזה עבודה חתום דיגיטלית ושומר את היסטוריית הדירוג ומדד ה-Rehire למנהלים הבאים."
+                </div>
+            </div>
+        </details>
+
+        <!-- שלב 5 -->
+        <details class="timeline-step" open>
+            <summary>
+                <span class="timeline-time">16-20 דק'</span>
+                <h4>5. הצעת ה-30 יום ניסיון וקביעת תאריך השקה</h4>
+                <span class="chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="timeline-content">
+                <p>הסרת חסמים: פיילוט מלא לחודש ימים, אפס עלות, הגדרת Whitelist של מספרי הטלפון ב-10 דקות, ותיאום יום עלייה לאוויר.</p>
+            </div>
+        </details>
+    </div>
+
+    <!-- מקרים ותגובות -->
+    <div class="card">
+        <h2>🥊 מקרים ותגובות</h2>
+
+        <!-- מקרה 1 -->
+        <div class="scenario-box">
+            <div class="scenario-title">⚠️ מקרה 1: "בשביל מה לי מערכת כזו? יש לי איש תחזוקה/אב בית קבוע"</div>
+            <div class="scenario-reply">
+                <strong>התגובה שלך:</strong><br>
+                "מעולה, TikTak לא באה להחליף אותו – היא הופכת אותו להרבה יותר יעיל. במקום שאתה תהיה המתווך שמעביר לו צילומי מסך מהוואטסאפ או שהוא ישכח משימות, המערכת משגרת אליו את התקלה ישירות לוואטסאפ בלחיצת כפתור אחת עם תמונה ומיקום. הוא לוחץ 'קיבלתי' ו'טופל', והדשבורד והדייר מתעדכנים מעצמם. אתה מקבל שקט ושליטה על מה שנעשה."
+            </div>
+        </div>
+
+        <!-- מקרה 2 -->
+        <div class="scenario-box">
+            <div class="scenario-title">⚠️ מקרה 2: "מערכת דיווחים רק תגרום לדיירים להציף אותי בעוד תלונות"</div>
+            <div class="scenario-reply">
+                <strong>התגובה שלך:</strong><br>
+                "בדיוק להפך, ורואים את זה בכל פיילוט שלנו. מה שמציף מנהלים זה לא התקלה, אלא ה'רעש' סביבה – 15 דיירים ששואלים 'מי מטפל בזה?' כי הם חושבים שמתעלמים מהם. ב-TikTak, ברגע שדייר מדווח, הוא מקבל אישור קליטה מיידי והודעות הרגעה אוטומטיות כשהנושא בטיפול. בנוסף, מנגנון ה-'Me Too' מאפשר לשכנים להצטרף לדיווח קיים במקום לפתוח קריאות כפולות."
+            </div>
+        </div>
+
+        <!-- מקרה 3 -->
+        <div class="scenario-box">
+            <div class="scenario-title">⚠️ מקרה 3: "מה אם יש פרויקטים שלא דורשים טיפול מיידי אלא תכנון קדימה?"</div>
+            <div class="scenario-reply">
+                <strong>התגובה שלך:</strong><br>
+                "בשביל זה בדיוק פיתחנו את מצבור המשימות (Backlog) שמבוסס על מטריצת חשיבות ודחיפות. אתם לא מעמיסים את לוח הטיפול היומי של הבניין במשימות של עוד חצי שנה. משימה כמו 'איטום לקראת החורף' או 'החלפת שער' מועברת לבקלוג, וכשמגיע הזמן שלה – מחזירים אותה ללוח הפעיל או מוציאים עליה RFQ בלחיצת כפתור."
+            </div>
+        </div>
+
+        <!-- מקרה 4 -->
+        <div class="scenario-box">
+            <div class="scenario-title">⚠️ מקרה 4: "איך מרכז ה-BI באמת עוזר לי בפועל ולא רק מציג גרפים יפים?"</div>
+            <div class="scenario-reply">
+                <strong>התגובה שלך:</strong><br>
+                "הוא חוסך לכם כסף אמיתי. לדוגמה, אם ה-BI מראה שבמשך 3 חודשים היו לכם 6 קריאות חוזרות על משאבת מים בחניון או מנוע שער, אתם מבינים שלא צריך להמשיך לשלם על ביקורי טכנאי נקודתיים, אלא להפעיל אחריות מול היבואן או לדרוש החלפה יסודית. ה-BI נותן לכם עובדות מגובות בנתונים ולא תחושות בטן."
+            </div>
+        </div>
+    </div>
+
+    <!-- מחירונים משולבים -->
+    <div class="card">
+        <h2>💰 מחירונים רשמיים: רישוי הליבה ומודול המכרזים</h2>
+
+        <h4>1. רישוי מערכת TikTak (רישוי חודשי - ניהול, דיווחים, בקלוג ו-BI)</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>מסלול</th>
+                    <th>מחיר חודשי</th>
+                    <th>מכסת פניות חודשית</th>
+                    <th>מחיר חריגה</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge badge-blue">Micro / סטרטר</span></td>
+                    <td>₪99 / חודש</td>
+                    <td>15 פניות / חודש</td>
+                    <td>₪12.00 / פנייה</td>
+                </tr>
+                <tr>
+                    <td>Basic / בסיסי</td>
+                    <td>₪199 / חודש</td>
+                    <td>35 פניות / חודש</td>
+                    <td>₪10.00 / פנייה</td>
+                </tr>
+                <tr>
+                    <td>Standard / סטנדרט (פופולרי)</td>
+                    <td>₪399 / חודש</td>
+                    <td>80 פניות / חודש</td>
+                    <td>₪8.00 / פנייה</td>
+                </tr>
+                <tr>
+                    <td>Growth / צמיחה</td>
+                    <td>₪699 / חודש</td>
+                    <td>160 פניות / חודש</td>
+                    <td>₪7.00 / פנייה</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4 style="margin-top: 20px;">2. מודול מכרזים וקבלנים (RFQ - בנק שנתי מראש)</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>חבילה</th>
+                    <th>מחיר שנתי</th>
+                    <th>הקצאת מכרזים שנתית</th>
+                    <th>עלות אפקטיבית למכרז</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge badge-green">RFQ Starter</span></td>
+                    <td>₪249 / שנה</td>
+                    <td>5 מכרזים</td>
+                    <td>₪49.80 / מכרז</td>
+                </tr>
+                <tr>
+                    <td>RFQ Basic</td>
+                    <td>₪449 / שנה</td>
+                    <td>10 מכרזים</td>
+                    <td>₪44.90 / מכרז</td>
+                </tr>
+                <tr>
+                    <td>RFQ Standard (מומלץ)</td>
+                    <td>₪599 / שנה</td>
+                    <td>15 מכרזים</td>
+                    <td>₪39.93 / מכרז</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">* פניות שלא נוצלו עוברות אוטומטית לשנה הבאה בעת חידוש (Rollover).</p>
+    </div>
+
+    <!-- טיפים מובילים לפגישה -->
+    <div class="card">
+        <h2>💡 3 דגשים קריטיים להובלת הפגישה</h2>
+        <ul class="tips-list">
+            <li><strong>שמרו על יחס של 70/30:</strong> הקדישו 70% מהזמן ליום-יום התפעולי (דיווח, בקלוג, אנשי שטח ו-BI), ורק 30% למודול ה-RFQ. כך הם יבינו שזו מערכת שחיה איתם כל יום.</li>
+            <li><strong>פתחו את מרכז ה-BI בלייב:</strong> הראו להם את מפת החום ואת מדדי ה-SLA. מנהלים וחברות ניהול מתרשמים עמוקות מנתונים שמגנים עליהם מפני טענות של דיירים[cite: 3, 4].</li>
+            <li><strong>חתרו ישירות לפיילוט:</strong> אל תמכרו רישיון שנתי בפגישה הראשונה. סגרו על: "בואו נפתח לכם סביבה ל-30 יום ניסיון ללא עלות, תתחילו לתקתק משימות ותראו בעצמכם".</li>
+        </ul>
+    </div>
+
+</div>
+
+<script>
+    (function () {
+        var steps = document.querySelectorAll('.timeline-step');
+        document.getElementById('expandAll').addEventListener('click', function () {
+            steps.forEach(function (s) { s.open = true; });
+        });
+        document.getElementById('collapseAll').addEventListener('click', function () {
+            steps.forEach(function (s) { s.open = false; });
+        });
+    })();
+</script>
+
+</body>
+</html>

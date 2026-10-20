@@ -512,17 +512,17 @@ export default function ResidentFlow() {
         <div 
             className={`flex flex-col bg-white relative ${
                 state === 'idle' || state === 'analyzing'
-                    ? 'h-[100dvh] max-h-[100dvh] overflow-hidden'
+                    ? 'min-h-[100dvh] overflow-y-auto'
                     : 'min-h-[100dvh]'
             }`} 
             dir={i18n.language === 'he' ? 'rtl' : 'ltr'}
         >
             {/* 1. TOP BAR (IDENTITY + CONTEXT) - Persistent across all states */}
-            <header className="sticky top-0 shrink-0 bg-white/95 backdrop-blur-md px-4 py-2 sm:py-3 flex flex-col items-center justify-center border-b border-slate-100 shadow-xs z-20">
+            <header className="sticky top-0 shrink-0 bg-white/95 backdrop-blur-md px-4 py-1.5 sm:py-2.5 flex flex-col items-center justify-center border-b border-slate-100 shadow-xs z-20">
                 <div className="select-none">
-                    <img src="/logo_transparent.png" alt="TikTak" className="h-20 sm:h-24 w-auto object-contain" />
+                    <img src="/logo_transparent.png" alt="TikTak" className="h-10 sm:h-14 w-auto object-contain" />
                 </div>
-                <p className="text-slate-950 text-xl sm:text-2xl font-black tracking-tight mt-0.5">
+                <p className="text-slate-950 text-base sm:text-xl font-black tracking-tight mt-0.5">
                     {address || tenantName || '...'}
                 </p>
             </header>
@@ -530,7 +530,7 @@ export default function ResidentFlow() {
             {/* Main Flow Area */}
             <main className={`flex-1 flex flex-col items-center px-4 w-full max-w-md mx-auto ${
                 state === 'idle' || state === 'analyzing'
-                    ? 'justify-between py-1 overflow-hidden'
+                    ? 'justify-between py-1 sm:py-2'
                     : 'pt-6 pb-8'
             }`}>
                 {tenantId === 'default-tenant' && state === 'idle' && (
@@ -542,7 +542,7 @@ export default function ResidentFlow() {
                 )}
 
                 {state === 'idle' || state === 'analyzing' ? (
-                    <div className="flex-1 flex flex-col items-center justify-between w-full h-full py-1">
+                    <div className="flex-1 flex flex-col items-center justify-between w-full h-full py-0.5 sm:py-1">
 
                         {/* Pinned Resident Notice Banner */}
                         {(() => {
@@ -585,13 +585,13 @@ export default function ResidentFlow() {
                             const BannerIcon = styleConfig.Icon;
 
                             return (
-                                <div className={`mb-4 w-full p-4 rounded-2xl border shadow-sm flex items-start gap-3 text-start animate-in fade-in slide-in-from-top-2 duration-300 ${styleConfig.container}`}>
-                                    <div className={`p-2 rounded-xl shrink-0 mt-0.5 shadow-xs ${styleConfig.iconBg}`}>
-                                        <BannerIcon size={18} />
+                                <div className={`mb-3 w-full p-3 rounded-2xl border shadow-sm flex items-start gap-2.5 text-start animate-in fade-in slide-in-from-top-2 duration-300 ${styleConfig.container}`}>
+                                    <div className={`p-1.5 rounded-xl shrink-0 mt-0.5 shadow-xs ${styleConfig.iconBg}`}>
+                                        <BannerIcon size={16} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`font-extrabold text-[11px] uppercase tracking-wider px-2 py-0.5 rounded-md ${styleConfig.badge}`}>
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className={`font-extrabold text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md ${styleConfig.badge}`}>
                                                 {styleConfig.label}
                                             </span>
                                             {noticeBanner.location && (
@@ -600,7 +600,7 @@ export default function ResidentFlow() {
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-sm font-bold text-slate-800 leading-snug">
+                                        <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
                                             {noticeBanner.message}
                                         </p>
                                     </div>
@@ -614,20 +614,20 @@ export default function ResidentFlow() {
                                             }
                                         }}
                                         aria-label={i18n.language === 'en' ? 'Close notice' : 'סגור הודעה'}
-                                        className="p-1.5 -mr-1.5 -mt-1.5 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer shrink-0"
+                                        className="p-1 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer shrink-0"
                                     >
-                                        <X size={16} />
+                                        <X size={14} />
                                     </button>
                                 </div>
                             );
                         })()}
 
                         {/* 2. HERO SECTION */}
-                        <section className="text-center shrink-0 pt-1 sm:pt-2 px-2 animate-in fade-in slide-in-from-top-2 duration-500">
-                            <h1 className="text-blue-950 font-black text-3xl sm:text-4xl mb-1.5 leading-tight tracking-tight">
+                        <section className="text-center shrink-0 pt-0.5 sm:pt-2 px-2 animate-in fade-in slide-in-from-top-2 duration-500">
+                            <h1 className="text-blue-950 font-black text-xl sm:text-3xl mb-0.5 sm:mb-1.5 leading-tight tracking-tight">
                                 {t('hero_headline')}
                             </h1>
-                            <p className="text-blue-900 text-lg sm:text-xl font-extrabold">
+                            <p className="text-blue-900 text-xs sm:text-base font-extrabold">
                                 {t('hero_subheadline')}
                             </p>
                         </section>
@@ -648,10 +648,10 @@ export default function ResidentFlow() {
                         />
 
                         {/* Unobtrusive link for Resident Dashboard */}
-                        <div className="shrink-0 text-center pb-2.5">
+                        <div className="shrink-0 text-center pb-1 sm:pb-2">
                             <Link
                                 to={`/report/${tenantId}/dashboard`}
-                                className="text-base sm:text-lg font-black text-blue-600 hover:text-blue-800 hover:underline transition-colors py-2 px-5 inline-block"
+                                className="text-xs sm:text-base font-black text-blue-600 hover:text-blue-800 hover:underline transition-colors py-1 px-3 inline-block"
                             >
                                 {isMunicipality ? t('view_previous_reports_municipality') : t('view_previous_reports_building')}
                             </Link>

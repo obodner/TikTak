@@ -92,15 +92,15 @@ export const QuickTapPills: React.FC<QuickTapPillsProps> = ({
             <button
               key={item.id}
               onClick={() => onSelect(item)}
-              className="flex-shrink-0 flex items-center gap-3.5 bg-slate-50 hover:bg-blue-50 border-2 border-slate-200/80 hover:border-blue-300 px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl shadow-sm active:scale-95 transition-all snap-start"
+              className="flex-shrink-0 flex items-center gap-2.5 sm:gap-3.5 bg-slate-50 hover:bg-blue-50 border-2 border-slate-200/80 hover:border-blue-300 px-3.5 py-2 sm:px-6 sm:py-3.5 rounded-xl sm:rounded-2xl shadow-xs active:scale-95 transition-all snap-start"
             >
-              <span className="text-3xl sm:text-4xl shrink-0">{item.emoji}</span>
+              <span className="text-2xl sm:text-3xl shrink-0">{item.emoji}</span>
               <div className="flex flex-col items-start text-right">
-                <span className="text-base sm:text-lg font-black text-slate-950 leading-tight whitespace-nowrap">
+                <span className="text-xs sm:text-base font-black text-slate-950 leading-tight whitespace-nowrap">
                   {item.summary}
                 </span>
                 {(item.location || item.subLocation) && (
-                  <span className="text-xs sm:text-sm font-bold text-slate-600 leading-tight mt-1">
+                  <span className="text-[10px] sm:text-xs font-bold text-slate-600 leading-tight mt-0.5">
                     {[item.location, item.subLocation].filter(Boolean).join(' • ')}
                   </span>
                 )}

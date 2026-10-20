@@ -63,7 +63,11 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         }
 
         if (filters.action !== 'all') {
-            filtered = filtered.filter(l => l.action === filters.action);
+            if (filters.action === 'APP_FEEDBACK_SUBMITTED') {
+                filtered = filtered.filter(l => l.action === 'APP_FEEDBACK_SUBMITTED' || l.action === 'APP_FEEDBACK_SUBMMITTED');
+            } else {
+                filtered = filtered.filter(l => l.action === filters.action);
+            }
         }
 
         if (filters.category !== 'all') {
@@ -257,7 +261,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'COMMENT_CREATED', 'COMMENT_DELETED', 'USER_ADDED', 'USER_DELETED', 'USER_UPDATE',
         'VENDOR_ADDED', 'VENDOR_UPDATED', 'VENDOR_DELETED',
         'CONFIGURATION_UPDATE', 'QUICKTAP_CONFIG_UPDATE', 'REPORTER_LIST_UPDATE', 'LOGIN',
-        'APP_FEEDBACK_SUBMITTED', 'APP_FEEDBACK_SUBMMITTED', 'SERVICE_FEEDBACK_SUBMITTED',
+        'APP_FEEDBACK_SUBMITTED', 'SERVICE_FEEDBACK_SUBMITTED',
         'RESIDENT_COMMENT_ADDED', 'RESIDENT_METOO_INCREMENTED',
         'TICKET_FORWARDED_TO_VENDOR', 'VENDOR_ACKNOWLEDGED_TICKET', 'VENDOR_COMPLETED_TICKET',
         'TICKET_BACKLOG_MOVED', 'BACKLOG_TICKET_REORDERED',
@@ -347,12 +351,88 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'duplicate': { he: 'כפילות', en: 'Duplicate' },
         'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
         'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+        'out_of_scope': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
     };
 
     function formatStatus(rawStatus: string) {
         if (!rawStatus) return '';
         const statusKey = String(rawStatus).toLowerCase();
         return isEn ? (statusMap[statusKey]?.en || rawStatus) : (statusMap[statusKey]?.he || rawStatus);
+    }
+
+    function formatExclusionReason(rawReason?: string, isEn?: boolean): string {
+        if (!rawReason) return '';
+        const key = String(rawReason).toLowerCase().trim();
+        const reasonMap: Record<string, { he: string; en: string }> = {
+            'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+            'out_of_scope': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+            'duplicate': { he: 'כפילות', en: 'Duplicate' },
+            'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
+            'rejected': { he: 'נדחה', en: 'Rejected' },
+            'dismissed': { he: 'נדחה', en: 'Dismissed' },
+            'fixed': { he: 'טופל', en: 'Fixed' },
+            'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
+        };
+        const translated = isEn ? (reasonMap[key]?.en || rawReason) : (reasonMap[key]?.he || rawReason);
+        return ` (${translated})`;
+    }
+
+    function formatUrgency(rawUrgency?: string, isEn?: boolean): string {
+        if (!rawUrgency) return '';
+        const key = String(rawUrgency).toLowerCase().trim();
+        const urgMap: Record<string, { he: string; en: string }> = {
+            'low': { he: 'נמוכה', en: 'Low' },
+            'normal': { he: 'רגילה', en: 'Normal' },
+            'high': { he: 'גבוהה', en: 'High' },
+            'urgent': { he: 'דחופה', en: 'Urgent' },
+        };
+        return isEn ? (urgMap[key]?.en || rawUrgency) : (urgMap[key]?.he || rawUrgency);
+    }
+
+    function formatServiceRating(rawRating: any, isEn: boolean): string {
+        if (!rawRating) return isEn ? 'Not specified' : 'ללא פירוט';
+        const str = String(rawRating).toLowerCase().trim();
+        if (str === 'good' || str.includes('מצוין') || str.includes('מעולה') || str.includes('טוב')) {
+            return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
+        }
+        if (str === 'ok' || str.includes('בסדר') || str.includes('סביר') || str.includes('בינוני')) {
+            return isEn ? 'Satisfactory 👍' : 'בסדר 👍';
+        }
+        if (str === 'bad' || str.includes('לא מרוצה') || str.includes('גרוע') || str.includes('טעון שיפור')) {
+            return isEn ? 'Dissatisfied 👎' : 'לא מרוצה 👎';
+        }
+        const num = Number(rawRating);
+        if (!isNaN(num) && num >= 1 && num <= 5) {
+            if (num >= 4) return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
+            if (num === 3) return isEn ? 'Satisfactory 👍' : 'בסדר 👍';
+            return isEn ? 'Dissatisfied 👎' : 'לא מרוצה 👎';
+        }
+        return String(rawRating);
+    }
+
+    function formatAppRating(rawRating: any, isEn: boolean): string {
+        if (!rawRating) return isEn ? 'Not specified' : 'ללא פירוט';
+        const num = Number(rawRating);
+        if (!isNaN(num)) {
+            const starMapHe: Record<number, string> = {
+                1: 'חלש (כוכב 1 ⭐)',
+                2: 'סביר (2 כוכבים ⭐)',
+                3: 'בינוני (3 כוכבים ⭐)',
+                4: 'טוב (4 כוכבים ⭐)',
+                5: 'מעולה (5 כוכבים ⭐)'
+            };
+            const starMapEn: Record<number, string> = {
+                1: 'Poor (1 star ⭐)',
+                2: 'Fair (2 stars ⭐)',
+                3: 'Average (3 stars ⭐)',
+                4: 'Good (4 stars ⭐)',
+                5: 'Excellent (5 stars ⭐)'
+            };
+            if (isEn && starMapEn[num]) return starMapEn[num];
+            if (!isEn && starMapHe[num]) return starMapHe[num];
+            return `${num} ⭐`;
+        }
+        return formatServiceRating(rawRating, isEn);
     }
 
     useEffect(() => {
@@ -480,7 +560,7 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 const qRef = (log.details?.ticketNumber !== undefined && log.details?.ticketNumber !== null)
                     ? `#${log.details.ticketNumber}`
                     : (log.details?.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
-                const reasonStr = log.details?.reason ? ` (${log.details.reason})` : '';
+                const reasonStr = formatExclusionReason(log.details?.reason, isEn);
                 return isEn
                     ? `Ticket ${qRef} flagged as non-billable quota deduction${reasonStr}${locStr}`
                     : `זיכוי מכסה: פנייה ${qRef} סומנה כפטורה מחיוב במכסה${reasonStr}${locStr}`;
@@ -586,9 +666,10 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             }
             case 'TICKET_URGENCY_UPDATE':
                 const urgTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const formattedUrgency = formatUrgency(log.details.newUrgency, isEn);
                 return isEn
-                    ? `${actor} updated ticket ${urgTicketRef} urgency to ${log.details.newUrgency}`
-                    : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${log.details.newUrgency}`;
+                    ? `${actor} updated ticket ${urgTicketRef} urgency to ${formattedUrgency}`
+                    : `${actor} עדכן דחיפות של פנייה ${urgTicketRef} ל-${formattedUrgency}`;
             case 'CONFIGURATION_UPDATE':
                 if (log.details?.subAction === 'RFQ_COMPLETED') {
                     const rfqRef = log.details.rfqId ? ` (#${log.details.rfqId.slice(0, 6)})` : '';
@@ -702,15 +783,17 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
             case 'APP_FEEDBACK_SUBMITTED':
             case 'APP_FEEDBACK_SUBMMITTED': {
                 const appFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const friendlyRating = formatAppRating(log.details.rating, isEn);
                 return isEn
-                    ? `${actor} submitted app feedback (rating: ${log.details.rating}/5) for ticket ${appFeedbackTicketRef}`
-                    : `${actor} דירג/ה את חוויית הדיווח ב-${log.details.rating}/5 עבור פנייה ${appFeedbackTicketRef}`;
+                    ? `${actor} rated the reporting experience as ${friendlyRating} for ticket ${appFeedbackTicketRef}`
+                    : `${actor} דירג/ה את חוויית הדיווח כ-${friendlyRating} עבור פנייה ${appFeedbackTicketRef}`;
             }
             case 'SERVICE_FEEDBACK_SUBMITTED': {
                 const svcFeedbackTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');
+                const friendlyRating = formatServiceRating(log.details.rating, isEn);
                 return isEn
-                    ? `${actor} submitted service feedback (rating: ${log.details.rating}/5) for ticket ${svcFeedbackTicketRef}`
-                    : `${actor} דירג/ה את השירות ב-${log.details.rating}/5 עבור פנייה ${svcFeedbackTicketRef}`;
+                    ? `${actor} rated the service as ${friendlyRating} for ticket ${svcFeedbackTicketRef}`
+                    : `${actor} דירג/ה את השירות כ-${friendlyRating} עבור פנייה ${svcFeedbackTicketRef}`;
             }
             case 'RESIDENT_COMMENT_ADDED': {
                 const commTicketRef = (log.details.ticketNumber !== undefined && log.details.ticketNumber !== null) ? `#${log.details.ticketNumber}` : (log.details.ticketId ? `(${log.details.ticketId.substring(0, 5)}...)` : '');

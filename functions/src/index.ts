@@ -15,6 +15,11 @@ import * as admin from "firebase-admin";
 import { GoogleGenerativeAI, SchemaType, Schema } from "@google/generative-ai";
 import { randomUUID } from "crypto";
 
+import * as fs from "fs";
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+}
+
 initializeApp();
 const db = getFirestore();
 const storage = getStorage();
@@ -2605,29 +2610,65 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
 
             if (feedbackValue) {
               try {
-                const ticketsQuery = db.collectionGroup("tickets").where("reporterPhone", "==", localPhone);
-                const querySnapshot = await ticketsQuery.get();
-                const fortyEightHoursAgoMs = Date.now() - 48 * 60 * 60 * 1000;
+                // Build phone variations to support both international and local formatting
+                const rawDigits = from.replace(/\D/g, '');
+                const localWithoutZero = localPhone.startsWith('0') ? localPhone.substring(1) : localPhone;
+                const dashFormat1 = localPhone.length === 10 ? `${localPhone.slice(0, 3)}-${localPhone.slice(3)}` : '';
+                const dashFormat2 = localPhone.length === 10 ? `${localPhone.slice(0, 3)}-${localPhone.slice(3, 6)}-${localPhone.slice(6)}` : '';
 
-                const candidates = querySnapshot.docs.filter(doc => {
+                const phoneVariants = Array.from(new Set([
+                  localPhone,
+                  rawDigits,
+                  `+${rawDigits}`,
+                  `972${localWithoutZero}`,
+                  `+972${localWithoutZero}`,
+                  from,
+                  dashFormat1,
+                  dashFormat2
+                ])).filter(Boolean);
+
+                const ticketsQuery = db.collectionGroup("tickets").where("reporterPhone", "in", phoneVariants);
+                const querySnapshot = await ticketsQuery.get();
+
+                const getTimestampMs = (val: any): number => {
+                  if (!val) return 0;
+                  if (typeof val.toDate === 'function') return val.toDate().getTime();
+                  if (typeof val.toMillis === 'function') return val.toMillis();
+                  if (typeof val === 'number') return val;
+                  const parsed = Date.parse(val);
+                  return isNaN(parsed) ? 0 : parsed;
+                };
+
+                // Candidate tickets: status must be resolved/dismissed/closed
+                const allMatchingTickets = querySnapshot.docs.filter(doc => {
                   const data = doc.data();
-                  const createdAtMs = Date.parse(data.createdAt);
-                  return (
-                    ['resolved', 'dismissed'].includes(data.status) &&
-                    createdAtMs >= fortyEightHoursAgoMs &&
-                    !data.vaadRating
-                  );
+                  return ['resolved', 'dismissed', 'closed'].includes(data.status);
                 });
 
-                candidates.sort((a, b) => Date.parse(b.data().createdAt) - Date.parse(a.data().createdAt));
+                // Unrated tickets first
+                let candidates = allMatchingTickets.filter(doc => !doc.data().vaadRating);
+                if (candidates.length === 0) {
+                  // Fallback: If resident already rated but is sending an update/correction
+                  candidates = allMatchingTickets;
+                }
+
+                candidates.sort((a, b) => {
+                  const aData = a.data();
+                  const bData = b.data();
+                  const aResolvedAt = getTimestampMs(aData.lastStatusChangeAt) || getTimestampMs(aData.updatedAt) || getTimestampMs(aData.createdAt);
+                  const bResolvedAt = getTimestampMs(bData.lastStatusChangeAt) || getTimestampMs(bData.updatedAt) || getTimestampMs(bData.createdAt);
+                  return bResolvedAt - aResolvedAt;
+                });
 
                 if (candidates.length > 0) {
                   const targetDoc = candidates[0];
                   const pathParts = targetDoc.ref.path.split('/');
                   const tenantId = pathParts[1];
+                  const tData = targetDoc.data();
 
                   await targetDoc.ref.update({
                     vaadRating: feedbackValue,
+                    vaadRatedAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                   });
 
@@ -2637,18 +2678,35 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     level: 'INFO',
                     actor: {
                       uid: localPhone,
-                      name: targetDoc.data()?.reporterName || 'Resident',
+                      name: tData.reporterName || 'Resident',
                       type: 'resident'
                     },
                     details: {
                       ticketId: targetDoc.id,
-                      ticketNumber: targetDoc.data()?.ticketNumber,
+                      ticketNumber: tData.ticketNumber,
                       rating: feedbackValue
                     }
                   });
+
+                  logger.info("Successfully updated service feedback rating on ticket", {
+                    ticketId: targetDoc.id,
+                    tenantId,
+                    ticketNumber: tData.ticketNumber,
+                    rating: feedbackValue,
+                    phone: localPhone
+                  });
+
+                  await sendWhatsAppText(from, "תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡", phoneNumberId, token);
+                } else {
+                  logger.warn("Received service feedback rating, but could not match any resolved ticket", {
+                    localPhone,
+                    from,
+                    feedbackValue,
+                    totalFoundTickets: querySnapshot.size
+                  });
+                  await sendWhatsAppText(from, "תודה על הדירוג! המשוב שלך נקלט במערכת. 🏡", phoneNumberId, token);
                 }
 
-                await sendWhatsAppText(from, "תודה על הדירוג! המשוב שלך עוזר לנו לשפר את השירות לתושב/דייר. 🏡", phoneNumberId, token);
                 res.status(200).send("EVENT_RECEIVED");
                 return;
               } catch (e: any) {
