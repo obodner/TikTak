@@ -454,7 +454,9 @@ export default function TasksBacklog() {
                                     <option value="open">{isEn ? 'New' : 'חדש (לדשבורד)'}</option>
                                     <option value="in-progress">{isEn ? 'In Progress' : 'בטיפול (לדשבורד)'}</option>
                                     <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
-                                    <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
+                                    {t.status === 'dismissed' && (
+                                      <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
+                                    )}
                                   </select>
                                 </div>
 

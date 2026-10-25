@@ -348,6 +348,18 @@ export default function AdminDashboard() {
     ].filter(Boolean).length;
   }, [filters]);
 
+  // Grouping & collapse state for "resolved" column (months/years)
+  const [collapsedResolvedGroups, setCollapsedResolvedGroups] = useState<Record<string, boolean>>({});
+
+  const HEBREW_MONTH_NAMES = [
+    'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+    'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+  ];
+  const ENGLISH_MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
   const getAuditActor = () => ({
     uid: user?.uid || 'unknown',
     name: adminProfile
@@ -948,6 +960,8 @@ export default function AdminDashboard() {
         closureReason: reason,
         resolutionNote: notes,
         updatedAt: nowIso,
+        lastStatusChangeAt: nowIso,
+        resolvedAt: nowIso,
         statusHistory: arrayUnion({
           status: 'resolved',
           changedAt: nowIso,
@@ -1424,9 +1438,509 @@ export default function AdminDashboard() {
     }
   };
 
+  const getTicketResolvedDate = (t: Ticket): Date => {
+    if (Array.isArray((t as any).statusHistory)) {
+      for (let i = (t as any).statusHistory.length - 1; i >= 0; i--) {
+        const entry = (t as any).statusHistory[i];
+        if (entry && (entry.status === 'resolved' || entry.status === 'dismissed') && entry.changedAt) {
+          const d = parseTicketDate(entry.changedAt);
+          if (d.getTime() > 0) return d;
+        }
+      }
+    }
+    const candidate = (t as any).resolvedAt || (t as any).closedAt || (t.status === 'resolved' || t.status === 'dismissed' ? t.lastStatusChangeAt : null) || (t as any).updatedAt || t.createdAt;
+    const d = parseTicketDate(candidate);
+    return d.getTime() > 0 ? d : parseTicketDate(t.createdAt);
+  };
+
+  const renderTicketCard = (t: Ticket, index: number) => {
+    return (
+      <Draggable key={t.id} draggableId={t.id} index={index}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            className={`${getSlaColorClasses(
+              tenantConfig?.slaConfig?.enabled !== false && (t.status === 'open' || t.status === 'in-progress')
+                ? (t.slaStatus || getSlaStatus(calculateWorkingDays(
+                  t.lastStatusChangeAt || t.createdAt,
+                  new Date(),
+                  tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4],
+                  holidays
+                )))
+                : 'none'
+            )} p-4 rounded-2xl shadow-sm border transition-all relative group overflow-hidden w-full max-w-full ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
+              }`}
+            onClick={() => {
+              if (snapshot.isDragging) return;
+            }}
+          >
+            {/* Top Row: #/Urgency (Right) and Date/Time (Left) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 w-full min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full">
+                <div
+                  {...provided.dragHandleProps}
+                  className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 shrink-0"
+                  title={isEn ? "Drag to move status" : "גרור כדי לשנות סטטוס"}
+                >
+                  <GripVertical size={16} />
+                </div>
+                <select
+                  value={t.urgency}
+                  disabled={updatingId === t.id}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => handleUrgencyUpdate(t, e.target.value as Ticket['urgency'])}
+                  className={`text-xs font-black px-2 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-600 text-white shadow-sm' :
+                    t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' :
+                      'bg-green-100 text-green-700'
+                    }`}
+                >
+                  <option value="High">{uiLabels.urgency.High}</option>
+                  <option value="Moderate">{uiLabels.urgency.Moderate}</option>
+                  <option value="Low">{uiLabels.urgency.Low}</option>
+                </select>
+                <select
+                  value={(t.status as string) === 'progress' ? 'in-progress' : (t.status as string) === 'closed' ? 'resolved' : t.status}
+                  disabled={updatingId === t.id}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as Ticket['status'];
+                    if (newStatus === 'resolved') {
+                      setClosureTicketId(t.id);
+                    } else {
+                      handleStatusUpdate(t.id, newStatus, t);
+                    }
+                  }}
+                  className="text-xs font-black px-2 py-0.5 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none"
+                >
+                  <option value="open">{isEn ? 'New' : 'חדש'}</option>
+                  <option value="in-progress">{isEn ? 'In Progress' : 'בטיפול'}</option>
+                  <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
+                  {t.status === 'dismissed' && (
+                    <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
+                  )}
+                  {(t.status === 'open' || t.status === 'in-progress') && (
+                    <option value="backlog">{isEn ? '📥 Move to Backlog' : '📥 העבר לבקלוג'}</option>
+                  )}
+                </select>
+
+              </div>
+              <div className="text-[11px] text-slate-400 font-bold whitespace-nowrap min-w-0 max-w-full truncate text-left" dir="ltr">
+                {(() => {
+                  try {
+                    const d = typeof t.createdAt === 'string' ? parseISO(t.createdAt) : new Date(t.createdAt);
+                    return isNaN(d.getTime()) ? String(t.createdAt || '') : format(d, 'dd.MM.yyyy HH:mm');
+                  } catch (e) {
+                    return String(t.createdAt || '');
+                  }
+                })()}
+              </div>
+            </div>
+
+            {/* Tags block (below top row) */}
+            <div className="mb-2 flex flex-wrap gap-1.5 justify-start items-center">
+              <span className="text-[11px] font-extrabold text-slate-500 bg-slate-100/60 border border-slate-200/50 px-1.5 py-0.5 rounded select-none">
+                #{t.ticketNumber}
+              </span>
+
+              <span className="text-[11px] font-extrabold text-slate-600 bg-slate-100/80 border border-slate-200/60 px-1.5 py-0.5 rounded flex items-center gap-1 select-none" title={t.source === 'whatsapp' ? (isEn ? 'WhatsApp Bot' : 'בוט וואטסאפ') : (isEn ? 'Resident Web' : 'ווב דייר')}>
+                {t.source === 'whatsapp'
+                  ? (isEn ? '🤖 Bot' : '🤖 בוט')
+                  : (isEn ? '📱 Web' : '📱 ווב')}
+              </span>
+
+              {(t.reportingMethod === 'quicktap' || t.source === 'quicktap') && (
+                <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "QuickTap" : "דיווח מהיר"}>
+                  ⚡ {isEn ? "QuickTap" : "דיווח מהיר ⚡"}
+                </span>
+              )}
+              {(t.reportingMethod === 'ai_camera' || t.source === 'ai_camera') && (
+                <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "AI Camera" : "צילום AI"}>
+                  📸 {isEn ? "AI Camera" : "צילום AI 📸"}
+                </span>
+              )}
+            </div>
+
+            {/* Category & Summary */}
+            <div className="mb-4">
+              <div className="text-lg font-black text-slate-900 mb-1 leading-tight">
+                {translateCategory(t.category)}
+              </div>
+              <p
+                className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium cursor-pointer hover:text-blue-600 transition-colors"
+                title={isEn ? "Click to view full ticket details" : "לחץ לצפייה בפרטי הפנייה המלאים"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDetailsTicket(t);
+                }}
+              >
+                {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
+              </p>
+
+              {/* Closure Reason & Resolution Notes */}
+              {(t.status === 'resolved' || t.status === 'dismissed') && (t.closureReason || t.resolutionNote || t.vaadRating) && (
+                <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1.5 text-right" dir={isHe ? 'rtl' : 'ltr'}>
+                  {t.closureReason && (
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span className="text-slate-400 font-medium">
+                        {isEn ? "Closure Reason:" : "סיבת סגירה:"}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-700">
+                        {(() => {
+                          const mapping: Record<string, { he: string, en: string }> = {
+                            'fixed': { he: 'טופל', en: 'Fixed' },
+                            'duplicate': { he: 'כפילות', en: 'Duplicate' },
+                            'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
+                            'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
+                            'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
+                            'rejected': { he: 'נדחה', en: 'Rejected' }
+                          };
+                          const entry = mapping[t.closureReason];
+                          return entry ? (isEn ? entry.en : entry.he) : t.closureReason;
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                  {t.resolutionNote && (
+                    <div className="text-slate-600 italic leading-normal">
+                      <span className="font-bold text-slate-400 not-italic">
+                        {isEn ? "Notes: " : "הערת סגירה: "}
+                      </span>
+                      "{t.resolutionNote}"
+                    </div>
+                  )}
+                  {t.vaadRating && (
+                    <div className="flex items-center gap-1.5 font-bold mt-1">
+                      <span className="text-slate-400 font-medium">
+                        {isEn ? "Vaad Feedback:" : "משוב דייר על הטיפול:"}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full font-bold ${t.vaadRating === 'good' ? 'bg-green-100 text-green-700' :
+                        t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                        {(() => {
+                          if (t.vaadRating === 'good') return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
+                          if (t.vaadRating === 'ok') return isEn ? 'Satisfactory 👍' : 'בסדר 👍';
+                          return isEn ? 'Dissatisfied 👎' : 'לא מרוצה 👎';
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Interaction Row: Comment (Right), Image, Audio */}
+            <div className="flex items-center gap-3 pt-3 border-t border-slate-50 mb-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCommentTicketId(t.id);
+                }}
+                className="flex items-center gap-1.5 p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+              >
+                <MessageSquare size={18} className={t.adminComments?.length ? 'text-blue-500' : ''} />
+                {t.adminComments && t.adminComments.length > 0 && (
+                  <span className="text-xs font-bold text-slate-500">{t.adminComments.length}</span>
+                )}
+              </button>
+
+              {t.meToo && t.meToo > 0 ? (
+                <div
+                  className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default"
+                  title={(() => {
+                    const prefix = isEn ? "Joined the report:" : "הצטרפו לדיווח:";
+                    if (!t.meTooReporters || t.meTooReporters.length === 0) {
+                      return prefix;
+                    }
+                    const names = t.meTooReporters.map((r: any) => `- ${r.name || (isEn ? 'Resident' : 'תושב')}`).join('\n');
+                    return `${prefix}\n${names}`;
+                  })()}
+                >
+                  <span>🙋</span>
+                  <span>{t.meToo}</span>
+                </div>
+              ) : null}
+
+              {t.imageId && typeof t.imageId === 'string' && t.imageId.length > 5 && (
+                <a
+                  href={`/img/${tenantId}/${t.imageId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                  title={isEn ? "View Image" : "צפה בתמונה"}
+                >
+                  <ImageIcon size={18} />
+                </a>
+              )}
+
+              {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
+                (() => {
+                  const rawAudioId = String(t.audioId);
+                  const cleanAudioId = rawAudioId.split('/').pop()?.replace(/\.[^/.]+$/, '') || rawAudioId;
+                  return <InlineAudioPlayer src={`/aud/${tenantId}/${cleanAudioId}`} isEn={isEn} />;
+                })()
+              )}
+
+              {/* Forward to Vendor Action Button */}
+              {!['resolved', 'dismissed', 'closed'].includes(String(t.status).toLowerCase()) && (
+                (() => {
+                  const fwdCount = t.vendorForwardCount || 0;
+                  const isMaxReached = fwdCount >= 3;
+                  return (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isMaxReached) setForwardTicket(t);
+                      }}
+                      disabled={isMaxReached}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg shadow-sm transition-all ms-auto select-none shrink-0 ${isMaxReached
+                          ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                          : 'text-white bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 cursor-pointer'
+                        }`}
+                      title={(() => {
+                        const baseTitle = isMaxReached
+                          ? (isEn ? "Maximum 3 vendor forwards reached for this ticket" : "הגעת למכסת 3 העברות לספק עבור פנייה זו")
+                          : (isEn ? `Forward ticket to vendor via WhatsApp (${3 - fwdCount} left)` : `העבר פרטי פנייה לספק בוואטסאפ (נותרו ${3 - fwdCount})`);
+
+                        const vList: any[] = Array.isArray(t.vendors) ? t.vendors : [];
+                        if (vList.length > 0) {
+                          const vLines = vList.map(v => {
+                            const cleanVPhone = (v.phone || '').replace(/[-\s]/g, '');
+                            const matchedVendor = savedVendors.find(sv =>
+                              (sv.fullName && v.name && sv.fullName.trim() === v.name.trim()) ||
+                              (sv.phone && (sv.phone.replace(/[-\s]/g, '') === cleanVPhone || cleanVPhone.endsWith(sv.phone.replace(/[-\s]/g, ''))))
+                            );
+                            const displayName = v.name || matchedVendor?.fullName || v.phone;
+                            return `${displayName}: ${v.status || (isEn ? 'Awaiting vendor response ...' : 'ממתין לתשובה מהספק ...')}`;
+                          });
+                          return `${baseTitle}\n\n${vLines.join('\n')}`;
+                        }
+                        return baseTitle;
+                      })()}
+                    >
+                      <Share2 size={13} />
+                      <span>
+                        {isEn ? "Forward to Vendor" : "העבר לספק"}
+                        {fwdCount > 0 && <span className="opacity-85 text-[10px] ms-1">({fwdCount}/3)</span>}
+                      </span>
+                    </button>
+                  );
+                })()
+              )}
+            </div>
+
+            {/* Bottom Info: Reporter (Right), Location, Sublocation */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm font-black">
+              {t.reporterName && (
+                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
+                  {t.reporterName}
+                </span>
+              )}
+              {t.location && (
+                <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg">
+                  {t.location}
+                </span>
+              )}
+              {t.subLocation && (
+                <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg">
+                  {t.subLocation}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </Draggable>
+    );
+  };
+
   const renderColumn = (statusKey: string, title: string, colorClass: string, statuses: string[]) => {
     const columnTickets = filteredTickets.filter(t => statuses.includes(t.status));
 
+    // Special handling for the "resolved" column: group by month & year
+    if (statusKey === 'resolved') {
+      const currentMonthKey = format(new Date(), 'yyyy-MM');
+
+      const isGroupExpanded = (key: string) => {
+        if (key in collapsedResolvedGroups) {
+          return !collapsedResolvedGroups[key];
+        }
+        return key === currentMonthKey;
+      };
+
+      const toggleGroup = (key: string) => {
+        setCollapsedResolvedGroups(prev => {
+          const currentlyExpanded = key in prev ? !prev[key] : (key === currentMonthKey);
+          return { ...prev, [key]: currentlyExpanded }; // true means collapsed
+        });
+      };
+
+      const formatGroupTitle = (date: Date) => {
+        const monthIdx = date.getMonth();
+        const year = date.getFullYear();
+        if (isEn) {
+          return `${ENGLISH_MONTH_NAMES[monthIdx] || ''} ${year}`;
+        }
+        return `${HEBREW_MONTH_NAMES[monthIdx] || ''} ${year}`;
+      };
+
+      // Group tickets
+      const groupsMap: Record<string, { key: string; date: Date; tickets: Ticket[] }> = {};
+      const sortedTickets = [...columnTickets].sort((a, b) => {
+        return getTicketResolvedDate(b).getTime() - getTicketResolvedDate(a).getTime();
+      });
+
+      sortedTickets.forEach(t => {
+        const d = getTicketResolvedDate(t);
+        const key = format(d, 'yyyy-MM');
+        if (!groupsMap[key]) {
+          groupsMap[key] = { key, date: d, tickets: [] };
+        }
+        groupsMap[key].tickets.push(t);
+      });
+
+      // Always include current month group at the top if there are any resolved tickets
+      if (columnTickets.length > 0 && !groupsMap[currentMonthKey]) {
+        groupsMap[currentMonthKey] = {
+          key: currentMonthKey,
+          date: new Date(),
+          tickets: []
+        };
+      }
+
+      const groups = Object.values(groupsMap).sort((a, b) => b.key.localeCompare(a.key));
+      const areAllExpanded = groups.length > 0 && groups.every(g => isGroupExpanded(g.key));
+
+      const toggleAllGroups = () => {
+        const shouldCollapseAll = areAllExpanded;
+        const next: Record<string, boolean> = {};
+        groups.forEach(g => {
+          next[g.key] = shouldCollapseAll;
+        });
+        setCollapsedResolvedGroups(next);
+      };
+
+      let renderedDraggableIndex = 0;
+
+      return (
+        <div className="flex flex-col bg-slate-100/50 rounded-2xl p-4 min-h-[500px]">
+          <div className="flex items-center justify-between mb-4 px-2">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-slate-800">{title}</h3>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colorClass}`}>
+                {columnTickets.length}
+              </span>
+            </div>
+
+            {groups.length > 1 && (
+              <button
+                type="button"
+                onClick={toggleAllGroups}
+                className="text-xs font-bold text-slate-500 hover:text-blue-600 transition-colors cursor-pointer px-2 py-0.5 rounded-lg hover:bg-slate-200/60"
+                title={areAllExpanded ? (isEn ? 'Collapse all months' : 'כווץ את כל החודשים') : (isEn ? 'Expand all months' : 'הרחב את כל החודשים')}
+              >
+                {areAllExpanded
+                  ? (isEn ? 'Collapse All' : 'כווץ הכל')
+                  : (isEn ? 'Expand All' : 'הרחב הכל')}
+              </button>
+            )}
+          </div>
+
+          <Droppable droppableId={statusKey}>
+            {(provided, snapshot) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className={`flex-1 flex flex-col gap-3 transition-colors rounded-xl p-1 ${
+                  snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
+                }`}
+              >
+                {columnTickets.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-200/80 rounded-xl p-8 text-center text-slate-400">
+                    <span className="text-xs font-medium">
+                      {uiLabels.no_tickets}
+                    </span>
+                  </div>
+                ) : (
+                  groups.map(group => {
+                    const isExpanded = isGroupExpanded(group.key);
+                    const isCurrentMonth = group.key === currentMonthKey;
+
+                    return (
+                      <div
+                        key={group.key}
+                        className={`flex flex-col rounded-2xl border transition-all overflow-hidden ${
+                          isCurrentMonth
+                            ? 'border-blue-200/80 bg-white/90 shadow-sm'
+                            : 'border-slate-200/70 bg-white/70 shadow-2xs'
+                        }`}
+                      >
+                        {/* Month Header / Accordion Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(group.key)}
+                          className={`w-full flex items-center justify-between p-3 cursor-pointer transition-colors select-none text-slate-800 ${
+                            isCurrentMonth
+                              ? 'bg-blue-50/40 hover:bg-blue-50/70'
+                              : 'bg-slate-50/70 hover:bg-slate-100/80'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`p-1 rounded-lg text-slate-500 transition-transform duration-200 shrink-0 ${
+                                isCurrentMonth ? 'bg-blue-100/70 text-blue-600' : 'bg-slate-200/60'
+                              } ${isExpanded ? 'rotate-180' : ''}`}
+                            >
+                              <ChevronDown size={15} />
+                            </div>
+                            <span className="text-sm font-extrabold text-slate-800 truncate">
+                              {formatGroupTitle(group.date)}
+                            </span>
+                            {isCurrentMonth && (
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-600 text-white shadow-xs shrink-0">
+                                {isEn ? 'Current Month' : 'החודש הנוכחי'}
+                              </span>
+                            )}
+                          </div>
+
+                          <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full shrink-0 ${
+                            isCurrentMonth
+                              ? 'bg-blue-100 text-blue-700 font-black'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200/60'
+                          }`}>
+                            {group.tickets.length}
+                          </span>
+                        </button>
+
+                        {/* Collapsible tickets area */}
+                        {isExpanded && (
+                          <div className="p-3 flex flex-col gap-3.5 bg-slate-50/40 border-t border-slate-100">
+                            {group.tickets.length === 0 ? (
+                              <div className="text-center py-4 text-xs font-bold text-slate-400 bg-white/70 rounded-xl border border-dashed border-slate-200">
+                                {isEn ? 'No tickets resolved this month' : 'אין פניות שטופלו בחודש זה'}
+                              </div>
+                            ) : (
+                              group.tickets.map(t => {
+                                const itemIndex = renderedDraggableIndex++;
+                                return renderTicketCard(t, itemIndex);
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
+        </div>
+      );
+    }
+
+    // Default flat rendering for open and in-progress columns
     return (
       <div className="flex flex-col bg-slate-100/50 rounded-2xl p-4 min-h-[500px]">
         <div className="flex items-center justify-between mb-4 px-2">
@@ -1443,306 +1957,11 @@ export default function AdminDashboard() {
             <div
               {...provided.droppableProps}
               ref={provided.innerRef}
-              className={`flex-1 flex flex-col gap-4 transition-colors rounded-xl p-1 ${snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
-                }`}
+              className={`flex-1 flex flex-col gap-4 transition-colors rounded-xl p-1 ${
+                snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
+              }`}
             >
-              {columnTickets.map((t, index) => (
-                <Draggable key={t.id} draggableId={t.id} index={index}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      className={`${getSlaColorClasses(
-                        tenantConfig?.slaConfig?.enabled !== false && (t.status === 'open' || t.status === 'in-progress')
-                          ? (t.slaStatus || getSlaStatus(calculateWorkingDays(
-                            t.lastStatusChangeAt || t.createdAt,
-                            new Date(),
-                            tenantConfig?.slaConfig?.workingDays || [0, 1, 2, 3, 4],
-                            holidays
-                          )))
-                          : 'none'
-                      )} p-4 rounded-2xl shadow-sm border transition-all relative group overflow-hidden w-full max-w-full ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-blue-500/20 z-50' : 'hover:shadow-md'
-                        }`}
-                      onClick={() => {
-                        if (snapshot.isDragging) return;
-                      }}
-                    >
-                      {/* Top Row: #/Urgency (Right) and Date/Time (Left) */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 w-full min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full">
-                          <div
-                            {...provided.dragHandleProps}
-                            className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 shrink-0"
-                            title={isEn ? "Drag to move status" : "גרור כדי לשנות סטטוס"}
-                          >
-                            <GripVertical size={16} />
-                          </div>
-                          <select
-                            value={t.urgency}
-                            disabled={updatingId === t.id}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => handleUrgencyUpdate(t, e.target.value as Ticket['urgency'])}
-                            className={`text-xs font-black px-2 py-0.5 rounded border-none appearance-none cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none ${t.urgency === 'High' ? 'bg-red-600 text-white shadow-sm' :
-                              t.urgency === 'Moderate' ? 'bg-amber-100 text-amber-700' :
-                                'bg-green-100 text-green-700'
-                              }`}
-                          >
-                            <option value="High">{uiLabels.urgency.High}</option>
-                            <option value="Moderate">{uiLabels.urgency.Moderate}</option>
-                            <option value="Low">{uiLabels.urgency.Low}</option>
-                          </select>
-                          <select
-                            value={(t.status as string) === 'progress' ? 'in-progress' : (t.status as string) === 'closed' ? 'resolved' : t.status}
-                            disabled={updatingId === t.id}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const newStatus = e.target.value as Ticket['status'];
-                              if (newStatus === 'resolved') {
-                                setClosureTicketId(t.id);
-                              } else {
-                                handleStatusUpdate(t.id, newStatus, t);
-                              }
-                            }}
-                            className="text-xs font-black px-2 py-0.5 rounded border border-slate-200 bg-white text-slate-700 cursor-pointer transition-colors focus:ring-2 focus:ring-blue-200 outline-none"
-                          >
-                            <option value="open">{isEn ? 'New' : 'חדש'}</option>
-                            <option value="in-progress">{isEn ? 'In Progress' : 'בטיפול'}</option>
-                            <option value="resolved">{isEn ? 'Resolved' : 'טופל'}</option>
-                            <option value="dismissed">{isEn ? 'Dismissed' : 'בוטל'}</option>
-                            {(t.status === 'open' || t.status === 'in-progress') && (
-                              <option value="backlog">{isEn ? '📥 Move to Backlog' : '📥 העבר לבקלוג'}</option>
-                            )}
-                          </select>
-
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-bold whitespace-nowrap min-w-0 max-w-full truncate text-left" dir="ltr">
-                          {(() => {
-                            try {
-                              const d = typeof t.createdAt === 'string' ? parseISO(t.createdAt) : new Date(t.createdAt);
-                              return isNaN(d.getTime()) ? String(t.createdAt || '') : format(d, 'dd.MM.yyyy HH:mm');
-                            } catch (e) {
-                              return String(t.createdAt || '');
-                            }
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Tags block (below top row) */}
-                      <div className="mb-2 flex flex-wrap gap-1.5 justify-start items-center">
-                        <span className="text-[11px] font-extrabold text-slate-500 bg-slate-100/60 border border-slate-200/50 px-1.5 py-0.5 rounded select-none">
-                          #{t.ticketNumber}
-                        </span>
-
-                        <span className="text-[11px] font-extrabold text-slate-600 bg-slate-100/80 border border-slate-200/60 px-1.5 py-0.5 rounded flex items-center gap-1 select-none" title={t.source === 'whatsapp' ? (isEn ? 'WhatsApp Bot' : 'בוט וואטסאפ') : (isEn ? 'Resident Web' : 'ווב דייר')}>
-                          {t.source === 'whatsapp'
-                            ? (isEn ? '🤖 Bot' : '🤖 בוט')
-                            : (isEn ? '📱 Web' : '📱 ווב')}
-                        </span>
-
-                        {(t.reportingMethod === 'quicktap' || t.source === 'quicktap') && (
-                          <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "QuickTap" : "דיווח מהיר"}>
-                            ⚡ {isEn ? "QuickTap" : "דיווח מהיר ⚡"}
-                          </span>
-                        )}
-                        {(t.reportingMethod === 'ai_camera' || t.source === 'ai_camera') && (
-                          <span className="bg-blue-600 text-white text-[11px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-sm select-none" title={isEn ? "AI Camera" : "צילום AI"}>
-                            📸 {isEn ? "AI Camera" : "צילום AI 📸"}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Category & Summary */}
-                      <div className="mb-4">
-                        <div className="text-lg font-black text-slate-900 mb-1 leading-tight">
-                          {translateCategory(t.category)}
-                        </div>
-                        <p
-                          className="text-base text-slate-700 line-clamp-3 leading-relaxed font-medium cursor-pointer hover:text-blue-600 transition-colors"
-                          title={isEn ? "Click to view full ticket details" : "לחץ לצפייה בפרטי הפנייה המלאים"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDetailsTicket(t);
-                          }}
-                        >
-                          {t.summary || (isEn ? 'No summary' : 'אין תיאור')}
-                        </p>
-
-                        {/* Closure Reason & Resolution Notes */}
-                        {(t.status === 'resolved' || t.status === 'dismissed') && (t.closureReason || t.resolutionNote || t.vaadRating) && (
-                          <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1.5 text-right" dir={isHe ? 'rtl' : 'ltr'}>
-                            {t.closureReason && (
-                              <div className="flex items-center gap-1.5 font-bold">
-                                <span className="text-slate-400 font-medium">
-                                  {isEn ? "Closure Reason:" : "סיבת סגירה:"}
-                                </span>
-                                <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-700">
-                                  {(() => {
-                                    const mapping: Record<string, { he: string, en: string }> = {
-                                      'fixed': { he: 'טופל', en: 'Fixed' },
-                                      'duplicate': { he: 'כפילות', en: 'Duplicate' },
-                                      'irrelevant': { he: 'לא רלוונטי', en: 'Irrelevant' },
-                                      'vendor': { he: 'בטיפול ספק', en: 'Vendor Dispatched' },
-                                      'outside': { he: 'מחוץ לאחריות', en: 'Outside Scope' },
-                                      'rejected': { he: 'נדחה', en: 'Rejected' }
-                                    };
-                                    const entry = mapping[t.closureReason];
-                                    return entry ? (isEn ? entry.en : entry.he) : t.closureReason;
-                                  })()}
-                                </span>
-                              </div>
-                            )}
-                            {t.resolutionNote && (
-                              <div className="text-slate-600 italic leading-normal">
-                                <span className="font-bold text-slate-400 not-italic">
-                                  {isEn ? "Notes: " : "הערת סגירה: "}
-                                </span>
-                                "{t.resolutionNote}"
-                              </div>
-                            )}
-                            {t.vaadRating && (
-                              <div className="flex items-center gap-1.5 font-bold mt-1">
-                                <span className="text-slate-400 font-medium">
-                                  {isEn ? "Vaad Feedback:" : "משוב דייר על הטיפול:"}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded-full font-bold ${t.vaadRating === 'good' ? 'bg-green-100 text-green-700' :
-                                  t.vaadRating === 'ok' ? 'bg-amber-100 text-amber-700' :
-                                    'bg-red-100 text-red-700'
-                                  }`}>
-                                  {(() => {
-                                    if (t.vaadRating === 'good') return isEn ? 'Excellent 🤩' : 'מצוין 🤩';
-                                    if (t.vaadRating === 'ok') return isEn ? 'Satisfactory 👍' : 'בסדר 👍';
-                                    return isEn ? 'Dissatisfied 👎' : 'לא מרוצה 👎';
-                                  })()}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Interaction Row: Comment (Right), Image, Audio */}
-                      <div className="flex items-center gap-3 pt-3 border-t border-slate-50 mb-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCommentTicketId(t.id);
-                          }}
-                          className="flex items-center gap-1.5 p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                        >
-                          <MessageSquare size={18} className={t.adminComments?.length ? 'text-blue-500' : ''} />
-                          {t.adminComments && t.adminComments.length > 0 && (
-                            <span className="text-xs font-bold text-slate-500">{t.adminComments.length}</span>
-                          )}
-                        </button>
-
-                        {t.meToo && t.meToo > 0 ? (
-                          <div
-                            className="flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-1 text-xs font-bold select-none cursor-default"
-                            title={(() => {
-                              const prefix = isEn ? "Joined the report:" : "הצטרפו לדיווח:";
-                              if (!t.meTooReporters || t.meTooReporters.length === 0) {
-                                return prefix;
-                              }
-                              const names = t.meTooReporters.map((r: any) => `- ${r.name || (isEn ? 'Resident' : 'תושב')}`).join('\n');
-                              return `${prefix}\n${names}`;
-                            })()}
-                          >
-                            <span>🙋</span>
-                            <span>{t.meToo}</span>
-                          </div>
-                        ) : null}
-
-                        {t.imageId && typeof t.imageId === 'string' && t.imageId.length > 5 && (
-                          <a
-                            href={`/img/${tenantId}/${t.imageId}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                            title={isEn ? "View Image" : "צפה בתמונה"}
-                          >
-                            <ImageIcon size={18} />
-                          </a>
-                        )}
-
-                        {t.audioId && typeof t.audioId === 'string' && t.audioId.length > 5 && t.audioId !== 'null' && (
-                          (() => {
-                            const rawAudioId = String(t.audioId);
-                            const cleanAudioId = rawAudioId.split('/').pop()?.replace(/\.[^/.]+$/, '') || rawAudioId;
-                            return <InlineAudioPlayer src={`/aud/${tenantId}/${cleanAudioId}`} isEn={isEn} />;
-                          })()
-                        )}
-
-                        {/* Forward to Vendor Action Button */}
-                        {!['resolved', 'dismissed', 'closed'].includes(String(t.status).toLowerCase()) && (
-                          (() => {
-                            const fwdCount = t.vendorForwardCount || 0;
-                            const isMaxReached = fwdCount >= 3;
-                            return (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!isMaxReached) setForwardTicket(t);
-                                }}
-                                disabled={isMaxReached}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg shadow-sm transition-all ms-auto select-none shrink-0 ${isMaxReached
-                                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                                    : 'text-white bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 cursor-pointer'
-                                  }`}
-                                title={(() => {
-                                  const baseTitle = isMaxReached
-                                    ? (isEn ? "Maximum 3 vendor forwards reached for this ticket" : "הגעת למכסת 3 העברות לספק עבור פנייה זו")
-                                    : (isEn ? `Forward ticket to vendor via WhatsApp (${3 - fwdCount} left)` : `העבר פרטי פנייה לספק בוואטסאפ (נותרו ${3 - fwdCount})`);
-
-                                  const vList: any[] = Array.isArray(t.vendors) ? t.vendors : [];
-                                  if (vList.length > 0) {
-                                    const vLines = vList.map(v => {
-                                      const cleanVPhone = (v.phone || '').replace(/[-\s]/g, '');
-                                      const matchedVendor = savedVendors.find(sv =>
-                                        (sv.fullName && v.name && sv.fullName.trim() === v.name.trim()) ||
-                                        (sv.phone && (sv.phone.replace(/[-\s]/g, '') === cleanVPhone || cleanVPhone.endsWith(sv.phone.replace(/[-\s]/g, ''))))
-                                      );
-                                      const displayName = v.name || matchedVendor?.fullName || v.phone;
-                                      return `${displayName}: ${v.status || (isEn ? 'Awaiting vendor response ...' : 'ממתין לתשובה מהספק ...')}`;
-                                    });
-                                    return `${baseTitle}\n\n${vLines.join('\n')}`;
-                                  }
-                                  return baseTitle;
-                                })()}
-                              >
-                                <Share2 size={13} />
-                                <span>
-                                  {isEn ? "Forward to Vendor" : "העבר לספק"}
-                                  {fwdCount > 0 && <span className="opacity-85 text-[10px] ms-1">({fwdCount}/3)</span>}
-                                </span>
-                              </button>
-                            );
-                          })()
-                        )}
-                      </div>
-
-                      {/* Bottom Info: Reporter (Right), Location, Sublocation */}
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm font-black">
-                        {t.reporterName && (
-                          <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
-                            {t.reporterName}
-                          </span>
-                        )}
-                        {t.location && (
-                          <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg">
-                            {t.location}
-                          </span>
-                        )}
-                        {t.subLocation && (
-                          <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg">
-                            {t.subLocation}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </Draggable>
-              ))}
+              {columnTickets.map((t, index) => renderTicketCard(t, index))}
               {provided.placeholder}
             </div>
           )}
