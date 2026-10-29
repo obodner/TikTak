@@ -11,6 +11,14 @@
     "firebase-admin": "^13.8.0"
   },
   "scripts": {
+    "deploy:stg": "node scripts/firebase-deploy.cjs --project staging",
+    "deploy:stg:hosting": "node scripts/firebase-deploy.cjs --only hosting --project staging",
+    "deploy:stg:functions": "node scripts/firebase-deploy.cjs --only functions --project staging",
+    "deploy:stg:rules": "node scripts/firebase-deploy.cjs --only firestore,storage --project staging",
+    "deploy:prod": "node scripts/firebase-deploy.cjs --project prod",
+    "deploy:prod:hosting": "node scripts/firebase-deploy.cjs --only hosting --project prod",
+    "deploy:prod:functions": "node scripts/firebase-deploy.cjs --only functions --project prod",
+    "deploy:prod:rules": "node scripts/firebase-deploy.cjs --only firestore,storage --project prod",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

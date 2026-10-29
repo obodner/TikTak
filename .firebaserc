@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "tiktak2026"
+    "default": "tiktak-stg",
+    "staging": "tiktak-stg",
+    "prod": "tiktak2026"
   }
 }

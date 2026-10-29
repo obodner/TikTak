@@ -25,6 +25,23 @@ const db = getFirestore();
 const storage = getStorage();
 const APP_BASE_URL = (process.env.APP_BASE_URL || "https://mytiktak.com").replace(/\/+$/, "");
 
+function normalizePasswordResetLink(rawLink: string): string {
+  try {
+    const parsed = new URL(rawLink);
+    if (!parsed.searchParams.get("apiKey")) {
+      const fallbackKey =
+        process.env.WEB_API_KEY ||
+        (process.env.GCLOUD_PROJECT === "tiktak-stg"
+          ? "AIzaSyAqAENALXc2hZBYIXCaEH8YUog-kXwlZKo"
+          : "AIzaSyBmySHUfCo0buZhGEsWzTf7Cy30OU-iMqs");
+      parsed.searchParams.set("apiKey", fallbackKey);
+    }
+    return parsed.toString();
+  } catch {
+    return rawLink;
+  }
+}
+
 async function recordAuditLog(params: {
   tenantId: string;
   action: string;
@@ -483,7 +500,7 @@ async function sendWhatsAppNotification(params: {
   admins: { name: string; phone: string }[];
 }) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = "1046588828547584";
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
 
   if (!token) {
     logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager");
@@ -660,7 +677,7 @@ async function sendResidentWhatsAppNotification(params: {
   tenantId?: string;
 }) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = "1046588828547584";
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1046588828547584";
 
   if (!token) {
     logger.error("WHATSAPP_ACCESS_TOKEN is not configured in secret manager, skipping resident notification.");
@@ -1770,7 +1787,8 @@ export const manageTenantUser = onRequest({ cors: true }, async (req, res) => {
         const { email } = userData;
         if (!email) throw new Error("Missing email for reset");
 
-        const link = await auth.generatePasswordResetLink(email);
+        const rawLink = await auth.generatePasswordResetLink(email);
+        const link = normalizePasswordResetLink(rawLink);
         res.status(200).send({ success: true, link });
         break;
       }
@@ -2751,7 +2769,8 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
 
             if (vendorResponseText) {
               try {
-                logger.info(`Received vendor button click '${vendorResponseText}' from phone ${localPhone} (raw: ${from}), extractedTicketId: ${extractedTicketId || 'none'}`);
+                const contextMessageId = message.context?.id || null;
+                logger.info(`Received vendor button click '${vendorResponseText}' from phone ${localPhone} (raw: ${from}), extractedTicketId: ${extractedTicketId || 'none'}, contextMessageId: ${contextMessageId || 'none'}`);
 
                 const querySnapshot = await db.collectionGroup("tickets").get();
                 const matches: Array<{ docSnap: any; tData: any; vIndex: number; vItem: any; sentAtMs: number }> = [];
@@ -2777,24 +2796,86 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
 
                 let target: { docSnap: any; tData: any; vIndex: number; vItem: any; sentAtMs: number } | null = null;
 
-                if (extractedTicketId) {
-                  target = matches.find(m => m.docSnap.id === extractedTicketId || String(m.tData.ticketNumber) === extractedTicketId) || null;
+                // 1. Primary correlation: exact WhatsApp outbound message ID (wamid) from message.context.id
+                if (contextMessageId) {
+                  target = matches.find(m => m.vItem.whatsappMessageId && m.vItem.whatsappMessageId === contextMessageId) || null;
                 }
 
-                if (!target && matches.length > 0) {
+                // 2. Secondary correlation: explicit Firestore ticket document ID in interactive button payload
+                if (!target && extractedTicketId) {
+                  target = matches.find(m => m.docSnap.id === extractedTicketId) || null;
+                }
+
+                // 3. Fallback correlation: only active (non-closed) tickets with a pending vendor status
+                //    (Never fall back to already-acknowledged/completed or closed historical tickets!)
+                if (!target && !extractedTicketId && matches.length > 0) {
                   const isDone = vendorResponseText === 'בוצע';
-                  const pendingMatches = matches.filter(m =>
-                    isDone
+                  const pendingMatches = matches.filter(m => {
+                    const ticketStatus = String(m.tData.status || '').toLowerCase();
+                    if (['resolved', 'dismissed', 'closed'].includes(ticketStatus)) {
+                      return false;
+                    }
+                    // If the incoming click has a contextMessageId and this ticket already recorded a DIFFERENT whatsappMessageId, do not cross-match
+                    if (contextMessageId && m.vItem.whatsappMessageId && m.vItem.whatsappMessageId !== contextMessageId) {
+                      return false;
+                    }
+                    return isDone
                       ? m.vItem.status !== 'בוצע'
-                      : (m.vItem.status !== 'בוצע' && m.vItem.status !== 'קיבלתי את ההודעה' && m.vItem.status !== 'קבלתי את ההודעה')
-                  );
-                  const pool = pendingMatches.length > 0 ? pendingMatches : matches;
-                  pool.sort((a, b) => b.sentAtMs - a.sentAtMs);
-                  target = pool[0];
+                      : (m.vItem.status !== 'בוצע' && m.vItem.status !== 'קיבלתי את ההודעה' && m.vItem.status !== 'קבלתי את ההודעה');
+                  });
+
+                  if (pendingMatches.length > 0) {
+                    pendingMatches.sort((a, b) => b.sentAtMs - a.sentAtMs);
+                    target = pendingMatches[0];
+                  }
+                }
+
+                // 4. Cross-Environment Relay: If no matching pending ticket exists in Production (tiktak2026),
+                //    relay the webhook event to Staging (tiktak-stg) in case the dispatch originated from Staging.
+                if (!target) {
+                  const currentProject = process.env.GCLOUD_PROJECT || "";
+                  const alreadyRelayed = Boolean(req.headers["x-tiktak-relayed"]);
+
+                  if (currentProject === "tiktak2026" && !alreadyRelayed) {
+                    const stgWebhookUrl = "https://us-central1-tiktak-stg.cloudfunctions.net/whatsappWebhook";
+                    logger.info(`No matching active vendor ticket found in ${currentProject} for ${localPhone}; relaying webhook to staging (${stgWebhookUrl})...`);
+                    try {
+                      const relayHeaders: Record<string, string> = {
+                        "Content-Type": "application/json",
+                        "x-tiktak-relayed": "true"
+                      };
+                      if (signature) {
+                        relayHeaders["x-hub-signature-256"] = signature;
+                      }
+                      const rawPayload = req.rawBody ? req.rawBody : Buffer.from(JSON.stringify(body), "utf-8");
+                      const relayRes = await fetch(stgWebhookUrl, {
+                        method: "POST",
+                        headers: relayHeaders,
+                        body: new Uint8Array(rawPayload)
+                      });
+                      logger.info(`Relayed vendor webhook to staging with status ${relayRes.status}`);
+                    } catch (relayErr: any) {
+                      logger.error("Failed to relay vendor webhook to staging", { error: relayErr.message });
+                    }
+                  } else {
+                    logger.warn(`No matching pending vendor ticket found in ${currentProject} for phone ${localPhone} (contextMessageId: ${contextMessageId || 'none'}). Ignoring without triggering resident bot.`);
+                  }
+
+                  res.status(200).send("EVENT_RECEIVED");
+                  return;
                 }
 
                 if (target) {
                   const { docSnap, tData, vIndex, vItem } = target;
+                  const isDone = vendorResponseText === 'בוצע';
+
+                  // Idempotency guard: ignore duplicate clicks if vendor status is already at or beyond the requested state
+                  if ((isDone && vItem.status === 'בוצע') || (!isDone && (vItem.status === 'קיבלתי את ההודעה' || vItem.status === 'קבלתי את ההודעה' || vItem.status === 'בוצע'))) {
+                    logger.info(`Vendor ${localPhone} clicked '${vendorResponseText}' on ticket #${tData.ticketNumber || docSnap.id}, which is already in status '${vItem.status}'. Skipping duplicate update.`);
+                    res.status(200).send("EVENT_RECEIVED");
+                    return;
+                  }
+
                   const vList = [...tData.vendors];
                   const now = new Date();
                   const nowIso = now.toISOString();
@@ -2811,8 +2892,6 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     executionTimeSeconds = Math.round(ackMs / 1000);
                     executionTimeMinutes = Math.round(ackMs / (1000 * 60));
                   }
-
-                  const isDone = vendorResponseText === 'בוצע';
 
                   if (isDone) {
                     vList[vIndex] = {
@@ -4256,13 +4335,15 @@ export const forwardTicketToVendor = onRequest({ cors: true, secrets: ["WHATSAPP
 
     const newCount = currentCount + 1;
     const resolvedVendorName = String(vendorName || '').trim() || vendorPhone;
+    const outboundMessageId = apiResult?.messages?.[0]?.id || null;
 
-    const newVendorEntry = {
+    const newVendorEntry: Record<string, any> = {
       phone: vendorPhone,
       intlPhone: cleanPhone,
       name: resolvedVendorName,
       status: "ממתין לתשובה מהספק ...",
-      sentAt: new Date().toISOString()
+      sentAt: new Date().toISOString(),
+      ...(outboundMessageId ? { whatsappMessageId: outboundMessageId } : {})
     };
 
     const existingVendors: any[] = Array.isArray(ticketData.vendors) ? ticketData.vendors : [];
@@ -5183,7 +5264,8 @@ export const provisionTenantOrFleet = onRequest({ cors: true }, async (req, res)
     const rawBody = req.body || {};
 
     const isFleet = Boolean(rawBody.isFleet || rawBody.type === "fleet" || rawBody.fleet);
-    const entityType = rawBody.entityType || "building";
+    const rawEntityType = rawBody.entityType || rawBody.tenantData?.type || rawBody.singleTenant?.type || "building";
+    const entityType = rawEntityType === "municipality" ? "municipality" : "building";
     const isParentBuilding = rawBody.isParentBuilding ?? true;
 
     // Resolve tenantData from tenantData, singleTenant, or fleet
@@ -5346,7 +5428,8 @@ export const provisionTenantOrFleet = onRequest({ cors: true }, async (req, res)
 
       // Generate Password Setup / Reset link
       try {
-        passwordResetLink = await auth.generatePasswordResetLink(cleanEmail);
+        const rawResetLink = await auth.generatePasswordResetLink(cleanEmail);
+        passwordResetLink = normalizePasswordResetLink(rawResetLink);
       } catch (linkErr: any) {
         logger.warn("Could not generate password reset link:", linkErr);
       }

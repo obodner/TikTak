@@ -7,8 +7,11 @@
     "node": "22"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode staging",
+    "dev:prod": "vite --mode production",
     "build": "tsc -b && vite build",
+    "build:stg": "tsc -b && vite build --mode staging",
+    "build:prod": "tsc -b && vite build --mode production",
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run"

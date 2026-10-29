@@ -127,6 +127,11 @@ export default function AdminLogin() {
       }
 
       // 3. Handle multi-tenancy or single tenant
+      if (isSuperAdmin && foundTenants.length === 0) {
+        navigate('/admin/god-view');
+        return;
+      }
+
       if (foundTenants.length === 1) {
         const t = foundTenants[0];
 
@@ -220,6 +225,14 @@ export default function AdminLogin() {
         {tenants.length > 1 ? (
           <div className="flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-300">
             <h2 className="text-xl font-bold text-slate-800 text-center mb-4">בחר סביבת ניהול</h2>
+            {isSuper && (
+              <button
+                onClick={() => navigate('/admin/god-view')}
+                className="p-3.5 mb-2 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold rounded-lg transition-all text-center shadow-sm cursor-pointer active:scale-95"
+              >
+                ⚡ ממשק ניהול על (Super Admin)
+              </button>
+            )}
             {tenants.map(t => {
               const isBlocked = Boolean(t.isFrozen && !isSuper);
               return (

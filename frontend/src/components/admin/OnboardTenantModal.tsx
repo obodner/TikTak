@@ -14,7 +14,8 @@ import {
   Plus,
   Trash2,
   Shield,
-  Layers
+  Layers,
+  Globe
 } from 'lucide-react';
 
 interface OnboardTenantModalProps {
@@ -50,6 +51,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
   const isRtl = i18n.language !== 'en';
 
   const [mode, setMode] = useState<'single' | 'fleet'>('single');
+  const [entityType, setEntityType] = useState<'building' | 'municipality'>('building');
 
   // Single Tenant State
   const [tenantId, setTenantId] = useState('');
@@ -101,6 +103,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
       setError(null);
       setCopiedLink(false);
       setMode('single');
+      setEntityType('building');
       setTenantId('');
       setTenantName('');
       setTenantAddress('');
@@ -181,6 +184,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
 
     try {
       const isFleet = mode === 'fleet';
+      const resolvedEntityType = isFleet ? 'building' : entityType;
       const resolvedTenantId = mode === 'single' ? tenantId.trim().toLowerCase() : fleetMasterId.trim().toLowerCase();
       const resolvedTenantName = mode === 'single' ? tenantName.trim() : fleetMasterName.trim();
       const resolvedAddress = mode === 'single' ? tenantAddress.trim() : fleetMasterAddress.trim();
@@ -188,7 +192,8 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
       const tenantData = {
         tenantId: resolvedTenantId,
         name: resolvedTenantName,
-        address: resolvedAddress
+        address: resolvedAddress,
+        type: resolvedEntityType
       };
 
       const validChildBuildings = isFleet
@@ -238,7 +243,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
         callerUid: currentUser?.uid,
         isFleet,
         type: mode,
-        entityType: 'building',
+        entityType: resolvedEntityType,
         tenantData,
         childBuildings: validChildBuildings,
         adminUserData: adminPayload,
@@ -248,7 +253,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
         admin: adminPayload,
         ticketSubscription: ticketPayload,
         rfqLicensing: rfqPayload,
-        singleTenant: mode === 'single' ? { id: resolvedTenantId, name: resolvedTenantName, address: resolvedAddress } : undefined,
+        singleTenant: mode === 'single' ? { id: resolvedTenantId, name: resolvedTenantName, address: resolvedAddress, type: resolvedEntityType } : undefined,
         fleet: isFleet ? { fleetMasterId: resolvedTenantId, fleetMasterName: resolvedTenantName, address: resolvedAddress, buildings: validChildBuildings } : undefined
       };
 
@@ -413,6 +418,37 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
                   <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
                     פרטי הבניין / הלקוח
                   </h4>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      {t('super_field_tenant_type', isRtl ? 'סוג הלקוח / הישות' : 'Tenant / Entity Type')}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEntityType('building')}
+                        className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
+                          entityType === 'building'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Building2 size={15} />
+                        <span>{t('super_type_building')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEntityType('municipality')}
+                        className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
+                          entityType === 'municipality'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Globe size={15} />
+                        <span>{t('super_type_municipality')}</span>
+                      </button>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t('super_field_tenant_id')}</label>
@@ -420,7 +456,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
                         type="text"
                         dir="ltr"
                         required
-                        placeholder="rotshild-10"
+                        placeholder={entityType === 'municipality' ? 'kfar-tavor' : 'rotshild-10'}
                         value={tenantId}
                         onChange={e => setTenantId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -431,7 +467,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
                       <input
                         type="text"
                         required
-                        placeholder="רוטשילד 10, תל אביב"
+                        placeholder={entityType === 'municipality' ? 'כפר תבור / ועד מקומי' : 'רוטשילד 10, תל אביב'}
                         value={tenantName}
                         onChange={e => setTenantName(e.target.value)}
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -442,7 +478,7 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
                     <label className="block text-xs font-bold text-slate-700 mb-1">{t('super_field_tenant_address')}</label>
                     <input
                       type="text"
-                      placeholder="שדרות רוטשילד 10, תל אביב-יפו"
+                      placeholder={entityType === 'municipality' ? 'מועצה מקומית כפר תבור' : 'שדרות רוטשילד 10, תל אביב-יפו'}
                       value={tenantAddress}
                       onChange={e => setTenantAddress(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"

@@ -22,10 +22,10 @@
         }
     ],
     "hosting": {
-        "site": "tiktak2026",
+
         "public": "frontend/dist",
         "predeploy": [
-            "npm --prefix frontend run build"
+            "node scripts/build-frontend.cjs"
         ],
         "ignore": [
             "firebase.json",
