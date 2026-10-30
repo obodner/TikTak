@@ -1094,7 +1094,7 @@ export default function AdminDashboard() {
     const authorName = adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (isEn ? 'Admin' : 'מנהל');
 
     try {
-      const response = await fetch('https://sendwhatsappcommentnotification-xzfu3ennuq-uc.a.run.app', {
+      const response = await fetch('/api/sendWhatsAppCommentNotification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

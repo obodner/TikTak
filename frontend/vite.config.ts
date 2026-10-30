@@ -18,47 +18,19 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/analyzeImage': { 
-        target: 'https://analyzeimage-100013179958.us-central1.run.app', 
-        changeOrigin: true, 
-        rewrite: (path) => path.replace(/^\/api\/analyzeImage/, '') 
-      },
-      '/api/createTicket': { 
-        target: 'https://createticket-100013179958.us-central1.run.app', 
-        changeOrigin: true, 
-        rewrite: (path) => path.replace(/^\/api\/createTicket/, '') 
-      },
-      '/api/buildingInfo': { 
-        target: 'https://gettenantinfo-100013179958.us-central1.run.app', 
-        changeOrigin: true, 
-        rewrite: (path) => path.replace(/^\/api\/buildingInfo/, '') 
-      },
-      '/api/manageTenantUser': {
-        target: 'https://managetenantuser-100013179958.us-central1.run.app',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/manageTenantUser/, '')
-      },
-      '/api/checkAuth': {
-        target: 'https://checkauth-100013179958.us-central1.run.app',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/checkAuth/, '')
-      },
-      '/api/submitAppFeedback': {
-        target: 'https://submitappfeedback-100013179958.us-central1.run.app',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/submitAppFeedback/, '')
-      },
-      '/api/submitSupportInquiry': {
-        target: 'https://submitsupportinquiry-100013179958.us-central1.run.app',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/submitSupportInquiry/, '')
-      },
-      '/api/landingMetrics': {
-        target: 'https://landingmetrics-100013179958.us-central1.run.app',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/landingMetrics/, '')
+      '/api': {
+        target: 'https://mytiktak.com',
+        changeOrigin: true
       },
       '/img': {
+        target: 'https://mytiktak.com',
+        changeOrigin: true
+      },
+      '/aud': {
+        target: 'https://mytiktak.com',
+        changeOrigin: true
+      },
+      '/audio': {
         target: 'https://mytiktak.com',
         changeOrigin: true
       }

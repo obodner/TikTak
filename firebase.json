@@ -65,154 +65,161 @@
             {
                 "source": "/api/health",
                 "function": {
-                    "functionId": "health",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/landingMetrics",
                 "function": {
-                    "functionId": "landingMetrics",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/analyzeImage",
                 "function": {
-                    "functionId": "analyzeImage",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/createTicket",
                 "function": {
-                    "functionId": "createTicket",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/buildingInfo",
                 "function": {
-                    "functionId": "getTenantInfo",
-                    "region": "us-central1"
-                }
-            },
-            {
-                "source": "/api/manageTenantUser",
-                "function": {
-                    "functionId": "manageTenantUser",
-                    "region": "us-central1"
-                }
-            },
-            {
-                "source": "/api/forwardTicketToVendor",
-                "function": {
-                    "functionId": "forwardTicketToVendor",
-                    "region": "us-central1"
-                }
-            },
-            {
-                "source": "/api/dispatchRfqToVendors",
-                "function": {
-                    "functionId": "dispatchRfqToVendors",
-                    "region": "us-central1"
-                }
-            },
-            {
-                "source": "/api/dispatchRfqAddendum",
-                "function": {
-                    "functionId": "dispatchRfqAddendum",
-                    "region": "us-central1"
-                }
-            },
-            {
-                "source": "/api/notifyQuoteSubmission",
-                "function": {
-                    "functionId": "notifyQuoteSubmission",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/checkAuth",
                 "function": {
-                    "functionId": "checkAuth",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/submitAppFeedback",
                 "function": {
-                    "functionId": "submitAppFeedback",
-                    "region": "us-central1"
-                }
-            },
-            {
-                "source": "/api/submitSupportInquiry",
-                "function": {
-                    "functionId": "submitSupportInquiry",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/getResidentTickets",
                 "function": {
-                    "functionId": "getResidentTickets",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/addResidentComment",
                 "function": {
-                    "functionId": "addResidentComment",
+                    "functionId": "residentApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/incrementMeToo",
                 "function": {
-                    "functionId": "incrementMeToo",
+                    "functionId": "residentApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/manageTenantUser",
+                "function": {
+                    "functionId": "adminApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/forwardTicketToVendor",
+                "function": {
+                    "functionId": "adminApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/sendWhatsAppCommentNotification",
+                "function": {
+                    "functionId": "adminApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/submitSupportInquiry",
+                "function": {
+                    "functionId": "adminApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/provisionTenantOrFleet",
                 "function": {
-                    "functionId": "provisionTenantOrFleet",
+                    "functionId": "adminApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/updateTenantLicensing",
                 "function": {
-                    "functionId": "updateTenantLicensing",
+                    "functionId": "adminApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/toggleTenantFreeze",
                 "function": {
-                    "functionId": "toggleTenantFreeze",
+                    "functionId": "adminApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/deleteTenantPermanently",
                 "function": {
-                    "functionId": "deleteTenantPermanently",
+                    "functionId": "adminApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/recordAdminLogin",
                 "function": {
-                    "functionId": "recordAdminLogin",
+                    "functionId": "adminApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/dispatchRfqToVendors",
+                "function": {
+                    "functionId": "rfqApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/dispatchRfqAddendum",
+                "function": {
+                    "functionId": "rfqApi",
+                    "region": "us-central1"
+                }
+            },
+            {
+                "source": "/api/notifyQuoteSubmission",
+                "function": {
+                    "functionId": "rfqApi",
                     "region": "us-central1"
                 }
             },
             {
                 "source": "/api/recordRfqDispatch",
                 "function": {
-                    "functionId": "recordRfqDispatch",
+                    "functionId": "rfqApi",
                     "region": "us-central1"
                 }
             },

@@ -40,7 +40,7 @@ const generative_ai_1 = require("@google/generative-ai");
 const logger = __importStar(require("firebase-functions/logger"));
 async function classifyMaintenanceIncident(params) {
     const startTime = Date.now();
-    const { tenantId, categoriesList, entityContext, language, imageBuffer, imageMime, textInput } = params;
+    const { tenantId, categoriesList, language, imageBuffer, imageMime, textInput } = params;
     const safeCategories = Array.from(new Set(categoriesList.map((c) => String(c).trim()).filter(Boolean)));
     if (!safeCategories.includes("אחר")) {
         safeCategories.push("אחר");

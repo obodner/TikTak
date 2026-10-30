@@ -35,7 +35,7 @@ async function sendCronWhatsAppText(to: string, text: string) {
  * check/reset monthly quota billing cycles, monitor annual RFQ license expiration,
  * and log billing cycle summaries.
  */
-export const slaCron = onSchedule({ schedule: "5 0,12 * * *", secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (event) => {
+export const slaCron = onSchedule({ schedule: "5 0,12 * * *", secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async () => {
   const db = getFirestore();
   logger.info("SLA, Quota Reset & RFQ License Cron Job started");
 

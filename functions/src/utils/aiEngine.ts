@@ -42,7 +42,7 @@ export async function classifyMaintenanceIncident(
   params: IncidentClassificationParams
 ): Promise<AiIncidentResult> {
   const startTime = Date.now();
-  const { tenantId, categoriesList, entityContext, language, imageBuffer, imageMime, textInput } = params;
+  const { tenantId, categoriesList, language, imageBuffer, imageMime, textInput } = params;
 
   const safeCategories = Array.from(new Set(categoriesList.map((c) => String(c).trim()).filter(Boolean)));
   if (!safeCategories.includes("אחר")) {

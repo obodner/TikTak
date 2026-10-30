@@ -53,6 +53,8 @@ function RfqQuickRedirect() {
     cleanSlug = cleanSlug
         .replace(/\{\{\d+\}\}/g, '')
         .replace(/%7B%7B\d+%7D%7D/gi, '')
+        .split('?')[0]
+        .split('&')[0]
         .trim();
 
     const parts = cleanSlug.split('__');
@@ -80,47 +82,98 @@ function RfqQuickRedirect() {
     );
 }
 
-// Quick Short Redirect for Contractor WhatsApp Dynamic Button: /vq/:slug or /quotes/:slug -> /quote/:tenantId/:rfqId?v=...&t=...
+// Quick Short Redirect for Contractor WhatsApp Dynamic Button: /vq/:slug, /quotes/:slug, /quotes/vq/:slug, /quote/vq/:slug -> /quote/:tenantId/:rfqId?v=...&t=...
 function VendorQuoteQuickRedirect() {
-    const { slug } = useParams();
-    if (!slug) {
+    const params = useParams();
+    const slug = params.slug || '';
+    const splat = params['*'] || '';
+    const [searchParams] = useSearchParams();
+
+    // If URL is /quotes/vq/<actualSlug> or /vq/vq/<actualSlug>, the actual __ slug is in splat ('*')
+    const rawSlug = (splat && splat.includes('__'))
+        ? splat
+        : (slug && slug.includes('__'))
+            ? slug
+            : (splat || slug);
+
+    if (!rawSlug) {
         return <Navigate to="/" replace />;
     }
 
-    let cleanSlug = decodeURIComponent(slug);
+    let cleanSlug = decodeURIComponent(rawSlug);
     try {
         cleanSlug = decodeURIComponent(cleanSlug);
     } catch {
         // already decoded
     }
+
+    // Extract any embedded query string if '?' or '%3F' was encoded into the slug
+    let embeddedQuery = '';
+    if (cleanSlug.includes('?')) {
+        const [pathPart, qPart] = cleanSlug.split('?');
+        cleanSlug = pathPart;
+        embeddedQuery = qPart || '';
+    }
+
     cleanSlug = cleanSlug
+        .replace(/^vq\//i, '')
+        .replace(/^quotes?\//i, '')
         .replace(/\{\{\d+\}\}/g, '')
         .replace(/%7B%7B\d+%7D%7D/gi, '')
         .replace(/[{}]/g, '')
+        .split('&')[0]
         .trim();
 
     const parts = cleanSlug.split('__');
-    const tenantId = parts[0]?.trim();
-    const rfqId = parts[1]?.trim();
-    const vendorId = parts[2]?.trim();
-    const tokenHash = parts[3]?.trim();
+    const embeddedParams = new URLSearchParams(embeddedQuery);
 
-    if (!tenantId || !rfqId) {
-        return <Navigate to="/" replace />;
+    // Format A: tenantId__rfqId__vendorId__tokenHash
+    if (parts.length >= 2) {
+        const tenantId = parts[0]?.trim();
+        const rfqId = parts[1]?.trim();
+        const vendorId = parts[2]?.trim() || searchParams.get('v') || embeddedParams.get('v') || '';
+        const tokenHash = parts[3]?.trim() || searchParams.get('t') || embeddedParams.get('t') || '';
+
+        if (!tenantId || !rfqId) {
+            return <Navigate to="/" replace />;
+        }
+
+        const queryParams = new URLSearchParams();
+        if (vendorId) queryParams.set('v', vendorId);
+        if (tokenHash) queryParams.set('t', tokenHash);
+        queryParams.set('tid', tenantId);
+
+        const queryStr = queryParams.toString();
+        return (
+            <Navigate
+                to={`/quote/${tenantId}/${rfqId}${queryStr ? `?${queryStr}` : ''}`}
+                replace
+            />
+        );
     }
 
-    const queryParams = new URLSearchParams();
-    if (vendorId) queryParams.set('v', vendorId);
-    if (tokenHash) queryParams.set('t', tokenHash);
-    queryParams.set('tid', tenantId);
+    // Format B: /quotes/:rfqId?tid=...&v=...&t=...
+    const singleRfqId = parts[0]?.trim();
+    const tid = searchParams.get('tid') || searchParams.get('tenant') || embeddedParams.get('tid') || '';
+    const v = searchParams.get('v') || searchParams.get('vendorId') || embeddedParams.get('v') || '';
+    const t = searchParams.get('t') || searchParams.get('token') || embeddedParams.get('t') || '';
 
-    const queryStr = queryParams.toString();
-    return (
-        <Navigate
-            to={`/quote/${tenantId}/${rfqId}${queryStr ? `?${queryStr}` : ''}`}
-            replace
-        />
-    );
+    if (singleRfqId && singleRfqId !== 'vq') {
+        const queryParams = new URLSearchParams();
+        if (v) queryParams.set('v', v);
+        if (t) queryParams.set('t', t);
+        if (tid) queryParams.set('tid', tid);
+        const queryStr = queryParams.toString();
+        const targetPath = tid ? `/quote/${tid}/${singleRfqId}` : `/quote/${singleRfqId}`;
+        return (
+            <Navigate
+                to={`${targetPath}${queryStr ? `?${queryStr}` : ''}`}
+                replace
+            />
+        );
+    }
+
+    return <Navigate to="/" replace />;
 }
 
 // Wrapper to dynamically load LandingPage or ResidentFlow based on QR query params
@@ -156,11 +209,33 @@ function AdminQuotesIndexRedirect() {
 }
 
 export default function App() {
+    const isProdDomain =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'www.mytiktak.com' ||
+            window.location.hostname === 'mytiktak.com' ||
+            window.location.hostname === 'tiktak2026.web.app' ||
+            window.location.hostname === 'tiktak2026.firebaseapp.com');
+
+    const shouldRedirectToStaging =
+        isProdDomain &&
+        (window.location.href.includes('env=stg') ||
+            window.location.href.includes('env%3Dstg'));
+
     useEffect(() => {
+        if (shouldRedirectToStaging) {
+            window.location.replace(
+                `https://tiktak-stg.web.app${window.location.pathname}${window.location.search}${window.location.hash}`
+            );
+            return;
+        }
         if (!sessionStorage.getItem('tiktak_session_id')) {
             sessionStorage.setItem('tiktak_session_id', Math.random().toString(36).substring(2, 15));
         }
-    }, []);
+    }, [shouldRedirectToStaging]);
+
+    if (shouldRedirectToStaging) {
+        return null;
+    }
 
     return (
         <>
@@ -175,6 +250,8 @@ export default function App() {
             <Route path="/vq/:slug/*" element={<VendorQuoteQuickRedirect />} />
             <Route path="/quotes/:slug" element={<VendorQuoteQuickRedirect />} />
             <Route path="/quotes/:slug/*" element={<VendorQuoteQuickRedirect />} />
+            <Route path="/quote/vq/:slug" element={<VendorQuoteQuickRedirect />} />
+            <Route path="/quote/vq/:slug/*" element={<VendorQuoteQuickRedirect />} />
 
             {/* Resident facing UI -> strictly public */}
             <Route path="/" element={<HomeRoute />} />

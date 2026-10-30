@@ -207,7 +207,7 @@ export default function ContractorQuotePortal() {
     if (rfq.includes('__')) {
       const parts = rfq.split('__');
       if (parts.length >= 2) {
-        if (!tenant) tenant = parts[0]?.trim();
+        if (!tenant || tenant === 'vq' || tenant === 'quotes') tenant = parts[0]?.trim();
         rfq = parts[1]?.trim();
         if (parts[2] && !vendor) vendor = parts[2]?.trim();
         if (parts[3] && !token) token = parts[3]?.trim();
@@ -332,6 +332,20 @@ export default function ContractorQuotePortal() {
         }
 
         if (!rfqData) {
+          if (
+            typeof window !== 'undefined' &&
+            (window.location.hostname === 'www.mytiktak.com' ||
+              window.location.hostname === 'mytiktak.com' ||
+              window.location.hostname === 'tiktak2026.web.app' ||
+              window.location.hostname === 'tiktak2026.firebaseapp.com') &&
+            !window.location.search.includes('fromProd=1')
+          ) {
+            const sep = window.location.search ? '&' : '?';
+            window.location.replace(
+              `https://tiktak-stg.web.app${window.location.pathname}${window.location.search}${sep}fromProd=1`
+            );
+            return;
+          }
           setErrorMessage('בקשת הצעת המחיר לא נמצאה במערכת או שהקישור שגוי.');
           setLoading(false);
           return;

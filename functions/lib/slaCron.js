@@ -63,7 +63,7 @@ async function sendCronWhatsAppText(to, text) {
         logger.warn(`Failed to send WhatsApp alert in cron to ${to}`, e);
     }
 }
-exports.slaCron = (0, scheduler_1.onSchedule)({ schedule: "5 0,12 * * *", secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async (event) => {
+exports.slaCron = (0, scheduler_1.onSchedule)({ schedule: "5 0,12 * * *", secrets: ["WHATSAPP_ACCESS_TOKEN"] }, async () => {
     const db = (0, firestore_1.getFirestore)();
     logger.info("SLA, Quota Reset & RFQ License Cron Job started");
     try {

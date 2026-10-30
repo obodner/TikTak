@@ -91,7 +91,7 @@ async function getAdminsWithPhones(db: FirebaseFirestore.Firestore, tenantId: st
 export const checkAnnualLicenseExpirations = onSchedule({
   schedule: "0 6 * * *",
   secrets: ["WHATSAPP_ACCESS_TOKEN"]
-}, async (event) => {
+}, async () => {
   const db = getFirestore();
   const now = new Date();
   logger.info("Starting checkAnnualLicenseExpirations cron job at 06:00 UTC", { timestamp: now.toISOString() });
