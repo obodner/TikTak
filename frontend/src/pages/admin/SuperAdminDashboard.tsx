@@ -95,6 +95,23 @@ interface AdminUserRecord {
   lastLogin?: any;
 }
 
+const TICKET_TIER_PRESETS: Record<string, { monthlyQuota: number; overageRate: number }> = {
+  starter: { monthlyQuota: 15, overageRate: 12.0 },
+  basic: { monthlyQuota: 35, overageRate: 10.0 },
+  standard: { monthlyQuota: 80, overageRate: 8.0 },
+  growth: { monthlyQuota: 160, overageRate: 7.0 },
+  enterprise: { monthlyQuota: 300, overageRate: 5.5 }
+};
+
+const RFQ_TIER_PRESETS: Record<string, { annualQuota: number; overageRate: number }> = {
+  disabled: { annualQuota: 0, overageRate: 59.0 },
+  starter: { annualQuota: 5, overageRate: 49.0 },
+  basic: { annualQuota: 10, overageRate: 45.0 },
+  standard: { annualQuota: 15, overageRate: 40.0 },
+  growth: { annualQuota: 25, overageRate: 36.0 },
+  enterprise: { annualQuota: 50, overageRate: 35.0 }
+};
+
 export default function SuperAdminDashboard() {
   const { t, i18n } = useTranslation();
   const isRtl = i18n.language !== 'en';
@@ -250,10 +267,33 @@ export default function SuperAdminDashboard() {
       ? new Date(existingExpiry).toISOString().split('T')[0]
       : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+    const rawTier = tenant.rfqLicensing?.tier || 'standard';
+    let annualQuota = tenant.rfqLicensing?.annualQuota;
+    let overageRate = tenant.rfqLicensing?.overageRate;
+
+    // Normalize legacy quotas (3 -> 5, 6 -> 10, 12 -> 15) to current standard presets
+    if (rawTier === 'standard' && (annualQuota === 12 || annualQuota === undefined)) {
+      annualQuota = 15;
+      if (overageRate === 45.0 || overageRate === undefined) overageRate = 40.0;
+    } else if (rawTier === 'basic' && (annualQuota === 6 || annualQuota === undefined)) {
+      annualQuota = 10;
+      if (overageRate === 49.0 || overageRate === undefined) overageRate = 45.0;
+    } else if (rawTier === 'starter' && (annualQuota === 3 || annualQuota === undefined)) {
+      annualQuota = 5;
+      if (overageRate === 59.0 || overageRate === undefined) overageRate = 49.0;
+    } else if (rawTier === 'growth' && (overageRate === 39.0 || overageRate === undefined)) {
+      if (annualQuota === undefined) annualQuota = 25;
+      overageRate = 36.0;
+    } else {
+      const preset = RFQ_TIER_PRESETS[rawTier];
+      if (annualQuota === undefined) annualQuota = preset?.annualQuota ?? 15;
+      if (overageRate === undefined) overageRate = preset?.overageRate ?? 40.0;
+    }
+
     setRfqForm({
-      tier: tenant.rfqLicensing?.tier || 'standard',
-      annualQuota: tenant.rfqLicensing?.annualQuota ?? 15,
-      overageRate: tenant.rfqLicensing?.overageRate ?? 40.0,
+      tier: rawTier,
+      annualQuota,
+      overageRate,
       enforcementMode: tenant.rfqLicensing?.enforcementMode || 'hard',
       licenseExpiresAt: defaultExpiryDate,
       renewalMode: 'midterm'
@@ -473,24 +513,6 @@ export default function SuperAdminDashboard() {
     } finally {
       setLoadingAdmins(false);
     }
-  };
-
-  // Preset mappings for quick selects
-  const TICKET_TIER_PRESETS: Record<string, { monthlyQuota: number; overageRate: number }> = {
-    starter: { monthlyQuota: 15, overageRate: 12.0 },
-    basic: { monthlyQuota: 35, overageRate: 10.0 },
-    standard: { monthlyQuota: 80, overageRate: 8.0 },
-    growth: { monthlyQuota: 160, overageRate: 7.0 },
-    enterprise: { monthlyQuota: 300, overageRate: 5.5 }
-  };
-
-  const RFQ_TIER_PRESETS: Record<string, { annualQuota: number; overageRate: number }> = {
-    disabled: { annualQuota: 0, overageRate: 59.0 },
-    starter: { annualQuota: 5, overageRate: 49.0 },
-    basic: { annualQuota: 10, overageRate: 45.0 },
-    standard: { annualQuota: 15, overageRate: 40.0 },
-    growth: { annualQuota: 25, overageRate: 36.0 },
-    enterprise: { annualQuota: 50, overageRate: 35.0 }
   };
 
   // 1. Group master tenants and children

@@ -39,10 +39,10 @@ const TICKET_PRESETS: Record<string, { monthlyQuota: number; overageRate: number
 
 const RFQ_PRESETS: Record<string, { annualQuota: number; overageRate: number }> = {
   disabled: { annualQuota: 0, overageRate: 59.0 },
-  starter: { annualQuota: 3, overageRate: 59.0 },
-  basic: { annualQuota: 6, overageRate: 49.0 },
-  standard: { annualQuota: 12, overageRate: 45.0 },
-  growth: { annualQuota: 25, overageRate: 39.0 },
+  starter: { annualQuota: 5, overageRate: 49.0 },
+  basic: { annualQuota: 10, overageRate: 45.0 },
+  standard: { annualQuota: 15, overageRate: 40.0 },
+  growth: { annualQuota: 25, overageRate: 36.0 },
   enterprise: { annualQuota: 50, overageRate: 35.0 }
 };
 
@@ -80,8 +80,8 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
 
   // RFQ Licensing
   const [rfqTier, setRfqTier] = useState('standard');
-  const [annualQuota, setAnnualQuota] = useState(12);
-  const [rfqOverageRate, setRfqOverageRate] = useState(45.0);
+  const [annualQuota, setAnnualQuota] = useState(15);
+  const [rfqOverageRate, setRfqOverageRate] = useState(40.0);
   const [enforcementMode, setEnforcementMode] = useState<'hard' | 'soft'>('hard');
   const defaultNextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const [licenseExpiresAt, setLicenseExpiresAt] = useState(defaultNextYear);
@@ -122,8 +122,8 @@ export function OnboardTenantModal({ isOpen, onClose, onSuccess }: OnboardTenant
       setMonthlyQuota(80);
       setTicketOverageRate(8.0);
       setRfqTier('standard');
-      setAnnualQuota(12);
-      setRfqOverageRate(45.0);
+      setAnnualQuota(15);
+      setRfqOverageRate(40.0);
       setEnforcementMode('hard');
       setLicenseExpiresAt(defaultNextYear);
     }
