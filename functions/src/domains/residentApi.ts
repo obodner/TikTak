@@ -1012,9 +1012,305 @@ export async function handleIncrementMeToo(req: any, res: any) {
   }
 }
 
+export async function handleValidateInvite(req: any, res: any) {
+  try {
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown-ip";
+    const rateLimit = checkRateLimit(`validateInvite:${clientIp}`, 40, 5 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      res.status(429).send({ valid: false, error: "חריגה ממספר הניסיונות המותר. אנא המתן מספר דקות." });
+      return;
+    }
+
+    let token = (req.query?.token || req.body?.token || "").trim();
+    let tenantId = (req.query?.tenantId || req.body?.tenantId || "").trim();
+
+    // Support combined slug "tenantId__token"
+    if (token.includes("__")) {
+      const parts = token.split("__");
+      tenantId = parts[0];
+      token = parts[1];
+    }
+
+    if (!token) {
+      res.status(400).send({ valid: false, error: "Missing token" });
+      return;
+    }
+
+    let inviteDoc: any = null;
+    let foundTenantId = tenantId;
+
+    if (tenantId) {
+      const docSnap = await db.collection("tenants").doc(tenantId).collection("invites").doc(token).get();
+      if (docSnap.exists) {
+        inviteDoc = docSnap;
+      }
+    }
+
+    if (!inviteDoc) {
+      // Fallback search across invites collection group
+      const q = await db.collectionGroup("invites").where("token", "==", token).limit(1).get();
+      if (!q.empty) {
+        inviteDoc = q.docs[0];
+        foundTenantId = inviteDoc.data()?.tenantId || inviteDoc.ref.parent.parent?.id;
+      }
+    }
+
+    if (!inviteDoc || !inviteDoc.exists) {
+      res.status(404).send({
+        valid: false,
+        reason: "NOT_FOUND",
+        message: "קישור ההצטרפות אינו קיים במערכת."
+      });
+      return;
+    }
+
+    const data = inviteDoc.data();
+    const now = new Date();
+    const expiresAt = data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt);
+
+    // Fetch tenant name & address
+    const tSnap = await db.collection("tenants").doc(foundTenantId).get();
+    const tData = tSnap.data() || {};
+    const tenantType = tData.type || "building";
+    const contactTarget = tenantType === "municipality" ? "למוקד השירות" : "לוועד הבית";
+
+    if (data.status === "revoked") {
+      res.status(410).send({
+        valid: false,
+        reason: "REVOKED",
+        message: `קישור ההצטרפות בוטל על ידי ${contactTarget}.`
+      });
+      return;
+    }
+
+    if (expiresAt < now) {
+      inviteDoc.ref.update({ status: "expired" }).catch(() => {});
+      res.status(410).send({
+        valid: false,
+        reason: "EXPIRED",
+        message: `תוקף קישור ההצטרפות פג. אנא פנה ${contactTarget} לקבלת קישור חדש.`
+      });
+      return;
+    }
+
+    if (data.inviteType === "single" && (data.useCount || 0) >= 1) {
+      res.status(409).send({
+        valid: false,
+        reason: "ALREADY_USED",
+        message: "קישור אישי זה כבר נוצל להרשמה."
+      });
+      return;
+    }
+
+    res.status(200).send({
+      valid: true,
+      token,
+      tenantId: foundTenantId,
+      buildingName: tData.name || (tenantType === "municipality" ? "רשות מקומית" : "בניין מגורים"),
+      buildingAddress: tData.address || "",
+      tenantType,
+      inviteType: data.inviteType || "single",
+      expiresAt: expiresAt.toISOString()
+    });
+  } catch (err: any) {
+    logger.error("Exception in validateInvite:", err);
+    res.status(500).send({ valid: false, error: err.message || "Failed to validate invite" });
+  }
+}
+
+export async function handleSubmitResidentSelfOnboard(req: any, res: any) {
+  try {
+    let { tenantId, token, name, phone } = req.body;
+
+    if (token && token.includes("__")) {
+      const parts = token.split("__");
+      if (!tenantId) tenantId = parts[0];
+      token = parts[1];
+    }
+
+    if (!tenantId || !token || !name || !phone) {
+      res.status(400).send({ error: "נא למלא את כל שדות החובה (שם מלא ומספר טלפון נייד)." });
+      return;
+    }
+
+    const trimmedName = String(name).trim();
+    if (!/^[\u0590-\u05FFa-zA-Z0-9\s-]+$/.test(trimmedName)) {
+      res.status(400).send({ error: "השם מכיל תווים לא חוקיים. מותרים רק אותיות, מספרים, רווחים ומקפים." });
+      return;
+    }
+
+    let cleanPhone = String(phone).replace(/\D/g, "");
+    if (cleanPhone.startsWith("972") && cleanPhone.length === 12) {
+      cleanPhone = "0" + cleanPhone.substring(3);
+    }
+    if (cleanPhone.length === 9 && !cleanPhone.startsWith("0")) {
+      cleanPhone = "0" + cleanPhone;
+    }
+
+    if (!/^0\d{8,9}$/.test(cleanPhone)) {
+      res.status(400).send({ error: "מספר הטלפון לא תקין. מספר תקין בישראל מתחיל ב-0 ומכיל 9-10 ספרות." });
+      return;
+    }
+
+    // 1. Dual-Tier Burst-Hardened Rate Limiting:
+    // A) Shared Wi-Fi / NAT friendly: Allows up to 100 requests per 5 minutes per IP
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown-ip";
+    const ipLimit = checkRateLimit(`selfOnboardIp:${clientIp}`, 100, 5 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      res.status(429).send({ error: "חריגה ממספר הניסיונות המותר מכתובת זו. אנא המתן מספר דקות." });
+      return;
+    }
+
+    // B) Phone-scoped spam protection: Max 5 submissions per 5 minutes per phone number
+    const phoneLimit = checkRateLimit(`selfOnboardPhone:${cleanPhone}`, 5, 5 * 60 * 1000);
+    if (!phoneLimit.allowed) {
+      res.status(429).send({ error: "חריגה ממספר הניסיונות עבור מספר טלפון זה. אנא המתן מספר דקות." });
+      return;
+    }
+
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const inviteRef = tenantRef.collection("invites").doc(token);
+    const reporterRef = tenantRef.collection("reporters").doc(cleanPhone);
+
+    const [tSnap, inviteSnap] = await Promise.all([
+      tenantRef.get(),
+      inviteRef.get()
+    ]);
+
+    if (!tSnap.exists) {
+      res.status(404).send({ error: "הבניין לא נמצא במערכת." });
+      return;
+    }
+
+    const tenantType = tSnap.data()?.type || "building";
+    const buildingName = tSnap.data()?.name || (tenantType === "municipality" ? "הרשות המקומית" : "הבניין");
+
+    if (!inviteSnap.exists) {
+      res.status(404).send({ error: "קישור ההצטרפות אינו קיים במערכת." });
+      return;
+    }
+
+    const inviteData = inviteSnap.data() || {};
+    const now = new Date();
+    const expiresAt = inviteData.expiresAt?.toDate ? inviteData.expiresAt.toDate() : new Date(inviteData.expiresAt);
+
+    if (inviteData.status === "revoked") {
+      res.status(410).send({ error: "קישור ההצטרפות בוטל על ידי ועד הבית / מוקד השירות." });
+      return;
+    }
+
+    if (expiresAt < now) {
+      inviteRef.update({ status: "expired" }).catch(() => {});
+      res.status(410).send({ error: "תוקף קישור ההצטרפות פג." });
+      return;
+    }
+
+    let alreadyRegistered = false;
+
+    // 2. Branching by Link Type for Zero-Contention Bursts:
+    if (inviteData.inviteType === "single") {
+      // SINGLE-USE LINK: Strict atomic transaction on inviteRef to lock and consume it exactly once
+      await db.runTransaction(async (transaction) => {
+        const invSnap = await transaction.get(inviteRef);
+        if (!invSnap.exists) throw new Error("קישור ההצטרפות אינו קיים במערכת.");
+        const currentData = invSnap.data() || {};
+        if (currentData.status === "revoked") throw new Error("קישור ההצטרפות בוטל.");
+        const exp = currentData.expiresAt?.toDate ? currentData.expiresAt.toDate() : new Date(currentData.expiresAt);
+        if (exp < now) throw new Error("תוקף קישור ההצטרפות פג.");
+        if ((currentData.useCount || 0) >= 1) throw new Error("קישור אישי זה כבר נוצל להרשמה.");
+
+        const repSnap = await transaction.get(reporterRef);
+        if (repSnap.exists) {
+          alreadyRegistered = true;
+        } else {
+          transaction.set(reporterRef, {
+            name: trimmedName,
+            phone: cleanPhone,
+            addedAt: new Date().toISOString(),
+            source: "self_invite",
+            inviteId: token
+          });
+        }
+
+        transaction.update(inviteRef, {
+          useCount: admin.firestore.FieldValue.increment(1),
+          status: "used",
+          usedBy: admin.firestore.FieldValue.arrayUnion({
+            phone: cleanPhone,
+            name: trimmedName,
+            registeredAt: new Date().toISOString()
+          })
+        });
+      });
+    } else {
+      // GROUP LINK: Burst-Proof Zero-Contention Architecture
+      // Each user writes to their independent reporter doc. No lock contention across different users!
+      const repSnap = await reporterRef.get();
+      if (repSnap.exists) {
+        alreadyRegistered = true;
+      } else {
+        await reporterRef.set({
+          name: trimmedName,
+          phone: cleanPhone,
+          addedAt: new Date().toISOString(),
+          source: "self_invite",
+          inviteId: token
+        });
+      }
+
+      // Record redemption record in a subcollection keyed by phone (independent doc write)
+      const redemptionRef = inviteRef.collection("redemptions").doc(cleanPhone);
+      await redemptionRef.set({
+        phone: cleanPhone,
+        name: trimmedName,
+        registeredAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      // Non-blocking asynchronous update of parent invite statistics
+      inviteRef.update({
+        useCount: admin.firestore.FieldValue.increment(1),
+        lastRegisteredAt: admin.firestore.FieldValue.serverTimestamp(),
+        usedBy: admin.firestore.FieldValue.arrayUnion({
+          phone: cleanPhone,
+          name: trimmedName,
+          registeredAt: new Date().toISOString()
+        })
+      }).catch((err: any) => {
+        logger.warn("Non-blocking invite stat update delayed under load", { error: err.message });
+      });
+    }
+
+    await recordAuditLog({
+      tenantId,
+      action: "REPORTER_SELF_ONBOARDED",
+      level: "INFO",
+      actor: { uid: cleanPhone, name: trimmedName, type: "resident" },
+      details: {
+        token,
+        cleanPhone,
+        alreadyRegistered,
+        inviteType: inviteData.inviteType || "single"
+      }
+    });
+
+    res.status(200).send({
+      success: true,
+      alreadyRegistered,
+      tenantId,
+      buildingName,
+      message: alreadyRegistered
+        ? "מספר הטלפון שלך כבר מופיע ברשימת המורשים!"
+        : "הצטרפת בהצלחה לרשימת המורשים!"
+    });
+  } catch (err: any) {
+    logger.error("Exception in submitResidentSelfOnboard:", err);
+    res.status(400).send({ error: err.message || "שגיאה ברישום הדייר." });
+  }
+}
+
 /**
  * Domain-grouped Cloud Function #1: Resident & Public API
- * Consolidates 10 resident/public endpoints into 1 warm Cloud Run service.
+ * Consolidates 12 resident/public endpoints into 1 warm Cloud Run service.
  */
 export const residentApi = onRequest(
   { cors: true, secrets: ["GEMINI_API_KEY", "WHATSAPP_ACCESS_TOKEN"] },
@@ -1043,6 +1339,10 @@ export const residentApi = onRequest(
         return handleAddResidentComment(req, res);
       case "incrementMeToo":
         return handleIncrementMeToo(req, res);
+      case "validateInvite":
+        return handleValidateInvite(req, res);
+      case "submitResidentSelfOnboard":
+        return handleSubmitResidentSelfOnboard(req, res);
       default:
         res.status(404).send({ error: `Unknown residentApi endpoint: ${endpoint}` });
     }

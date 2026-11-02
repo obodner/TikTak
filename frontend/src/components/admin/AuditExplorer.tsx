@@ -337,6 +337,9 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
         'FLEET_CREATED': { he: 'יצירת מערך ציים / אשכול', en: 'Fleet Created' },
         'LICENSE_UPDATED': { he: 'עדכון רישוי ומכסות', en: 'License Updated' },
         'TENANT_DELETED': { he: 'מחיקת מתחם לצמיתות', en: 'Tenant Deleted' },
+        'REPORTER_SELF_ONBOARDED': { he: 'הצטרפות עצמית כמדווח מורשה', en: 'Resident Self-Onboarded' },
+        'RESIDENT_INVITE_CREATED': { he: 'יצירת קישור הצטרפות', en: 'Resident Invite Created' },
+        'RESIDENT_INVITE_REVOKED': { he: 'ביטול קישור הצטרפות', en: 'Resident Invite Revoked' },
     };
 
     const statusMap: Record<string, { he: string; en: string }> = {
@@ -1146,6 +1149,27 @@ export const AuditExplorer = ({ isEn = false }: AuditExplorerProps) => {
                 return isEn
                     ? `TikTak AI refined incident summary with resident follow-up details${channel}${locStr}`
                     : `TikTak AI דייק ועידכן את תקציר הפנייה על בסיס מידע משלים מהתושב${channel}${locStr}`;
+            }
+            case 'REPORTER_SELF_ONBOARDED': {
+                const cleanPhone = log.details?.cleanPhone || log.actor?.uid || '';
+                const phoneStr = cleanPhone ? ` (${cleanPhone})` : '';
+                return isEn
+                    ? `${actor}${phoneStr} joined the authorized reporters whitelist via invite link`
+                    : `${actor}${phoneStr} הצטרף/ה בהצלחה לרשימת המורשים באמצעות קישור הזמנה`;
+            }
+            case 'RESIDENT_INVITE_CREATED': {
+                const invType = log.details?.inviteType === 'group'
+                    ? (isEn ? 'group link' : 'קישור קבוצתי')
+                    : (isEn ? 'personal link' : 'קישור אישי');
+                const expHours = log.details?.expiresInHours ? (isEn ? ` (valid for ${log.details.expiresInHours}h)` : ` (בתוקף ל-${log.details.expiresInHours} שעות)`) : '';
+                return isEn
+                    ? `${actor} generated new ${invType}${expHours} for ${tenantName}`
+                    : `${actor} יצר/ה ${invType} חדש${expHours} להצטרפות לרשימת המורשים עבור ${tenantName}`;
+            }
+            case 'RESIDENT_INVITE_REVOKED': {
+                return isEn
+                    ? `${actor} revoked an active resident invite link for ${tenantName}`
+                    : `${actor} ביטל/ה קישור הצטרפות פעיל עבור ${tenantName}`;
             }
             default: {
                 const actionLabel = isEn

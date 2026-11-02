@@ -1569,8 +1569,211 @@ export async function handleRecordAdminLogin(req: any, res: any) {
 }
 
 /**
+ * Helper to verify caller is a tenant admin or super admin
+ */
+async function verifyTenantAdmin(tenantId: string, req: any): Promise<{ authorized: boolean; callerUid: string; callerName: string }> {
+  let callerUid = req.body?.callerUid || req.query?.callerUid;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const idToken = authHeader.split("Bearer ")[1]?.trim();
+    if (idToken) {
+      try {
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        if (decoded.uid) callerUid = decoded.uid;
+        if (decoded.role === "super") {
+          return { authorized: true, callerUid: decoded.uid, callerName: decoded.name || decoded.email || "SuperAdmin" };
+        }
+      } catch (_e) {
+        // Fall back to callerUid parameter
+      }
+    }
+  }
+
+  if (!callerUid) {
+    return { authorized: false, callerUid: "", callerName: "" };
+  }
+
+  const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+  if (!tenantDoc.exists) {
+    return { authorized: false, callerUid, callerName: "" };
+  }
+
+  const tData = tenantDoc.data() || {};
+  const adminUids: string[] = tData.adminUids || [];
+
+  if (adminUids.includes(callerUid)) {
+    const adminUserDoc = await db.collection("tenants").doc(tenantId).collection("adminUsers").doc(callerUid).get();
+    const aData = adminUserDoc.data();
+    const callerName = aData ? `${aData.firstName || ''} ${aData.lastName || ''}`.trim() : "Admin";
+    return { authorized: true, callerUid, callerName: callerName || "Admin" };
+  }
+
+  try {
+    const callerUser = await admin.auth().getUser(callerUid);
+    if (callerUser.customClaims?.role === "super") {
+      return { authorized: true, callerUid, callerName: callerUser.displayName || callerUser.email || "SuperAdmin" };
+    }
+  } catch (_uidErr) {}
+
+  return { authorized: false, callerUid, callerName: "" };
+}
+
+export async function handleCreateResidentInvite(req: any, res: any) {
+  try {
+    const { tenantId, expiresInHours = 48, inviteType = "single" } = req.body;
+    if (!tenantId) {
+      res.status(400).send({ error: "Missing tenantId" });
+      return;
+    }
+
+    const { authorized, callerUid, callerName } = await verifyTenantAdmin(tenantId, req);
+    if (!authorized) {
+      res.status(403).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const token = randomUUID().replace(/-/g, "").substring(0, 16);
+    const ttlMs = Math.max(1, Number(expiresInHours) || 48) * 3600 * 1000;
+    const expiresAtMs = Date.now() + ttlMs;
+
+    const inviteData = {
+      token,
+      tenantId,
+      inviteType: inviteType === "group" ? "group" : "single",
+      maxUses: inviteType === "group" ? 9999 : 1,
+      useCount: 0,
+      status: "active",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromMillis(expiresAtMs),
+      createdBy: {
+        uid: callerUid,
+        name: callerName
+      },
+      usedBy: [] as any[]
+    };
+
+    await db.collection("tenants").doc(tenantId).collection("invites").doc(token).set(inviteData);
+
+    await recordAuditLog({
+      tenantId,
+      action: "RESIDENT_INVITE_CREATED",
+      level: "INFO",
+      actor: { uid: callerUid, name: callerName, type: "admin" },
+      details: {
+        token,
+        inviteType: inviteData.inviteType,
+        expiresInHours,
+        expiresAt: new Date(expiresAtMs).toISOString()
+      }
+    });
+
+    res.status(200).send({
+      success: true,
+      token,
+      slug: `${tenantId}__${token}`,
+      inviteType: inviteData.inviteType,
+      expiresAt: new Date(expiresAtMs).toISOString()
+    });
+  } catch (err: any) {
+    logger.error("Exception in createResidentInvite:", err);
+    res.status(500).send({ error: err.message || "Failed to create resident invite" });
+  }
+}
+
+export async function handleRevokeResidentInvite(req: any, res: any) {
+  try {
+    const { tenantId, token } = req.body;
+    if (!tenantId || !token) {
+      res.status(400).send({ error: "Missing tenantId or token" });
+      return;
+    }
+
+    const { authorized, callerUid, callerName } = await verifyTenantAdmin(tenantId, req);
+    if (!authorized) {
+      res.status(403).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const inviteRef = db.collection("tenants").doc(tenantId).collection("invites").doc(token);
+    const inviteDoc = await inviteRef.get();
+    if (!inviteDoc.exists) {
+      res.status(404).send({ error: "Invite not found" });
+      return;
+    }
+
+    await inviteRef.update({
+      status: "revoked",
+      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+      revokedBy: { uid: callerUid, name: callerName }
+    });
+
+    await recordAuditLog({
+      tenantId,
+      action: "RESIDENT_INVITE_REVOKED",
+      level: "WARN",
+      actor: { uid: callerUid, name: callerName, type: "admin" },
+      details: { token }
+    });
+
+    res.status(200).send({ success: true, token });
+  } catch (err: any) {
+    logger.error("Exception in revokeResidentInvite:", err);
+    res.status(500).send({ error: err.message || "Failed to revoke resident invite" });
+  }
+}
+
+export async function handleGetResidentInvites(req: any, res: any) {
+  try {
+    const tenantId = req.query?.tenantId || req.body?.tenantId;
+    if (!tenantId) {
+      res.status(400).send({ error: "Missing tenantId" });
+      return;
+    }
+
+    const { authorized } = await verifyTenantAdmin(tenantId, req);
+    if (!authorized) {
+      res.status(403).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const snap = await db.collection("tenants").doc(tenantId).collection("invites")
+      .orderBy("createdAt", "desc")
+      .limit(50)
+      .get();
+
+    const invites = snap.docs.map(doc => {
+      const d = doc.data();
+      const expiresAt = d.expiresAt?.toDate ? d.expiresAt.toDate().toISOString() : null;
+      const createdAt = d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : null;
+      let status = d.status || "active";
+      if (status === "active" && d.expiresAt && d.expiresAt.toDate() < new Date()) {
+        status = "expired";
+      }
+      return {
+        id: doc.id,
+        token: d.token || doc.id,
+        tenantId: d.tenantId,
+        inviteType: d.inviteType || "single",
+        maxUses: d.maxUses || 1,
+        useCount: d.useCount || 0,
+        status,
+        createdAt,
+        expiresAt,
+        createdBy: d.createdBy || null,
+        usedBy: d.usedBy || []
+      };
+    });
+
+    res.status(200).send({ success: true, invites });
+  } catch (err: any) {
+    logger.error("Exception in getResidentInvites:", err);
+    res.status(500).send({ error: err.message || "Failed to fetch resident invites" });
+  }
+}
+
+/**
  * Domain-grouped Cloud Function #2: Building Admin & SuperAdmin API
- * Consolidates 9 admin & tenant-management endpoints into 1 warm Cloud Run service.
+ * Consolidates 12 admin & tenant-management endpoints into 1 warm Cloud Run service.
  */
 export const adminApi = onRequest(
   { cors: true, secrets: ["WHATSAPP_ACCESS_TOKEN"] },
@@ -1596,6 +1799,12 @@ export const adminApi = onRequest(
         return handleToggleTenantFreeze(req, res);
       case "deleteTenantPermanently":
         return handleDeleteTenantPermanently(req, res);
+      case "createResidentInvite":
+        return handleCreateResidentInvite(req, res);
+      case "revokeResidentInvite":
+        return handleRevokeResidentInvite(req, res);
+      case "getResidentInvites":
+        return handleGetResidentInvites(req, res);
       default:
         res.status(404).send({ error: `Unknown adminApi endpoint: ${endpoint}` });
     }

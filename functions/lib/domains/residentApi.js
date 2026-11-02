@@ -44,6 +44,8 @@ exports.handleGetTenantInfo = handleGetTenantInfo;
 exports.handleGetResidentTickets = handleGetResidentTickets;
 exports.handleAddResidentComment = handleAddResidentComment;
 exports.handleIncrementMeToo = handleIncrementMeToo;
+exports.handleValidateInvite = handleValidateInvite;
+exports.handleSubmitResidentSelfOnboard = handleSubmitResidentSelfOnboard;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const crypto_1 = require("crypto");
@@ -898,6 +900,262 @@ async function handleIncrementMeToo(req, res) {
         res.status(500).send({ error: "Failed to update Me Too counter" });
     }
 }
+async function handleValidateInvite(req, res) {
+    try {
+        const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown-ip";
+        const rateLimit = (0, securityGuards_1.checkRateLimit)(`validateInvite:${clientIp}`, 40, 5 * 60 * 1000);
+        if (!rateLimit.allowed) {
+            res.status(429).send({ valid: false, error: "חריגה ממספר הניסיונות המותר. אנא המתן מספר דקות." });
+            return;
+        }
+        let token = (req.query?.token || req.body?.token || "").trim();
+        let tenantId = (req.query?.tenantId || req.body?.tenantId || "").trim();
+        if (token.includes("__")) {
+            const parts = token.split("__");
+            tenantId = parts[0];
+            token = parts[1];
+        }
+        if (!token) {
+            res.status(400).send({ valid: false, error: "Missing token" });
+            return;
+        }
+        let inviteDoc = null;
+        let foundTenantId = tenantId;
+        if (tenantId) {
+            const docSnap = await context_1.db.collection("tenants").doc(tenantId).collection("invites").doc(token).get();
+            if (docSnap.exists) {
+                inviteDoc = docSnap;
+            }
+        }
+        if (!inviteDoc) {
+            const q = await context_1.db.collectionGroup("invites").where("token", "==", token).limit(1).get();
+            if (!q.empty) {
+                inviteDoc = q.docs[0];
+                foundTenantId = inviteDoc.data()?.tenantId || inviteDoc.ref.parent.parent?.id;
+            }
+        }
+        if (!inviteDoc || !inviteDoc.exists) {
+            res.status(404).send({
+                valid: false,
+                reason: "NOT_FOUND",
+                message: "קישור ההצטרפות אינו קיים במערכת."
+            });
+            return;
+        }
+        const data = inviteDoc.data();
+        const now = new Date();
+        const expiresAt = data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt);
+        const tSnap = await context_1.db.collection("tenants").doc(foundTenantId).get();
+        const tData = tSnap.data() || {};
+        const tenantType = tData.type || "building";
+        const contactTarget = tenantType === "municipality" ? "למוקד השירות" : "לוועד הבית";
+        if (data.status === "revoked") {
+            res.status(410).send({
+                valid: false,
+                reason: "REVOKED",
+                message: `קישור ההצטרפות בוטל על ידי ${contactTarget}.`
+            });
+            return;
+        }
+        if (expiresAt < now) {
+            inviteDoc.ref.update({ status: "expired" }).catch(() => { });
+            res.status(410).send({
+                valid: false,
+                reason: "EXPIRED",
+                message: `תוקף קישור ההצטרפות פג. אנא פנה ${contactTarget} לקבלת קישור חדש.`
+            });
+            return;
+        }
+        if (data.inviteType === "single" && (data.useCount || 0) >= 1) {
+            res.status(409).send({
+                valid: false,
+                reason: "ALREADY_USED",
+                message: "קישור אישי זה כבר נוצל להרשמה."
+            });
+            return;
+        }
+        res.status(200).send({
+            valid: true,
+            token,
+            tenantId: foundTenantId,
+            buildingName: tData.name || (tenantType === "municipality" ? "רשות מקומית" : "בניין מגורים"),
+            buildingAddress: tData.address || "",
+            tenantType,
+            inviteType: data.inviteType || "single",
+            expiresAt: expiresAt.toISOString()
+        });
+    }
+    catch (err) {
+        logger.error("Exception in validateInvite:", err);
+        res.status(500).send({ valid: false, error: err.message || "Failed to validate invite" });
+    }
+}
+async function handleSubmitResidentSelfOnboard(req, res) {
+    try {
+        let { tenantId, token, name, phone } = req.body;
+        if (token && token.includes("__")) {
+            const parts = token.split("__");
+            if (!tenantId)
+                tenantId = parts[0];
+            token = parts[1];
+        }
+        if (!tenantId || !token || !name || !phone) {
+            res.status(400).send({ error: "נא למלא את כל שדות החובה (שם מלא ומספר טלפון נייד)." });
+            return;
+        }
+        const trimmedName = String(name).trim();
+        if (!/^[\u0590-\u05FFa-zA-Z0-9\s-]+$/.test(trimmedName)) {
+            res.status(400).send({ error: "השם מכיל תווים לא חוקיים. מותרים רק אותיות, מספרים, רווחים ומקפים." });
+            return;
+        }
+        let cleanPhone = String(phone).replace(/\D/g, "");
+        if (cleanPhone.startsWith("972") && cleanPhone.length === 12) {
+            cleanPhone = "0" + cleanPhone.substring(3);
+        }
+        if (cleanPhone.length === 9 && !cleanPhone.startsWith("0")) {
+            cleanPhone = "0" + cleanPhone;
+        }
+        if (!/^0\d{8,9}$/.test(cleanPhone)) {
+            res.status(400).send({ error: "מספר הטלפון לא תקין. מספר תקין בישראל מתחיל ב-0 ומכיל 9-10 ספרות." });
+            return;
+        }
+        const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown-ip";
+        const ipLimit = (0, securityGuards_1.checkRateLimit)(`selfOnboardIp:${clientIp}`, 100, 5 * 60 * 1000);
+        if (!ipLimit.allowed) {
+            res.status(429).send({ error: "חריגה ממספר הניסיונות המותר מכתובת זו. אנא המתן מספר דקות." });
+            return;
+        }
+        const phoneLimit = (0, securityGuards_1.checkRateLimit)(`selfOnboardPhone:${cleanPhone}`, 5, 5 * 60 * 1000);
+        if (!phoneLimit.allowed) {
+            res.status(429).send({ error: "חריגה ממספר הניסיונות עבור מספר טלפון זה. אנא המתן מספר דקות." });
+            return;
+        }
+        const tenantRef = context_1.db.collection("tenants").doc(tenantId);
+        const inviteRef = tenantRef.collection("invites").doc(token);
+        const reporterRef = tenantRef.collection("reporters").doc(cleanPhone);
+        const [tSnap, inviteSnap] = await Promise.all([
+            tenantRef.get(),
+            inviteRef.get()
+        ]);
+        if (!tSnap.exists) {
+            res.status(404).send({ error: "הבניין לא נמצא במערכת." });
+            return;
+        }
+        const tenantType = tSnap.data()?.type || "building";
+        const buildingName = tSnap.data()?.name || (tenantType === "municipality" ? "הרשות המקומית" : "הבניין");
+        if (!inviteSnap.exists) {
+            res.status(404).send({ error: "קישור ההצטרפות אינו קיים במערכת." });
+            return;
+        }
+        const inviteData = inviteSnap.data() || {};
+        const now = new Date();
+        const expiresAt = inviteData.expiresAt?.toDate ? inviteData.expiresAt.toDate() : new Date(inviteData.expiresAt);
+        if (inviteData.status === "revoked") {
+            res.status(410).send({ error: "קישור ההצטרפות בוטל על ידי ועד הבית / מוקד השירות." });
+            return;
+        }
+        if (expiresAt < now) {
+            inviteRef.update({ status: "expired" }).catch(() => { });
+            res.status(410).send({ error: "תוקף קישור ההצטרפות פג." });
+            return;
+        }
+        let alreadyRegistered = false;
+        if (inviteData.inviteType === "single") {
+            await context_1.db.runTransaction(async (transaction) => {
+                const invSnap = await transaction.get(inviteRef);
+                if (!invSnap.exists)
+                    throw new Error("קישור ההצטרפות אינו קיים במערכת.");
+                const currentData = invSnap.data() || {};
+                if (currentData.status === "revoked")
+                    throw new Error("קישור ההצטרפות בוטל.");
+                const exp = currentData.expiresAt?.toDate ? currentData.expiresAt.toDate() : new Date(currentData.expiresAt);
+                if (exp < now)
+                    throw new Error("תוקף קישור ההצטרפות פג.");
+                if ((currentData.useCount || 0) >= 1)
+                    throw new Error("קישור אישי זה כבר נוצל להרשמה.");
+                const repSnap = await transaction.get(reporterRef);
+                if (repSnap.exists) {
+                    alreadyRegistered = true;
+                }
+                else {
+                    transaction.set(reporterRef, {
+                        name: trimmedName,
+                        phone: cleanPhone,
+                        addedAt: new Date().toISOString(),
+                        source: "self_invite",
+                        inviteId: token
+                    });
+                }
+                transaction.update(inviteRef, {
+                    useCount: context_1.admin.firestore.FieldValue.increment(1),
+                    status: "used",
+                    usedBy: context_1.admin.firestore.FieldValue.arrayUnion({
+                        phone: cleanPhone,
+                        name: trimmedName,
+                        registeredAt: new Date().toISOString()
+                    })
+                });
+            });
+        }
+        else {
+            const repSnap = await reporterRef.get();
+            if (repSnap.exists) {
+                alreadyRegistered = true;
+            }
+            else {
+                await reporterRef.set({
+                    name: trimmedName,
+                    phone: cleanPhone,
+                    addedAt: new Date().toISOString(),
+                    source: "self_invite",
+                    inviteId: token
+                });
+            }
+            const redemptionRef = inviteRef.collection("redemptions").doc(cleanPhone);
+            await redemptionRef.set({
+                phone: cleanPhone,
+                name: trimmedName,
+                registeredAt: context_1.admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            inviteRef.update({
+                useCount: context_1.admin.firestore.FieldValue.increment(1),
+                lastRegisteredAt: context_1.admin.firestore.FieldValue.serverTimestamp(),
+                usedBy: context_1.admin.firestore.FieldValue.arrayUnion({
+                    phone: cleanPhone,
+                    name: trimmedName,
+                    registeredAt: new Date().toISOString()
+                })
+            }).catch((err) => {
+                logger.warn("Non-blocking invite stat update delayed under load", { error: err.message });
+            });
+        }
+        await (0, context_1.recordAuditLog)({
+            tenantId,
+            action: "REPORTER_SELF_ONBOARDED",
+            level: "INFO",
+            actor: { uid: cleanPhone, name: trimmedName, type: "resident" },
+            details: {
+                token,
+                cleanPhone,
+                alreadyRegistered,
+                inviteType: inviteData.inviteType || "single"
+            }
+        });
+        res.status(200).send({
+            success: true,
+            alreadyRegistered,
+            tenantId,
+            buildingName,
+            message: alreadyRegistered
+                ? "מספר הטלפון שלך כבר מופיע ברשימת המורשים!"
+                : "הצטרפת בהצלחה לרשימת המורשים!"
+        });
+    }
+    catch (err) {
+        logger.error("Exception in submitResidentSelfOnboard:", err);
+        res.status(400).send({ error: err.message || "שגיאה ברישום הדייר." });
+    }
+}
 exports.residentApi = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_API_KEY", "WHATSAPP_ACCESS_TOKEN"] }, async (req, res) => {
     const endpoint = (0, context_1.resolveEndpointName)(req);
     switch (endpoint) {
@@ -922,6 +1180,10 @@ exports.residentApi = (0, https_1.onRequest)({ cors: true, secrets: ["GEMINI_API
             return handleAddResidentComment(req, res);
         case "incrementMeToo":
             return handleIncrementMeToo(req, res);
+        case "validateInvite":
+            return handleValidateInvite(req, res);
+        case "submitResidentSelfOnboard":
+            return handleSubmitResidentSelfOnboard(req, res);
         default:
             res.status(404).send({ error: `Unknown residentApi endpoint: ${endpoint}` });
     }

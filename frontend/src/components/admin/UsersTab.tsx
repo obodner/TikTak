@@ -9,13 +9,15 @@ interface UsersTabProps {
   callerUid: string;
   callerName: string;
   categories?: string[];
+  tenantType?: 'building' | 'municipality';
 }
 
 export const UsersTab: React.FC<UsersTabProps> = ({
   tenantId,
   callerUid,
   callerName,
-  categories = []
+  categories = [],
+  tenantType = 'building'
 }) => {
   return (
     <div className="flex flex-col gap-6 max-w-5xl w-full mx-auto">
@@ -34,6 +36,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         <CsvUploadPanel
           tenantId={tenantId}
           callerName={callerName}
+          tenantType={tenantType}
         />
       </div>
 

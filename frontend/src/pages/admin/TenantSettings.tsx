@@ -398,6 +398,7 @@ export default function TenantSettings() {
                 callerUid={user?.uid || ''}
                 callerName={adminProfile ? `${adminProfile.firstName} ${adminProfile.lastName}` : (user?.email || 'Admin')}
                 categories={categories}
+                tenantType={type}
               />
             </div>
 

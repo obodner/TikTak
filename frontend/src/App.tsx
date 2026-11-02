@@ -13,6 +13,7 @@ import NewRfqPage from './pages/admin/NewRfqPage';
 import ActiveQuotesPage from './pages/admin/ActiveQuotesPage';
 import ContractorQuotePortal from './pages/ContractorQuotePortal';
 import RfqProductLandingPage from './pages/RfqProductLandingPage';
+import ResidentSelfJoinPage from './pages/ResidentSelfJoinPage';
 
 import { AdminLayout } from './components/admin/AdminLayout';
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
@@ -257,6 +258,8 @@ export default function App() {
             <Route path="/" element={<HomeRoute />} />
             <Route path="/report/:tenantId" element={<ResidentFlow />} />
             <Route path="/report/:tenantId/dashboard" element={<ResidentDashboard />} />
+            <Route path="/join/:slug" element={<ResidentSelfJoinPage />} />
+            <Route path="/join/:tenantId/:token" element={<ResidentSelfJoinPage />} />
 
             {/* Dedicated Product Page for RFQ Procurement */}
             <Route path="/rfq" element={<RfqProductLandingPage />} />

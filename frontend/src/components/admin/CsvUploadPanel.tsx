@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, Save, Users, Download, Database, Plus, Search, Edit2, X, Check } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, Save, Users, Download, Database, Plus, Search, Edit2, X, Check, Link } from 'lucide-react';
 import { collection, doc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { logAction } from '../../utils/auditLogger';
+import { InviteResidentModal } from './InviteResidentModal';
 
 interface CsvUploadPanelProps {
   tenantId: string;
   callerName: string;
+  tenantType?: 'building' | 'municipality';
 }
 
 interface ParsedRecord {
@@ -14,7 +16,7 @@ interface ParsedRecord {
   phone: string;
 }
 
-export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, callerName }) => {
+export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, callerName, tenantType = 'building' }) => {
   const [file, setFile] = useState<File | null>(null);
   const [records, setRecords] = useState<ParsedRecord[]>([]);
   const [error, setError] = useState<string>('');
@@ -34,6 +36,7 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [isDeletingPhone, setIsDeletingPhone] = useState<string | null>(null);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
 
   const nameRegex = /^[\u0590-\u05FFa-zA-Z0-9\s-]+$/;
   const phoneRegex = /^0\d{8,9}$/;
@@ -550,6 +553,16 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
         
         <div className="flex items-center gap-3">
           <button 
+            type="button"
+            onClick={() => setIsInviteModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+            title="צור קישור להצטרפות עצמית של דיירים"
+          >
+            <Link size={15} />
+            <span>הזמן בקישור 🔗</span>
+          </button>
+
+          <button 
             onClick={() => handleDownload(records.length === 0)}
             disabled={dbRecords.length === 0 && records.length === 0}
             className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-30"
@@ -847,6 +860,15 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
           )}
         </div>
       )}
+
+      <InviteResidentModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        tenantId={tenantId}
+        callerName={callerName}
+        tenantType={tenantType}
+        onResidentListChange={fetchReporters}
+      />
     </div>
   );
 };
