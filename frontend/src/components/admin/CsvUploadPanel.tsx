@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, Save, Users, Download, Database, Plus, Search, Edit2, X, Check, Link } from 'lucide-react';
 import { collection, doc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
@@ -52,9 +52,10 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
 
       const snapshot = await getDocs(collection(db, 'tenants', tenantId, 'reporters'));
       const existing = snapshot.docs.map(doc => ({
-        name: doc.data().name,
-        phone: doc.data().phone
+        name: doc.data().name || '',
+        phone: doc.data().phone || ''
       }));
+      existing.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he', { sensitivity: 'base' }));
       setDbRecords(existing);
     } catch (err) {
       console.error('Failed to load existing reporters', err);
@@ -190,6 +191,7 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
           throw new Error(`נמצאו כפילויות בקובץ עבור מספרי הטלפון הבאים: ${dupList}. לא ניתן להעלות קובץ המכיל רשומות כפולות.`);
         }
 
+        parsedRecords.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he', { sensitivity: 'base' }));
         setRecords(parsedRecords);
       } catch (err: any) {
         setError(err.message || 'שגיאה בפענוח הקובץ.');
@@ -518,8 +520,13 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
     setEditPhone('');
   };
 
+  // Whitelist is always sorted alphabetically by resident name
+  const sortedDbRecords = useMemo(() => {
+    return [...dbRecords].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he', { sensitivity: 'base' }));
+  }, [dbRecords]);
+
   const handleDownload = (isDb = false) => {
-    const listToDownload = isDb ? dbRecords : records;
+    const listToDownload = isDb ? sortedDbRecords : records;
     if (listToDownload.length === 0) return;
     
     const BOM = "\uFEFF";
@@ -537,11 +544,13 @@ export const CsvUploadPanel: React.FC<CsvUploadPanelProps> = ({ tenantId, caller
     document.body.removeChild(link);
   };
 
-  // Filter records based on name and phone query
-  const filteredDbRecords = dbRecords.filter(r => 
-    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.phone.includes(searchQuery)
-  );
+  // Filter records based on name and phone query (maintaining alphabetical order)
+  const filteredDbRecords = useMemo(() => {
+    return sortedDbRecords.filter(r => 
+      r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.phone.includes(searchQuery)
+    );
+  }, [sortedDbRecords, searchQuery]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">

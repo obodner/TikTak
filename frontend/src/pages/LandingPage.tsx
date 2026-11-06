@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   X,
+  Menu,
   Clock,
   Smile,
   AlertCircle,
@@ -34,6 +35,7 @@ export default function LandingPage() {
   const [isDashboardZoomed, setIsDashboardZoomed] = useState(false);
   const [dashboardPreviewTab, setDashboardPreviewTab] = useState<'operations' | 'bi'>('operations');
   const [activeSection, setActiveSection] = useState<string>('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Scroll Spy Hook
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function LandingPage() {
 
   // Smooth scroll helper
   const scrollToSection = (id: string) => {
+    setIsMobileMenuOpen(false);
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
@@ -238,7 +241,7 @@ export default function LandingPage() {
           </div>
 
           {/* Left CTAs & Language Switcher */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link
               to="/admin/login"
               className="text-slate-600 hover:text-blue-600 font-bold text-xs md:text-sm px-2.5 py-2 transition-colors cursor-pointer whitespace-nowrap hidden sm:inline-block"
@@ -247,7 +250,7 @@ export default function LandingPage() {
             </Link>
             <button
               onClick={() => i18n.changeLanguage(isRtl ? 'en' : 'he')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-700 hover:bg-slate-100 hover:border-slate-300 active:scale-95 transition-all cursor-pointer select-none"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-700 hover:bg-slate-100 hover:border-slate-300 active:scale-95 transition-all cursor-pointer select-none"
               title={isRtl ? 'Switch to English' : 'עבור לעברית'}
             >
               <Globe size={15} className="text-blue-600" />
@@ -255,12 +258,119 @@ export default function LandingPage() {
             </button>
             <button
               onClick={() => { setIsSubmitted(false); setIsModalOpen(true); }}
-              className="bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 text-sm font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-blue-600/10 hover:shadow-blue-600/20 active:scale-95 text-center"
+              className="bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 text-xs sm:text-sm font-semibold px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-blue-600/10 hover:shadow-blue-600/20 active:scale-95 text-center"
             >
               {t('landing_nav_cta', 'להתחלת פיילוט')}
             </button>
+            {/* Mobile Hamburger Menu Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl text-slate-700 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            >
+              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Dropdown Menu */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden bg-white/95 backdrop-blur-md border-t border-slate-100 px-6 py-4 shadow-xl animate-in slide-in-from-top-2 duration-200">
+            <div className="flex flex-col space-y-1">
+              <button
+                onClick={() => scrollToSection('how-it-works')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'how-it-works' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{isRtl ? 'איך זה עובד' : 'How it works'}</span>
+                {activeSection === 'how-it-works' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <button
+                onClick={() => scrollToSection('channels')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'channels' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{t('landing_nav_channels', isRtl ? 'ערוצי דיווח' : 'Reporting Channels')}</span>
+                {activeSection === 'channels' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <button
+                onClick={() => scrollToSection('dashboard')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'dashboard' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{isRtl ? 'ממשק המנהל' : 'Management interface'}</span>
+                {activeSection === 'dashboard' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <button
+                onClick={() => scrollToSection('features')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'features' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{isRtl ? 'פיצ׳רים' : 'Features'}</span>
+                {activeSection === 'features' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <Link
+                to="/rfq"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                <span>{isRtl ? 'מכרזי קבלנים (RFQ)' : 'Contractor RFQs'}</span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded-full border border-emerald-200">
+                  {isRtl ? 'חדש' : 'NEW'}
+                </span>
+              </Link>
+
+              <button
+                onClick={() => scrollToSection('about')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'about' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{t('landing_nav_about', isRtl ? 'הסיפור שלנו' : 'About')}</span>
+                {activeSection === 'about' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <button
+                onClick={() => scrollToSection('pricing')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'pricing' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{isRtl ? 'מחירים' : 'Pricing'}</span>
+                {activeSection === 'pricing' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <button
+                onClick={() => scrollToSection('faq')}
+                className={`flex items-center justify-between w-full text-start py-2.5 px-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  activeSection === 'faq' ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{t('landing_nav_faq', isRtl ? 'שאלות נפוצות' : 'FAQ')}</span>
+                {activeSection === 'faq' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+              </button>
+
+              <div className="pt-2 border-t border-slate-100 mt-1">
+                <Link
+                  to="/admin/login"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center justify-center w-full py-2.5 px-3 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  {isRtl ? 'כניסת מנהלים' : 'Admin Login'}
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* 2. HERO SECTION */}
@@ -1028,12 +1138,15 @@ export default function LandingPage() {
                   </td>
                 </tr>
 
-                {/* Basic Tier */}
-                <tr className="hover:bg-slate-50 transition-colors">
-                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    {isRtl ? 'Basic / בסיסי' : 'Basic'}
+                {/* Basic Tier (Popular Highlight) */}
+                <tr className="bg-blue-50/70 hover:bg-blue-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 flex items-center gap-2 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    <span>{isRtl ? 'Basic / בסיסי' : 'Basic'}</span>
+                    <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-extrabold">
+                      {isRtl ? 'הכי פופולרי 🔥' : 'Most Popular 🔥'}
+                    </span>
                   </td>
-                  <td className={`px-6 py-4.5 text-base font-extrabold ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-900 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
                     {isAnnual ? '₪1,990 / שנה' : '₪199 / חודש'}
                   </td>
                   <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
@@ -1047,15 +1160,12 @@ export default function LandingPage() {
                   </td>
                 </tr>
 
-                {/* Standard Tier (Popular Highlight) */}
-                <tr className="bg-blue-50/70 hover:bg-blue-50 transition-colors">
-                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 flex items-center gap-2 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
-                    <span>{isRtl ? 'Standard / סטנדרט' : 'Standard'}</span>
-                    <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-extrabold">
-                      {isRtl ? 'פופולרי 🔥' : 'Popular 🔥'}
-                    </span>
+                {/* Standard Tier */}
+                <tr className="hover:bg-slate-50 transition-colors">
+                  <td className={`px-6 py-4.5 text-base font-black text-blue-950 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                    {isRtl ? 'Standard / סטנדרט' : 'Standard'}
                   </td>
-                  <td className={`px-6 py-4.5 text-base font-extrabold text-blue-900 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
+                  <td className={`px-6 py-4.5 text-base font-extrabold ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
                     {isAnnual ? '₪3,990 / שנה' : '₪399 / חודש'}
                   </td>
                   <td className={`px-6 py-4.5 text-base font-extrabold text-blue-700 ${isRtl ? 'text-right border-l-[2px] border-blue-900' : 'text-left border-r-[2px] border-blue-900'}`}>
@@ -1133,7 +1243,7 @@ export default function LandingPage() {
                 quota: '35',
                 effective: '₪5.68',
                 overage: '₪10.00',
-                popular: false,
+                popular: true,
               },
               {
                 id: 'standard',
@@ -1144,7 +1254,7 @@ export default function LandingPage() {
                 quota: '80',
                 effective: '₪4.98',
                 overage: '₪8.00',
-                popular: true,
+                popular: false,
               },
               {
                 id: 'growth',
