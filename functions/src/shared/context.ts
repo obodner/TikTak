@@ -30,12 +30,10 @@ export function normalizePasswordResetLink(rawLink: string): string {
   try {
     const parsed = new URL(rawLink);
     if (!parsed.searchParams.get("apiKey")) {
-      const fallbackKey =
-        process.env.WEB_API_KEY ||
-        (process.env.GCLOUD_PROJECT === "tiktak-stg"
-          ? "AIzaSyAqAENALXc2hZBYIXCaEH8YUog-kXwlZKo"
-          : "AIzaSyBmySHUfCo0buZhGEsWzTf7Cy30OU-iMqs");
-      parsed.searchParams.set("apiKey", fallbackKey);
+      const fallbackKey = process.env.WEB_API_KEY;
+      if (fallbackKey) {
+        parsed.searchParams.set("apiKey", fallbackKey);
+      }
     }
     return parsed.toString();
   } catch {
