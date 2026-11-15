@@ -20,6 +20,7 @@ import {
 import { t } from "../utils/i18n";
 import { verifyMetaWebhookSignature } from "../utils/securityGuards";
 import { classifyMaintenanceIncident, refineSummaryWithAI } from "../utils/aiEngine";
+import { createInitialPhaseMetrics, resumePhaseTimer, TicketPhaseMetrics } from "../utils/slaEngine";
 
 function sanitizeInput(input: string): string {
   if (!input) return "";
@@ -648,18 +649,19 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                   const tData = docSnap.data();
                   const vList: any[] = Array.isArray(tData.vendors) ? tData.vendors : [];
 
-                  const vIndex = vList.findIndex((v: any) =>
-                    v.phone === localPhone ||
-                    v.rawPhone === localPhone ||
-                    v.intlPhone === from ||
-                    (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, '')) ||
-                    (v.intlPhone && v.intlPhone.replace(/\D/g, '') === from.replace(/\D/g, ''))
-                  );
+                  for (let vIndex = 0; vIndex < vList.length; vIndex++) {
+                    const v = vList[vIndex];
+                    const isPhoneMatch =
+                      v.phone === localPhone ||
+                      v.rawPhone === localPhone ||
+                      v.intlPhone === from ||
+                      (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, '')) ||
+                      (v.intlPhone && v.intlPhone.replace(/\D/g, '') === from.replace(/\D/g, ''));
 
-                  if (vIndex !== -1) {
-                    const vItem = vList[vIndex];
-                    const sentAtMs = vItem.sentAt ? new Date(vItem.sentAt).getTime() : 0;
-                    matches.push({ docSnap, tData, vIndex, vItem, sentAtMs });
+                    if (isPhoneMatch) {
+                      const sentAtMs = v.sentAt ? new Date(v.sentAt).getTime() : 0;
+                      matches.push({ docSnap, tData, vIndex, vItem: v, sentAtMs });
+                    }
                   }
                 }
 
@@ -749,6 +751,7 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                   const now = new Date();
                   const nowIso = now.toISOString();
 
+                  const sentAtIso = vItem.sentAt || tData.lastVendorForwardAt || nowIso;
                   const forwardDate = vItem.sentAt ? new Date(vItem.sentAt) : (tData.lastVendorForwardAt ? new Date(tData.lastVendorForwardAt) : null);
                   const responseTimeMs = forwardDate ? Math.max(0, now.getTime() - forwardDate.getTime()) : null;
                   const responseTimeSeconds = responseTimeMs !== null ? Math.round(responseTimeMs / 1000) : null;
@@ -760,19 +763,43 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                     const ackMs = Math.max(0, now.getTime() - new Date(vItem.acknowledgedAt).getTime());
                     executionTimeSeconds = Math.round(ackMs / 1000);
                     executionTimeMinutes = Math.round(ackMs / (1000 * 60));
+                  } else if (isDone) {
+                    // Skipped "קיבלתי את ההודעה": Phase 3 = 0, Phase 4 = sentAt -> completedAt
+                    executionTimeSeconds = responseTimeSeconds;
+                    executionTimeMinutes = responseTimeMinutes;
                   }
 
+                  const pm: TicketPhaseMetrics = tData.phaseMetrics
+                    ? JSON.parse(JSON.stringify(tData.phaseMetrics))
+                    : createInitialPhaseMetrics(tData.createdAt || sentAtIso);
+
                   if (isDone) {
+                    const ackSkipped = !vItem.acknowledgedAt;
                     vList[vIndex] = {
                       ...vItem,
                       status: 'בוצע',
                       completedAt: nowIso,
                       totalResolutionTimeSeconds: responseTimeSeconds,
                       totalResolutionTimeMinutes: responseTimeMinutes,
+                      ...(ackSkipped ? { responseTimeSeconds: 0, responseTimeMinutes: 0 } : {}),
                       executionTimeSeconds,
                       executionTimeMinutes,
                       updatedAt: nowIso
                     };
+
+                    if (ackSkipped) {
+                      pm.p3 = { startedAt: sentAtIso, endedAt: sentAtIso, minutes: 0 };
+                      pm.p4 = { startedAt: sentAtIso, endedAt: nowIso, minutes: executionTimeMinutes };
+                    } else {
+                      if (pm.p3?.minutes === null || pm.p3?.minutes === undefined) {
+                        pm.p3 = { startedAt: sentAtIso, endedAt: vItem.acknowledgedAt, minutes: vItem.responseTimeMinutes ?? null };
+                      }
+                      pm.p4 = { startedAt: vItem.acknowledgedAt, endedAt: nowIso, minutes: executionTimeMinutes };
+                    }
+
+                    if (!['resolved', 'dismissed'].includes(String(tData.status || '').toLowerCase())) {
+                      pm.p5 = resumePhaseTimer(pm.p5, nowIso);
+                    }
                   } else {
                     vList[vIndex] = {
                       ...vItem,
@@ -782,11 +809,14 @@ export const whatsappWebhook = onRequest({ cors: true, secrets: ["WHATSAPP_ACCES
                       responseTimeMinutes,
                       updatedAt: nowIso
                     };
+                    pm.p3 = { startedAt: sentAtIso, endedAt: nowIso, minutes: responseTimeMinutes };
+                    pm.p4 = { startedAt: nowIso, endedAt: null, minutes: null };
                   }
 
                   await docSnap.ref.update({
                     vendors: vList,
                     lastVendorResponseAt: nowIso,
+                    phaseMetrics: pm,
                     ...(isDone ? { vendorCompletedAt: nowIso } : { vendorAcknowledgedAt: nowIso })
                   });
 

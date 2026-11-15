@@ -60,9 +60,10 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants
         const slaConfig = tenantData.slaConfig || { enabled: true, workingDays: [0, 1, 2, 3, 4] };
         const holidaysDoc = await context_1.db.collection("holidays").doc(country).get();
         const holidays = (holidaysDoc.data()?.holidays || []).map((h) => h.date);
+        const nowIso = now.toISOString();
         const update = {
-            lastStatusChangeAt: now.toISOString(),
-            updatedAt: now.toISOString(),
+            lastStatusChangeAt: nowIso,
+            updatedAt: nowIso,
             stagnationDays: 0,
             slaStatus: 'none'
         };
@@ -76,18 +77,69 @@ exports.onTicketUpdate = (0, firestore_1.onDocumentUpdated)({ document: "tenants
                 update.total_days_in_progress = (before.total_days_in_progress || 0) + delta;
             }
         }
+        const hasVendorDispatch = Array.isArray(after.vendors) && after.vendors.length > 0;
+        const baseCreatedAt = before.createdAt || nowIso;
+        const existingPm = before.phaseMetrics
+            ? JSON.parse(JSON.stringify(before.phaseMetrics))
+            : {
+                p1: {
+                    startedAt: baseCreatedAt,
+                    endedAt: oldStatus === 'open' ? null : (before.lastStatusChangeAt || baseCreatedAt),
+                    currentStartedAt: oldStatus === 'open' ? (before.lastStatusChangeAt || baseCreatedAt) : null,
+                    accumulatedMinutes: 0
+                },
+                p2: {
+                    startedAt: oldStatus === 'in-progress' ? (before.lastStatusChangeAt || baseCreatedAt) : null,
+                    endedAt: null,
+                    currentStartedAt: (oldStatus === 'in-progress' && !hasVendorDispatch) ? (before.lastStatusChangeAt || baseCreatedAt) : null,
+                    accumulatedMinutes: 0
+                },
+                p3: { startedAt: null, endedAt: null, minutes: null },
+                p4: { startedAt: null, endedAt: null, minutes: null },
+                p5: {
+                    startedAt: before.vendorCompletedAt || null,
+                    endedAt: null,
+                    currentStartedAt: (before.vendorCompletedAt && !['resolved', 'dismissed'].includes(oldStatus)) ? before.vendorCompletedAt : null,
+                    accumulatedMinutes: 0
+                }
+            };
         if (newStatus === 'open') {
             update.total_days_in_new = 0;
             update.total_days_in_progress = 0;
             update.slaStatus = 'none';
             update.stagnationDays = 0;
             update.vaadRating = context_1.admin.firestore.FieldValue.delete();
+            update.phaseMetrics = (0, slaEngine_1.createInitialPhaseMetrics)(nowIso);
         }
-        else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
-            update.total_days_in_progress = 0;
-            update.slaStatus = 'none';
-            update.stagnationDays = 0;
-            update.vaadRating = context_1.admin.firestore.FieldValue.delete();
+        else {
+            const isClosing = newStatus === 'resolved' || newStatus === 'dismissed';
+            const isBacklog = newStatus === 'backlog';
+            if (oldStatus === 'open') {
+                existingPm.p1 = (0, slaEngine_1.pausePhaseTimer)(existingPm.p1, nowIso, !isBacklog);
+            }
+            else if (oldStatus === 'in-progress') {
+                existingPm.p2 = (0, slaEngine_1.pausePhaseTimer)(existingPm.p2, nowIso, !isBacklog);
+            }
+            if (isClosing) {
+                if (existingPm.p5?.currentStartedAt || after.vendorCompletedAt) {
+                    existingPm.p5 = (0, slaEngine_1.pausePhaseTimer)(existingPm.p5, nowIso, true);
+                }
+                if (!after.resolvedAt) {
+                    update.resolvedAt = nowIso;
+                }
+            }
+            if (newStatus === 'in-progress') {
+                if (oldStatus === 'resolved' || oldStatus === 'dismissed') {
+                    update.vaadRating = context_1.admin.firestore.FieldValue.delete();
+                }
+                if (!hasVendorDispatch) {
+                    existingPm.p2 = (0, slaEngine_1.resumePhaseTimer)(existingPm.p2, nowIso);
+                }
+                else if (after.vendorCompletedAt) {
+                    existingPm.p5 = (0, slaEngine_1.resumePhaseTimer)(existingPm.p5, nowIso);
+                }
+            }
+            update.phaseMetrics = existingPm;
         }
         await event.data?.after.ref.update(update);
         logger.info(`SLA stats updated for ticket ${ticketId}`, { tenantId, oldStatus, newStatus, update });

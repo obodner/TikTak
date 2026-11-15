@@ -53,6 +53,7 @@ const context_1 = require("../shared/context");
 const whatsappService_1 = require("../shared/whatsappService");
 const securityGuards_1 = require("../utils/securityGuards");
 const aiEngine_1 = require("../utils/aiEngine");
+const slaEngine_1 = require("../utils/slaEngine");
 function detectAudioMimeType(buffer) {
     if (buffer.length > 4 && buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
         return 'audio/webm';
@@ -373,6 +374,7 @@ async function handleCreateTicket(req, res) {
                     total_days_in_progress: 0,
                     stagnationDays: 0,
                     slaStatus: 'none',
+                    phaseMetrics: (0, slaEngine_1.createInitialPhaseMetrics)(new Date().toISOString()),
                     adminComments: []
                 };
                 transaction.set(ticketRef, ticketData);

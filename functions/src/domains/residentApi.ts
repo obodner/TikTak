@@ -20,6 +20,7 @@ import {
   verifyAppCheckHeader
 } from "../utils/securityGuards";
 import { classifyMaintenanceIncident } from "../utils/aiEngine";
+import { createInitialPhaseMetrics } from "../utils/slaEngine";
 
 function detectAudioMimeType(buffer: Buffer): string {
   // WebM / EBML magic numbers: 1A 45 DF A3
@@ -405,6 +406,7 @@ export async function handleCreateTicket(req: any, res: any) {
           total_days_in_progress: 0,
           stagnationDays: 0,
           slaStatus: 'none',
+          phaseMetrics: createInitialPhaseMetrics(new Date().toISOString()),
           adminComments: [] as any[]
         };
 

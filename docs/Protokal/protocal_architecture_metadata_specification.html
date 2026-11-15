@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title></title>
+	<meta name="generator" content="LibreOffice 26.8.0.3 (Linux)"/>
+	<meta name="created" content="00:00:00"/>
+	<meta name="changed" content="00:00:00"/>
+	<style type="text/css">
+		@page { size: 8.27in 11.69in; margin: 0.79in }
+		p { margin-bottom: 0.1in; line-height: 115%; background: transparent }
+		h1 { margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h1.western { font-weight: bold; font-size: 18pt; font-family: "Liberation Sans", sans-serif }
+		h1.cjk { font-weight: bold; font-size: 18pt; font-family: "AR PL SungtiL GB" }
+		h1.ctl { font-weight: bold; font-family: "Noto Sans Devanagari"; font-size: 18pt }
+		h2 { margin-top: 0.14in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h2.western { font-weight: bold; font-size: 16pt; font-family: "Liberation Sans", sans-serif }
+		h2.cjk { font-weight: bold; font-size: 16pt; font-family: "AR PL SungtiL GB" }
+		h2.ctl { font-weight: bold; font-family: "Noto Sans Devanagari"; font-size: 16pt }
+		pre { font-size: 10pt; font-family: "Liberation Mono", monospace; background: transparent }
+		h3 { margin-top: 0.1in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h3.western { font-weight: bold; font-size: 14pt; font-family: "Liberation Sans", sans-serif }
+		h3.cjk { font-weight: bold; font-size: 14pt; font-family: "AR PL SungtiL GB" }
+		h3.ctl { font-weight: bold; font-family: "Noto Sans Devanagari"; font-size: 14pt }
+		td p { widows: 0; orphans: 0; background: transparent }
+		th p { orphans: 0; widows: 0; text-align: center; font-weight: bold; background: transparent }
+		blockquote { margin-right: 0.39in; margin-left: 0.39in; background: transparent }
+		a:link { color: #000080; text-decoration: underline }
+	</style>
+</head>
+<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><h1 class="western">
+<font face="Noto Sans Devanagari"><span lang="hi-IN">מסמך סיכום
+ארכיטקטוני ואפיון מקיף: מודול &quot;פרוטוקל</span></font>&quot;
+(Protocal)</h1>
+<ul>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">שם
+	המודול: פרוטוקל </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">ממשק
+	</span></font>AI <font face="Noto Sans Devanagari"><span lang="hi-IN">לתחקור
+	מאגרי פרוטוקולים והחלטות ועד</span></font>)</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מערכת
+	אב</span></font><b>:</b> TikTak (Google Cloud Platform, Firebase,
+	Meta WhatsApp Business API)</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">פילוסופיית
+	תפעול: &quot;חוק ה-5 ל-2</span></font>&quot;
+	(Zero-Friction, <font face="Noto Sans Devanagari"><span lang="hi-IN">ללא
+	התקנת אפליקציה וללא לוגין</span></font>)</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">ארכיטקטורת
+	מטא-דאטה: שתי שכבות </span></font>(Two-Tier
+	Architecture: <font face="Noto Sans Devanagari"><span lang="hi-IN">מסמך
+	אב + מקטעים וקטוריים</span></font>)</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">גרסה:
+	3.0 </span></font>(Unified Comprehensive Architecture &amp; Spec)</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">סטטוס:
+	מאושר ליישום </span></font>(Approved for Implementation)</p></li>
+</ul>
+<hr/>
+
+<h2 class="western">1. <font face="Noto Sans Devanagari"><span lang="hi-IN">רקע,
+חזון ודרישות ליבה </span></font>(Core Requirements)</h2>
+<ol>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">תחקור
+	רב-מאגרי </span></font><b>(Multi-Repository per Tenant):</b>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">תמיכה
+	במספר מאגרי מסמכים עבור אותו לקוח (למשל:
+	&quot;ועד מנהל&quot;, &quot;גזברות&quot;, &quot;מחלקה
+	משפטית&quot;, &quot;ועדת ביקורת&quot;) בפורמטים
+	מגוונים </span></font>(PDF, DOCX, DOC, <font face="Noto Sans Devanagari"><span lang="hi-IN">סריקות
+	ותשריטים</span></font>).</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">אימות
+	שקט </span></font><b>(Silent Auth) </b><font face="Noto Sans Devanagari"><span lang="hi-IN">בחוק
+	ה-5 ל-2: התושב או בעל התפקיד פונה ישירות
+	בוואטסאפ ללא הרשמה; מספר הטלפון מאומת
+	ברקע מול ה</span></font>-Whitelist <font face="Noto Sans Devanagari"><span lang="hi-IN">ב</span></font>-Firestore
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">לשיוך
+	ה</span></font>-Tenant <font face="Noto Sans Devanagari"><span lang="hi-IN">ורמת
+	ההרשאה</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">הפרדת
+	</span></font><b>Tenants </b><font face="Noto Sans Devanagari"><span lang="hi-IN">ומאגרים
+	קשיחה </span></font><b>(Multi-Tenancy Scoping):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">חסימת
+	דליפת מידע הרמטית בין ישובים ומחלקות
+	באמצעות </span></font>Pre-filtering <font face="Noto Sans Devanagari"><span lang="hi-IN">בכל
+	שאילתת חיפוש וקטורי </span></font>(<font face="Liberation Mono, monospace">tenantId</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">ו</span></font>-<font face="Liberation Mono, monospace">allowedRoles</font>).</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">עגינה
+	עובדתית ואמינות משפטית </span></font><b>(Strict
+	Grounding):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">מניעת
+	הזיות באופן מוחלט. המודל מחויב להשיב
+	אך ורק מתוך ציטוט סעיפים ופרוטוקולים
+	מאומתים, ולציין תמיד תאריך ישיבה, שם
+	מסמך, סעיף ועמוד מדויק. אם המידע לא קיים,
+	המערכת עונה שאינו מופיע במאגר</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מניעת
+	כפילויות ב</span></font><b>-Onboarding:</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">בדיקת
+	</span></font>Hash <font face="Noto Sans Devanagari"><span lang="hi-IN">חד-חד-ערכית
+	למניעת העלאה כפולה של מאות פרוטוקולים
+	היסטוריים</span></font>.</p></li>
+</ol>
+<hr/>
+
+<h2 class="western">2. <font face="Noto Sans Devanagari"><span lang="hi-IN">חלופות
+לדאטהבייס וקטורי וניתוח אמינות </span></font>(Vector
+Database Evaluation)</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">בהתחשב
+בארכיטקטורה הקיימת של </span></font>TikTak <font face="Noto Sans Devanagari"><span lang="hi-IN">ב</span></font>-GCP
+<font face="Noto Sans Devanagari"><span lang="hi-IN">ובנפחי
+המידע </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">עשרות
+עד מאות בודדות של מסמכים בשנה פר </span></font>Tenant,
+<font face="Noto Sans Devanagari"><span lang="hi-IN">עם מכות
+העלאה ראשוניות של מאות קבצים</span></font>),
+<font face="Noto Sans Devanagari"><span lang="hi-IN">נבחנו
+החלופות המובילות</span></font>:</p>
+<h3 class="western">2.1 <font face="Noto Sans Devanagari"><span lang="hi-IN">טבלת
+השוואת חלופות תשתית </span></font>(GCP &amp;
+Managed)</h3>
+<table width="100%" cellpadding="4" cellspacing="0">
+	<col width="51*"/>
+	<col width="51*"/>
+	<col width="51*"/>
+	<col width="51*"/>
+	<col width="51*"/>
+	<thead>
+		<tr valign="top">
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מסד
+				נתונים / פתרון</span></font></p>
+			</th>
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+				תמחור ועלות משוערת</span></font></p>
+			</th>
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">התאמה
+				ל</span></font>-Multi-Tenancy</p>
+			</th>
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">יכולת
+				</span></font>Onboarding (Batch)</p>
+			</th>
+			<th width="20%" style="border: 1px solid #000000; padding: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">אינטגרציה
+				עם </span></font>TikTak (GCP)</p>
+			</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Firestore Vector Search</b> <i>(</i><font face="Noto Sans Devanagari"><span lang="hi-IN">הבחירה
+				הנבחרת</span></font><i>)</i></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Pay-per-use (</b><font face="Noto Sans Devanagari"><span lang="hi-IN">אפסי
+				לנפח זה</span></font><b>)</b> — <font face="Noto Sans Devanagari"><span lang="hi-IN">תשלום
+				רק על קריאות/כתיבות</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">טבעית
+				ומושלמת — פילטר </span></font><font face="Liberation Mono, monospace">tenantId</font>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מובנה
+				באותה שאילתה</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מעולה
+				בשימוש ב</span></font>-Batched Writes <font face="Noto Sans Devanagari"><span lang="hi-IN">או
+				</span></font>Cloud Tasks</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">שקופה
+				לחלוטין </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">קיים
+				כבר ב</span></font>-Stack)</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Cloud SQL (PostgreSQL + pgvector)</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">שרת מנוהל
+				קבוע (~$25–$60 לחודש למופע מינימלי)</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מעולה
+				</span></font>(Row-Level Security <font face="Noto Sans Devanagari"><span lang="hi-IN">או
+				עמודת </span></font><font face="Liberation Mono, monospace">tenant_id</font>)</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">גבוהה
+				מאוד </span></font>(Bulk Insert <font face="Noto Sans Devanagari"><span lang="hi-IN">סטנדרטי</span></font>)</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">חלק בלתי
+				נפרד מ</span></font>-GCP, <font face="Noto Sans Devanagari"><span lang="hi-IN">מצריך
+				ניהול </span></font>Instance</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Pinecone (Serverless)</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Pay-per-use</b> (<font face="Noto Sans Devanagari"><span lang="hi-IN">מתחיל
+				מ-$0, דולרים בודדים</span></font>)</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">טובה
+				</span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">שימוש
+				ב</span></font>-Namespaces <font face="Noto Sans Devanagari"><span lang="hi-IN">או
+				</span></font>Metadata Filtering)</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מהירה
+				וייעודית ל</span></font>-Vectors</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">חיצונית
+				ל</span></font>-GCP (API <font face="Noto Sans Devanagari"><span lang="hi-IN">מנוהל</span></font>),
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">רצה על
+				תשתיות ענן</span></font></p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Vertex AI Vector Search</b> <i>(Matching Engine)</i></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Enterprise / Fixed Node</b> (~$100–$200+ <font face="Noto Sans Devanagari"><span lang="hi-IN">לחודש</span></font>)</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מצוינת
+				ברמת אינדקסים או פילטרים</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מיועדת
+				למיליוני וקטורים</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">יקרה
+				ואינה מוצדקת לנפחי פרוטוקולים אלו</span></font></p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+<p><br/>
+<br/>
+
+</p>
+<h3 class="western">2.2 <font face="Noto Sans Devanagari"><span lang="hi-IN">השוואת
+פיצ'רים מעמיקה</span></font>: Firestore Vector Search <font face="Noto Sans Devanagari"><span lang="hi-IN">מול
+</span></font>Pinecone (<font face="Noto Sans Devanagari"><span lang="hi-IN">היבטי
+אמינות</span></font>)</h3>
+<table width="100%" cellpadding="4" cellspacing="0">
+	<col width="51*"/>
+	<col width="51*"/>
+	<col width="51*"/>
+	<col width="51*"/>
+	<col width="51*"/>
+	<thead>
+		<tr valign="top">
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">קטגוריית
+				פיצ'ר</span></font></p>
+			</th>
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">פיצ'ר
+				מפתח</span></font></p>
+			</th>
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				Firestore Vector Search</p>
+			</th>
+			<th width="20%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				Pinecone (Serverless)</p>
+			</th>
+			<th width="20%" style="border: 1px solid #000000; padding: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">השפעה
+				על אמינות התשובה בפרוטוקולים</span></font></p>
+			</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מנגנון
+				חיפוש</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">חיפוש
+				היברידי </span></font><b>(Hybrid Search)</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">❌ אין.
+				סמנטי בלבד </span></font>(Dense KNN).</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ מובנה
+				</span></font>(Dense + Sparse/BM25).</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">קריטי.
+				בפרוטוקול מחפשים תאריכים ומספרי תב&quot;ר
+				מדויקים; דורש השלמה בקוד ב</span></font>-Firestore.</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מנגנון
+				חיפוש</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">אלגוריתם
+				שליפה</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				Flat / HNSW (<font face="Noto Sans Devanagari"><span lang="hi-IN">מוטמע
+				ב</span></font>-Firestore).</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				HNSW <font face="Noto Sans Devanagari"><span lang="hi-IN">מותאם
+				ענן וקטורי ייעודי</span></font>.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				Pinecone <font face="Noto Sans Devanagari"><span lang="hi-IN">מספק
+				</span></font>Recall <font face="Noto Sans Devanagari"><span lang="hi-IN">גבוה
+				במאגרי ענק; לנפח של פרוטוקל שניהם
+				מצוינים</span></font>.</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">איכות
+				התוצאות</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">דירוג
+				מחדש מובנה </span></font><b>(Reranking)</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">❌ נדרש
+				מימוש ידני ב</span></font>-Cloud Function.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ קיים
+				מובנה </span></font>(Pinecone Rerank API).</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">גבוהה.
+				מעלה את רלוונטיות הפסקה המוזנת ל</span></font>-LLM.</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">בקרת
+				הזיות</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">ציון
+				דמיון </span></font><b>(Similarity Score)</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">⚠️ מחזיר
+				מרחק </span></font>(<font face="Liberation Mono, monospace">vector_distance</font>),
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">סינון
+				בקוד</span></font>.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ מחזיר
+				</span></font>Score <font face="Noto Sans Devanagari"><span lang="hi-IN">מנורמל
+				(0 עד 1)</span></font>.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">קריטית.
+				מאפשר לדעת מתי אין מידע במסמך ולהגיד
+				&quot;לא מצאתי</span></font>&quot;.</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">הפרדת
+				</span></font><b>Tenants</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Multi-Tenancy</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ דרך
+				</span></font><font face="Liberation Mono, monospace">where('tenantId',
+				'==', ...)</font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ דרך
+				</span></font><font face="Liberation Mono, monospace">Namespaces</font>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מבודדים</span></font>.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">שניהם
+				מאובטחים לחלוטין</span></font>.</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">העלאה
+				מאסיבית</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Batch Upsert (Onboarding)</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">⚠️ מוגבל
+				ל-500 מסמכים פר </span></font>Batch write.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ ייעודי
+				להעלאות מקביליות מהירות</span></font>.</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">נפתר
+				ב</span></font>-Firestore <font face="Noto Sans Devanagari"><span lang="hi-IN">ע&quot;י
+				</span></font>Cloud Tasks <font face="Noto Sans Devanagari"><span lang="hi-IN">בתהליך
+				ה</span></font>-Onboarding.</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">אינטגרציה
+				לתשתית</span></font></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">התאמה
+				ל</span></font><b>-GCP </b><font face="Noto Sans Devanagari"><span lang="hi-IN">ו</span></font><b>-TikTak</b></p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">✅ טבעית
+				</span></font>(Firebase Admin SDK <font face="Noto Sans Devanagari"><span lang="hi-IN">ללא
+				שירות נוסף</span></font>).</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">⚠️ צד
+				שלישי </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">נדרש
+				ניהול </span></font>API Keys <font face="Noto Sans Devanagari"><span lang="hi-IN">נפרדים</span></font>).</p>
+			</td>
+			<td width="20%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				Firestore <font face="Noto Sans Devanagari"><span lang="hi-IN">שומר
+				על </span></font>Lean Stack <font face="Noto Sans Devanagari"><span lang="hi-IN">ואפס
+				עלות תחזוקה</span></font>.</p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+<p><br/>
+<br/>
+
+</p>
+<hr/>
+
+<h2 class="western">3. <font face="Noto Sans Devanagari"><span lang="hi-IN">ארכיטקטורת
+תשתית ורכיבי </span></font>AI (GCP &amp; Firebase)</h2>
+<h3 class="western">3.1 <font face="Noto Sans Devanagari"><span lang="hi-IN">הייצוג
+של </span></font>Firestore Vector Search <font face="Noto Sans Devanagari"><span lang="hi-IN">והמעקף
+ל</span></font>-Firebase Extensions Sunset</h3>
+<ul>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מעמד
+	פיצ'ר הווקטורים: חיפוש וקטורי </span></font>(<font face="Liberation Mono, monospace">findNearest</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">ו</span></font>-<font face="Liberation Mono, monospace">FieldValue.vector</font>)
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">הוא יכולת
+	ליבה מובנית במסד הנתונים של </span></font><b>Firestore
+	</b><font face="Noto Sans Devanagari"><span lang="hi-IN">וב</span></font><b>-Admin
+	SDK</b>, <font face="Noto Sans Devanagari"><span lang="hi-IN">ואינו
+	תלוי בשירות ההרחבות</span></font>.</p></li>
+	<li><p><b>Firebase Extensions Sunset (</b><font face="Noto Sans Devanagari"><span lang="hi-IN">מרץ
+	2027</span></font><b>):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">ההודעה
+	על סגירת שירות ההרחבות אינה פוגעת
+	במערכת, מאחר שכל הפייפליין של </span></font>TikTak
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">ממומש כקוד
+	עצמאי מנוהל </span></font>(<b>Self-Managed Cloud
+	Functions</b>) <font face="Noto Sans Devanagari"><span lang="hi-IN">המעניק
+	שליטה מלאה על ה</span></font>-Chunking, <font face="Noto Sans Devanagari"><span lang="hi-IN">ה</span></font>-Metadata
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">וה</span></font>-Embeddings.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">קוד
+	שאילתה לדוגמה ב</span></font><b>-Admin SDK:</b></p>
+	<pre style="margin-bottom: 0.2in; background: #e1e1e1">const snapshot = await db.collection('protocol_chunks')<br/>
+  .where('tenantId', '==', activeTenant)<br/>
+  .where('isPublic', '==', true)<br/>
+  .findNearest({<br/>
+    vectorField: 'embedding',<br/>
+    queryVector: queryEmbedding,<br/>
+    limit: 5,<br/>
+    distanceMeasure: 'COSINE'<br/>
+  })<br/>
+  .get();</pre></li>
+</ul>
+<h3 class="western">3.2 <font face="Noto Sans Devanagari"><span lang="hi-IN">מודלי
+ה</span></font>-AI <font face="Noto Sans Devanagari"><span lang="hi-IN">הנבחרים</span></font></h3>
+<ul>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+	שפה לעבודה שוטפת בוואטסאפ</span></font><b>:</b>
+	<font face="Liberation Mono, monospace">gemini-2.5-flash</font> —
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">מהיר,
+	חסכוני ומספק מענה בתוך שניות בודדות
+	בהתאם לסטנדרט 15 השניות של טיקטק</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+	לעיבוד עומק וסנתוז רב-שנתי</span></font><b>:</b>
+	<font face="Liberation Mono, monospace">gemini-2.5-pro</font> —
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">מופעל בעת
+	חקירה צולבת של עשרות פרוטוקולים, ניתוחי
+	תקציב מורכבים או סתירות משפטיות</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+	הטמעה </span></font><b>(Embeddings):</b> <font face="Liberation Mono, monospace">text-embedding-004</font>
+	(<font face="Noto Sans Devanagari"><span lang="hi-IN">או
+	</span></font><font face="Liberation Mono, monospace">gemini-embedding-2-preview</font>).</p></li>
+</ul>
+<h3 class="western">3.3 <font face="Noto Sans Devanagari"><span lang="hi-IN">ניהול
+שיחה וסשן </span></font>(State Machine)</h3>
+<ul>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מסמך
+	סשן זמני ב</span></font>-Firestore <font face="Noto Sans Devanagari"><span lang="hi-IN">תחת
+	</span></font><font face="Liberation Mono, monospace">sessions/{phoneNumber}</font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">ניהול
+	חלון הקשר רץ </span></font>(Sliding Window) <font face="Noto Sans Devanagari"><span lang="hi-IN">של
+	3–5 אינטראקציות אחרונות המאפשרות שאלות
+	המשך (כגון: &quot;ומי התנגד?&quot; בהמשך לשאלה
+	על החלטה מסוימת)</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מנגנון
+	</span></font>TTL <font face="Noto Sans Devanagari"><span lang="hi-IN">לפקיעת
+	תוקף הסשן (15–30 דקות ללא פעילות) כדי
+	לאפשר פתיחת שיחה נקייה</span></font>.</p></li>
+</ul>
+<hr/>
+
+<h2 class="western">4. <font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+שתי השכבות </span></font>(Two-Tier Architecture): <font face="Noto Sans Devanagari"><span lang="hi-IN">פתרון
+עומס המטא-דאטה</span></font></h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">כדי למנוע
+את חסרונות עומס המטא-דאטה </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">זמני
+חילוץ איטיים ב</span></font>-Onboarding, <font face="Noto Sans Devanagari"><span lang="hi-IN">ניפוח
+טוקנים ב</span></font>-Prompt, <font face="Noto Sans Devanagari"><span lang="hi-IN">סיכון
+להזיות של מודל החילוץ, ומגבלת 1</span></font>MB
+<font face="Noto Sans Devanagari"><span lang="hi-IN">למסמך
+ב</span></font>-Firestore), <font face="Noto Sans Devanagari"><span lang="hi-IN">הנתונים
+מופרדים לשתי רמות</span></font>:</p>
+<pre style="margin-bottom: 0.2in; background: #e1e1e1">      [ <span lang="hi-IN">העלאת קובץ חדש </span>/ Onboarding ]<br/>
+                     │<br/>
+                     ▼<br/>
+         <span lang="hi-IN">חישוב </span>fileHash (SHA-256)<br/>
+        <span lang="hi-IN">בדיקת כפילות מול </span>Firestore<br/>
+                     │<br/>
+                     ▼<br/>
+  ┌────────────────────────────────────────────────────────┐<br/>
+  │ <span lang="hi-IN">שכבה א': מסמך אב </span>(/protocols/{docId})                  │<br/>
+  │ • <span lang="hi-IN">תאריך, שנה, שם וועדה                                │</span><br/>
+  │ • <span lang="hi-IN">רשימת נוכחים, נעדרים, חותמים מורשים </span>(signatories)   │<br/>
+  │ • <span lang="hi-IN">סדר יום מלא </span>(Agenda)                                │<br/>
+  │ • <span lang="hi-IN">קישור להורדת הקובץ המקורי </span>(downloadUrl)             │<br/>
+  │ • <span lang="hi-IN">תקצירי </span>OCR <span lang="hi-IN">של נספחים/שרטוטים סרוקים </span>(attachments)   │<br/>
+  └────────────────────────────────────────────────────────┘<br/>
+                     │ (1-to-Many Chunks)<br/>
+                     ▼<br/>
+  ┌────────────────────────────────────────────────────────┐<br/>
+  │ <span lang="hi-IN">שכבה ב': מקטעים וקטוריים </span>(/protocol_chunks/{chunkId})  │<br/>
+  │ • tenantId + repository (Pre-filtering)                │<br/>
+  │ • documentId (<span lang="hi-IN">מפתח מקשר למסמך האב</span>)                     │<br/>
+  │ • <span lang="hi-IN">מספר סעיף בסדר היום + כותרת סעיף                     │</span><br/>
+  │ • <span lang="hi-IN">פרטי הצבעה ממוקדים </span>(voteDetails)                     │<br/>
+  │ • <span lang="hi-IN">הגנת פרטיות </span>(hasPII, piiTypes)                       │<br/>
+  │ • <span lang="hi-IN">הרשאות צפייה </span>(isPublic, allowedRoles)                │<br/>
+  │ • <span lang="hi-IN">טקסט המקטע + הווקטור </span>(Embedding)                     │<br/>
+  └────────────────────────────────────────────────────────┘</pre>
+<hr/>
+
+<h2 class="western">5. <font face="Noto Sans Devanagari"><span lang="hi-IN">סכמות
+הנתונים המלאות </span></font>(JSON Schemas)</h2>
+<h3 class="western">5.1 <font face="Noto Sans Devanagari"><span lang="hi-IN">שכבה
+א': מסמך האב </span></font>(<font face="Liberation Mono, monospace">/protocols/{documentId}</font>)</h3>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">נשמר פעם
+אחת בלבד בעת קליטת המסמך, ללא שכפול מיותר
+על פני עשרות מקטעים</span></font><i>:</i></p>
+<pre style="margin-bottom: 0.2in; background: #e1e1e1">{<br/>
+  &quot;documentId&quot;: &quot;doc_sha256_e3b0c44298fc1c149afbf4c8996fb924&quot;,<br/>
+  &quot;tenantId&quot;: &quot;rehan&quot;,<br/>
+  &quot;repository&quot;: &quot;vaad_menahal&quot;,<br/>
+  &quot;fileHash&quot;: &quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;,<br/>
+  &quot;sourceFileName&quot;: &quot;protocol_plenum_2026_04_12.pdf&quot;,<br/>
+  &quot;storagePath&quot;: &quot;tenants/rehan/protocols/vaad/protocol_plenum_2026_04_12.pdf&quot;,<br/>
+  &quot;downloadUrl&quot;: &quot;https://storage.googleapis.com/tiktak-protocols/tenants/rehan/docs/protocol_plenum_2026_04_12.pdf&quot;,<br/>
+<br/>
+  &quot;documentTitle&quot;: &quot;<span lang="hi-IN">פרוטוקול ישיבת מליאה מס' 04/2026</span>&quot;,<br/>
+  &quot;meetingDate&quot;: &quot;2026-04-12T18:00:00Z&quot;,<br/>
+  &quot;year&quot;: 2026,<br/>
+  &quot;committee&quot;: &quot;<span lang="hi-IN">מליאת המועצה</span>&quot;,<br/>
+<br/>
+  &quot;signatories&quot;: [<br/>
+    { &quot;name&quot;: &quot;<span lang="hi-IN">ישראל ישראלי</span>&quot;, &quot;role&quot;: &quot;<span lang="hi-IN">ראש המועצה</span>&quot; },<br/>
+    { &quot;name&quot;: &quot;<span lang="hi-IN">מיכל כהן</span>&quot;, &quot;role&quot;: &quot;<span lang="hi-IN">מזכירת המועצה</span>&quot; }<br/>
+  ],<br/>
+  &quot;attendees&quot;: [&quot;<span lang="hi-IN">אורן בודנר&quot;, &quot;ירדן דותן&quot;, &quot;ישראל ישראלי&quot;, &quot;מיכל כהן</span>&quot;],<br/>
+  &quot;absentees&quot;: [&quot;<span lang="hi-IN">משה כהן</span>&quot;],<br/>
+<br/>
+  &quot;agenda&quot;: [<br/>
+    &quot;1. <span lang="hi-IN">סקירת ראש המועצה</span>&quot;,<br/>
+    &quot;2. <span lang="hi-IN">בקשות לתיקון פרוטוקול</span>&quot;,<br/>
+    &quot;3. <span lang="hi-IN">אישור המועצה לעסקה במקרקעין - קאנטרי קלאב 'לב המקום' (גוש 8914 חלקה 3)</span>&quot;,<br/>
+    &quot;4. <span lang="hi-IN">פתיחת תב\&quot;ר 644 - פעילות להנחלת מורשת 2026</span>&quot;,<br/>
+    &quot;5. <span lang="hi-IN">הגדלת תב\&quot;ר 569 - מרכז יום לבוגרים עם צרכים מיוחדים</span>&quot;,<br/>
+    &quot;6. <span lang="hi-IN">הגדלת תב\&quot;ר 636 - סיוע מיוחד לחירום</span>&quot;,<br/>
+    &quot;7. <span lang="hi-IN">פתיחת תב\&quot;ר 646 - מרכיבי ביטחון 2026</span>&quot;<br/>
+  ],<br/>
+<br/>
+  &quot;attachments&quot;: [<br/>
+    {<br/>
+      &quot;attachmentId&quot;: &quot;att_01&quot;,<br/>
+      &quot;title&quot;: &quot;<span lang="hi-IN">תשריט מקרקעין גוש 8914 חלקה 3</span>&quot;,<br/>
+      &quot;type&quot;: &quot;drawing&quot;,<br/>
+      &quot;ocrSummary&quot;: &quot;<span lang="hi-IN">שרטוט מתחם הבריכה ומגרשי הטניס כולל סימון קווי גבול ודרכי גישה</span>&quot;,<br/>
+      &quot;fileUrl&quot;: &quot;https://storage.googleapis.com/tiktak-protocols/tenants/rehan/attachments/att_8914_3.pdf&quot;<br/>
+    }<br/>
+  ],<br/>
+<br/>
+  &quot;totalChunks&quot;: 24,<br/>
+  &quot;createdAt&quot;: &quot;2026-10-27T16:00:00Z&quot;<br/>
+}</pre><h3 class="western">
+5.2 <font face="Noto Sans Devanagari"><span lang="hi-IN">שכבה ב':
+מקטע וקטורי ממוקד </span></font>(<font face="Liberation Mono, monospace">/protocol_chunks/{chunkId}</font>)</h3>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">מבנה
+קומפקטי הממוטב לחיפוש סמנטי מהיר, שמירה
+על תקציב טוקנים ופילטור הרשאות קשיח</span></font><i>:</i></p>
+<pre style="margin-bottom: 0.2in; background: #e1e1e1">{<br/>
+  &quot;chunkId&quot;: &quot;chunk_doc_e3b0c442_0014&quot;,<br/>
+  &quot;documentId&quot;: &quot;doc_sha256_e3b0c44298fc1c149afbf4c8996fb924&quot;,<br/>
+  &quot;tenantId&quot;: &quot;rehan&quot;,<br/>
+  &quot;repository&quot;: &quot;vaad_menahal&quot;,<br/>
+<br/>
+  &quot;agendaItemNumber&quot;: 3,<br/>
+  &quot;agendaItemTitle&quot;: &quot;<span lang="hi-IN">אישור המועצה לעסקה במקרקעין - קאנטרי קלאב 'לב המקום</span>'&quot;,<br/>
+  &quot;sectionHeader&quot;: &quot;<span lang="hi-IN">סעיף 3: אישור המועצה לעסקה במקרקעין (קאנטרי קלאב לב המקום)</span>&quot;,<br/>
+  &quot;speaker&quot;: &quot;<span lang="hi-IN">אורן בודנר</span>&quot;,<br/>
+  &quot;pageNumber&quot;: 4,<br/>
+  &quot;chunkIndex&quot;: 14,<br/>
+<br/>
+  &quot;voteDetails&quot;: {<br/>
+    &quot;hasVote&quot;: true,<br/>
+    &quot;voteResult&quot;: &quot;passed&quot;,<br/>
+    &quot;unanimous&quot;: false,<br/>
+    &quot;votesFor&quot;: 7,<br/>
+    &quot;votesAgainst&quot;: 1,<br/>
+    &quot;abstentions&quot;: 0,<br/>
+    &quot;dissenters&quot;: [&quot;<span lang="hi-IN">אלי פיינברג</span>&quot;],<br/>
+    &quot;resolutionText&quot;: &quot;<span lang="hi-IN">המועצה מאשרת מתן רשות שימוש בקאנטרי קלאב לב המקום בכוכב יאיר</span>&quot;<br/>
+  },<br/>
+<br/>
+  &quot;topics&quot;: [&quot;<span lang="hi-IN">מקרקעין&quot;, &quot;חוזים/קבלנים&quot;, &quot;ספורט ופנאי</span>&quot;],<br/>
+  &quot;tbarNumbers&quot;: [],<br/>
+<br/>
+  &quot;hasPII&quot;: false,<br/>
+  &quot;piiTypes&quot;: [],<br/>
+  &quot;isPublic&quot;: true,<br/>
+  &quot;allowedRoles&quot;: [&quot;resident&quot;, &quot;board_member&quot;, &quot;admin&quot;],<br/>
+<br/>
+  &quot;hasAttachments&quot;: true,<br/>
+  &quot;attachmentIds&quot;: [&quot;att_01&quot;],<br/>
+<br/>
+  &quot;text&quot;: &quot;[<span lang="hi-IN">הקשר: פרוטוקול מליאה 04/2026 | סעיף 3: עסקת מקרקעין קאנטרי קלאב</span>]\n<span lang="hi-IN">היועץ המשפטי סוקר את ההסכם המוצע</span>...&quot;,<br/>
+  &quot;embedding&quot;: [0.0124, -0.0482, 0.0831]<br/>
+}</pre>
+<hr/>
+
+<h2 class="western">6. <font face="Noto Sans Devanagari"><span lang="hi-IN">תהליך
+הקליטה והאינדוקס בעלייה לאוויר </span></font>(Ingestion
+Pipeline)</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">בעת העלאת
+קבצים יחידים או במכות </span></font>Onboarding
+<font face="Noto Sans Devanagari"><span lang="hi-IN">מאסיביות
+של מאות מסמכים</span></font>:</p>
+<ol>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מניעת
+	כפילויות </span></font><b>(Duplicate Verification):</b>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">חישוב ערך
+	</span></font>SHA-256 <font face="Noto Sans Devanagari"><span lang="hi-IN">של
+	הקובץ </span></font>(<font face="Liberation Mono, monospace">fileHash</font>)
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">ובדיקה
+	מיידית מול
+	</span></font>Firestore:&nbsp;<font face="Liberation Mono, monospace">db.collection('protocols').where('tenantId',
+	'==', activeTenant).where('fileHash', '==', hash)</font>.<br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">אם
+	קיים — הקליטה נעצרת ונמנעות הוצאות
+	כפולות על וקטוריזציה ואינדוקס</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">חילוץ
+	מעטפת מסמך </span></font><b>(Gemini 2.5 Flash Ingestion
+	Pass):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">סריקת
+	עמוד הפתיחה וסדר היום של הפרוטוקול,
+	חילוץ ה</span></font>-<font face="Liberation Mono, monospace">agenda</font>,
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">הנוכחים,
+	החותמים והתאריך ושמירתם ברשומת האב
+	</span></font><font face="Liberation Mono, monospace">/protocols/{documentId}</font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">פירוק
+	סמנטי </span></font><b>(Context-Injected Chunking):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">פירוק
+	המסמך לפסקאות/סעיפים. לראש כל קטע טקסט
+	מוזרק עוגן כותרת ותאריך (לדוגמה:
+	&quot;[פרוטוקול מליאה 12/04/2026 | סעיף 3: עסקת
+	מקרקעין]&quot;), מה שמבטיח דיוק הטמעה
+	מקסימלי גם למשפטי החלטה קצרים</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">סיווג
+	הצבעות ופרטיות </span></font><b>(PII Redaction Guard):</b>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">סימון
+	סעיפים עם הצבעות </span></font>(<font face="Liberation Mono, monospace">voteDetails</font>)
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">וזיהוי
+	מידע אישי </span></font>(<font face="Liberation Mono, monospace">hasPII</font>),
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">כך שתושבים
+	ללא הרשאה מתאימה יקבלו תוצאות מסוננות</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">וקטוריזציה
+	מקבילית </span></font><b>(Batch Embeddings):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">יצירת
+	וקטורים דרך </span></font><font face="Liberation Mono, monospace">text-embedding-004</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">ושמירתם
+	ב</span></font>-Batch Chunks <font face="Noto Sans Devanagari"><span lang="hi-IN">ב</span></font>-Firestore
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">תוך שימוש
+	ב</span></font>-Cloud Tasks <font face="Noto Sans Devanagari"><span lang="hi-IN">לעמידה
+	במגבלות זמני ריצה</span></font>.</p></li>
+</ol>
+<hr/>
+
+<h2 class="western">7. <font face="Noto Sans Devanagari"><span lang="hi-IN">תהליך
+המענה המלא ב</span></font>-WhatsApp (<font face="Noto Sans Devanagari"><span lang="hi-IN">חוק
+ה-5 ל-2</span></font>)</h2>
+<ol>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">קליטת
+	ההודעה: התושב או בעל התפקיד שולח שאילתה
+	חופשית (לדוגמה: &quot;מה הוחלט על הקאנטרי
+	קלאב ומי התנגד?&quot;)</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">אימות
+	שקט </span></font><b>(Silent Auth):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">ה</span></font>-Webhook
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">מזהה את
+	ה</span></font>-Tenant <font face="Noto Sans Devanagari"><span lang="hi-IN">וההרשאות
+	מתוך מספר הטלפון המוצלב מול רשימת
+	המורשים</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">שליפה
+	וקטורית מסוננת מראש</span></font><b>:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתת
+	</span></font>KNN <font face="Noto Sans Devanagari"><span lang="hi-IN">מתבצעת
+	על </span></font><font face="Liberation Mono, monospace">/protocol_chunks</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">עם פילטור
+	קשיח</span></font>:&nbsp;<font face="Liberation Mono, monospace">where
+	tenantId == 'rehan' AND isPublic == true</font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">השלמת
+	נתוני מעטפת </span></font><b>(Hydration):</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">המערכת
+	לוקחת את 2–3 המקטעים הרלוונטיים ביותר,
+	ושולפת בקריאה בודדת את מסמך האב
+	</span></font><font face="Liberation Mono, monospace">/protocols/{documentId}</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">כדי לקבל
+	את תאריך הישיבה הרשמי, שמות החותמים
+	והקישור לקובץ המקורי</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">יצירת
+	התשובה ב</span></font><b>-Gemini:</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">הטקסט
+	נשלח ל</span></font>-<font face="Liberation Mono, monospace">gemini-2.5-flash</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">עם </span></font>System
+	Instruction <font face="Noto Sans Devanagari"><span lang="hi-IN">קפדני:
+	מענה מבוסס מקורות בלבד תוך ציון עמוד
+	ותאריך</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">הודעת
+	וואטסאפ מעוצבת החוזרת למשתמש</span></font><b>:</b></p>
+	<blockquote><font face="Noto Sans Devanagari"><span lang="hi-IN">החלטת
+	מליאה: מתן רשות שימוש בקאנטרי קלאב 'לב
+	המקום</span></font><b>'</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">תאריך:
+	12/04/2026 (פרוטוקול מס' 04/2026, עמוד 4)</span></font><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">סטטוס:
+	אושר ברוב קולות (7 בעד, 1 נגד)</span></font>.<br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">מתנגדים:
+	אלי פיינברג</span></font>.<br/>
+📎 <font face="Noto Sans Devanagari"><span lang="hi-IN">מצורף
+	לפרוטוקול: תשריט מקרקעין גוש 8914 חלקה
+	3</span></font><i>.</i><br/>
+📄 <font face="Noto Sans Devanagari"><span lang="hi-IN"><a href="https://storage.googleapis.com/tiktak-protocols/tenants/rehan/docs/protocol_plenum_2026_04_12.pdf">להורדת
+	הפרוטוקול המלא לחצו כאן</a></span></font></blockquote></li>
+</ol>
+<hr/>
+
+<h2 class="western">8. <font face="Noto Sans Devanagari"><span lang="hi-IN">הנחיות
+ליישום עם סוכן </span></font>Antigravity IDE</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">כדי לקדם
+את הפיתוח מול </span></font>Antigravity IDE, <font face="Noto Sans Devanagari"><span lang="hi-IN">להלן
+תחומי האחריות הנדרשים למימוש</span></font>:</p>
+<ol>
+	<li><p><b>Cloud Function </b><font face="Noto Sans Devanagari"><span lang="hi-IN">להעלאת
+	מסמכים </span></font><b>(Document Ingestion Engine):</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">כתיבת
+	פונקציית </span></font>Storage Trigger <font face="Noto Sans Devanagari"><span lang="hi-IN">המחשבת
+	</span></font><font face="Liberation Mono, monospace">fileHash</font>,
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">מפעילה את
+	</span></font>Gemini 2.5 Flash <font face="Noto Sans Devanagari"><span lang="hi-IN">לחילוץ
+	רשומת האב </span></font>(<font face="Liberation Mono, monospace">agenda</font>,
+	<font face="Liberation Mono, monospace">attendees</font>,
+	<font face="Liberation Mono, monospace">signatories</font>), <font face="Noto Sans Devanagari"><span lang="hi-IN">מייצרת
+	</span></font>Chunks <font face="Noto Sans Devanagari"><span lang="hi-IN">עם
+	</span></font>Context Injection, <font face="Noto Sans Devanagari"><span lang="hi-IN">ומאנדקסת
+	וקטורים ל</span></font>-Firestore.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">הרחבת
+	ה</span></font><b>-WhatsApp Webhook State Machine:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">הוספת
+	</span></font>Router <font face="Noto Sans Devanagari"><span lang="hi-IN">ב</span></font>-Webhook
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">המבדיל
+	בין כוונת דיווח תקלה </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">טיקטק
+	</span></font>Core) <font face="Noto Sans Devanagari"><span lang="hi-IN">לבין
+	תחקור מסמכים (פרוטוקל), וניהול ה</span></font>-Session
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">במסמך
+	</span></font><font face="Liberation Mono, monospace">sessions/{phoneNumber}</font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">שכבת
+	השליפה וה</span></font><b>-Reranker:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">מימוש
+	הלוגיקה שמפעילה </span></font><font face="Liberation Mono, monospace">findNearest</font>,
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">מסננת
+	תוצאות לפי סף מרחק </span></font>(Distance Threshold)
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">להגנה
+	מהזיות, שולפת את מסמך האב </span></font>(Hydration)
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">ומעבירה
+	את הפרומפט הסופי ל</span></font>-Gemini.</p></li>
+</ol>
+<p><br/>
+<br/>
+
+</p>
+</body>
+</html>

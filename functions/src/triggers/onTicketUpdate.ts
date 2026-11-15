@@ -2,7 +2,13 @@ import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import { db, admin, recordAuditLog } from "../shared/context";
 import { sendResidentWhatsAppNotification } from "../shared/whatsappService";
-import { calculateWorkingDays } from "../utils/slaEngine";
+import {
+  calculateWorkingDays,
+  createInitialPhaseMetrics,
+  pausePhaseTimer,
+  resumePhaseTimer,
+  TicketPhaseMetrics
+} from "../utils/slaEngine";
 
 /**
  * SLA Tracker: Responds to status changes to update cumulative statistics.
@@ -35,14 +41,15 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
     const holidaysDoc = await db.collection("holidays").doc(country).get();
     const holidays = (holidaysDoc.data()?.holidays || []).map((h: any) => h.date);
 
+    const nowIso = now.toISOString();
     const update: any = {
-      lastStatusChangeAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+      lastStatusChangeAt: nowIso,
+      updatedAt: nowIso,
       stagnationDays: 0,
       slaStatus: 'none'
     };
 
-    // Calculate working days spent in the OLD state
+    // Calculate working days spent in the OLD state (existing stagnation SLA)
     const startTime = before.lastStatusChangeAt || before.createdAt;
     if (startTime) {
       const delta = calculateWorkingDays(startTime, now, slaConfig.workingDays, holidays);
@@ -54,18 +61,74 @@ export const onTicketUpdate = onDocumentUpdated({ document: "tenants/{tenantId}/
       }
     }
 
-    // Reset logic for reopening
+    // 5-Phase Lifecycle Timer Management (accumulates across backlog/reopen, resets only on move to 'open')
+    const hasVendorDispatch = Array.isArray(after.vendors) && after.vendors.length > 0;
+    const baseCreatedAt = before.createdAt || nowIso;
+    const existingPm: TicketPhaseMetrics = before.phaseMetrics
+      ? JSON.parse(JSON.stringify(before.phaseMetrics))
+      : {
+          p1: {
+            startedAt: baseCreatedAt,
+            endedAt: oldStatus === 'open' ? null : (before.lastStatusChangeAt || baseCreatedAt),
+            currentStartedAt: oldStatus === 'open' ? (before.lastStatusChangeAt || baseCreatedAt) : null,
+            accumulatedMinutes: 0
+          },
+          p2: {
+            startedAt: oldStatus === 'in-progress' ? (before.lastStatusChangeAt || baseCreatedAt) : null,
+            endedAt: null,
+            currentStartedAt: (oldStatus === 'in-progress' && !hasVendorDispatch) ? (before.lastStatusChangeAt || baseCreatedAt) : null,
+            accumulatedMinutes: 0
+          },
+          p3: { startedAt: null, endedAt: null, minutes: null },
+          p4: { startedAt: null, endedAt: null, minutes: null },
+          p5: {
+            startedAt: before.vendorCompletedAt || null,
+            endedAt: null,
+            currentStartedAt: (before.vendorCompletedAt && !['resolved', 'dismissed'].includes(oldStatus)) ? before.vendorCompletedAt : null,
+            accumulatedMinutes: 0
+          }
+        };
+
     if (newStatus === 'open') {
+      // Reset all timers when moved back to New ('open')
       update.total_days_in_new = 0;
       update.total_days_in_progress = 0;
       update.slaStatus = 'none';
       update.stagnationDays = 0;
       update.vaadRating = admin.firestore.FieldValue.delete();
-    } else if (newStatus === 'in-progress' && (oldStatus === 'resolved' || oldStatus === 'dismissed')) {
-      update.total_days_in_progress = 0;
-      update.slaStatus = 'none';
-      update.stagnationDays = 0;
-      update.vaadRating = admin.firestore.FieldValue.delete();
+      update.phaseMetrics = createInitialPhaseMetrics(nowIso);
+    } else {
+      const isClosing = newStatus === 'resolved' || newStatus === 'dismissed';
+      const isBacklog = newStatus === 'backlog';
+
+      // 1. Pause old phase timer
+      if (oldStatus === 'open') {
+        existingPm.p1 = pausePhaseTimer(existingPm.p1, nowIso, !isBacklog);
+      } else if (oldStatus === 'in-progress') {
+        existingPm.p2 = pausePhaseTimer(existingPm.p2, nowIso, !isBacklog);
+      }
+      if (isClosing) {
+        if (existingPm.p5?.currentStartedAt || after.vendorCompletedAt) {
+          existingPm.p5 = pausePhaseTimer(existingPm.p5, nowIso, true);
+        }
+        if (!after.resolvedAt) {
+          update.resolvedAt = nowIso;
+        }
+      }
+
+      // 2. Start / Resume target phase timer
+      if (newStatus === 'in-progress') {
+        if (oldStatus === 'resolved' || oldStatus === 'dismissed') {
+          update.vaadRating = admin.firestore.FieldValue.delete();
+        }
+        if (!hasVendorDispatch) {
+          existingPm.p2 = resumePhaseTimer(existingPm.p2, nowIso);
+        } else if (after.vendorCompletedAt) {
+          existingPm.p5 = resumePhaseTimer(existingPm.p5, nowIso);
+        }
+      }
+
+      update.phaseMetrics = existingPm;
     }
 
     await event.data?.after.ref.update(update);

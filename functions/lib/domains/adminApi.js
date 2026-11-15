@@ -52,6 +52,7 @@ const logger = __importStar(require("firebase-functions/logger"));
 const crypto_1 = require("crypto");
 const context_1 = require("../shared/context");
 const whatsappService_1 = require("../shared/whatsappService");
+const slaEngine_1 = require("../utils/slaEngine");
 async function verifySuperAdminRequest(req) {
     const auth = context_1.admin.auth();
     const authHeader = req.headers.authorization;
@@ -493,21 +494,42 @@ async function handleForwardTicketToVendor(req, res) {
         const newCount = currentCount + 1;
         const resolvedVendorName = String(vendorName || '').trim() || vendorPhone;
         const outboundMessageId = apiResult?.messages?.[0]?.id || null;
+        const nowIso = new Date().toISOString();
         const newVendorEntry = {
+            dispatchId: (0, crypto_1.randomUUID)(),
             phone: vendorPhone,
             intlPhone: cleanPhone,
             name: resolvedVendorName,
             status: "ממתין לתשובה מהספק ...",
-            sentAt: new Date().toISOString(),
+            sentAt: nowIso,
             ...(outboundMessageId ? { whatsappMessageId: outboundMessageId } : {})
         };
         const existingVendors = Array.isArray(ticketData.vendors) ? ticketData.vendors : [];
-        const filteredVendors = existingVendors.filter((v) => v.phone !== vendorPhone && v.intlPhone !== cleanPhone);
-        const updatedVendors = [...filteredVendors, newVendorEntry];
+        const updatedVendors = [...existingVendors, newVendorEntry];
+        const pm = ticketData.phaseMetrics
+            ? JSON.parse(JSON.stringify(ticketData.phaseMetrics))
+            : (0, slaEngine_1.createInitialPhaseMetrics)(ticketData.createdAt || nowIso);
+        if (pm.p2?.currentStartedAt) {
+            pm.p2 = (0, slaEngine_1.pausePhaseTimer)(pm.p2, nowIso, true);
+        }
+        else if (!pm.p2?.endedAt && ticketData.status === 'in-progress') {
+            const p2Start = pm.p2?.startedAt || ticketData.lastStatusChangeAt || ticketData.createdAt || nowIso;
+            pm.p2 = (0, slaEngine_1.pausePhaseTimer)({
+                startedAt: p2Start,
+                endedAt: null,
+                currentStartedAt: p2Start,
+                accumulatedMinutes: pm.p2?.accumulatedMinutes || 0
+            }, nowIso, true);
+        }
+        if (!pm.p3?.startedAt) {
+            pm.p3 = { startedAt: nowIso, endedAt: null, minutes: null };
+        }
         await ticketRef.update({
             vendorForwardCount: newCount,
-            lastVendorForwardAt: new Date().toISOString(),
-            vendors: updatedVendors
+            lastVendorForwardAt: nowIso,
+            ...(ticketData.firstVendorForwardAt ? {} : { firstVendorForwardAt: nowIso }),
+            vendors: updatedVendors,
+            phaseMetrics: pm
         });
         await (0, context_1.recordAuditLog)({
             tenantId,

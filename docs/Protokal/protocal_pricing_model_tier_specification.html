@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title></title>
+	<meta name="generator" content="LibreOffice 26.8.0.3 (Linux)"/>
+	<meta name="created" content="00:00:00"/>
+	<meta name="changed" content="00:00:00"/>
+	<style type="text/css">
+		@page { size: 8.27in 11.69in; margin: 0.79in }
+		p { margin-bottom: 0.1in; line-height: 115%; background: transparent }
+		h1 { margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h1.western { font-weight: bold; font-size: 18pt; font-family: "Liberation Sans", sans-serif }
+		h1.cjk { font-weight: bold; font-size: 18pt; font-family: "AR PL SungtiL GB" }
+		h1.ctl { font-weight: bold; font-family: "Noto Sans Devanagari"; font-size: 18pt }
+		h2 { margin-top: 0.14in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h2.western { font-weight: bold; font-size: 16pt; font-family: "Liberation Sans", sans-serif }
+		h2.cjk { font-weight: bold; font-size: 16pt; font-family: "AR PL SungtiL GB" }
+		h2.ctl { font-weight: bold; font-family: "Noto Sans Devanagari"; font-size: 16pt }
+		td p { widows: 0; orphans: 0; background: transparent }
+		th p { orphans: 0; widows: 0; text-align: center; font-weight: bold; background: transparent }
+		h3 { margin-top: 0.1in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h3.western { font-weight: bold; font-size: 14pt; font-family: "Liberation Sans", sans-serif }
+		h3.cjk { font-weight: bold; font-size: 14pt; font-family: "AR PL SungtiL GB" }
+		h3.ctl { font-weight: bold; font-family: "Noto Sans Devanagari"; font-size: 14pt }
+	</style>
+</head>
+<body lang="en-US" link="#000080" vlink="#800000" dir="rtl"><h1 class="western">
+<font face="Noto Sans Devanagari"><span lang="hi-IN">מודל תמחור
+וחבילות רישוי: מודול &quot;פרוטוקל</span></font>&quot;
+(Protocal Add-On)</h1>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">מוצר:
+פרוטוקל </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">מודול
+</span></font>AI <font face="Noto Sans Devanagari"><span lang="hi-IN">לתחקור
+פרוטוקולים, הסכמים והחלטות ועד</span></font>)<br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">פלטפורמת
+אב</span></font><b>:</b> TikTak (<font face="Noto Sans Devanagari"><span lang="hi-IN">תשתיות
+</span></font>GCP, Firebase, Meta WhatsApp Business API)<br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+מסחרי: תוסף מנוי חודשי / שנתי </span></font>(Modular
+Add-On)<br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">גרסה:
+1.0</span></font><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">סטטוס:
+מאושר לתמחור ומכירות</span></font></p>
+<hr/>
+
+<h2 class="western">1. <font face="Noto Sans Devanagari"><span lang="hi-IN">עקרונות
+התמחור וההיגיון המסחרי </span></font>(Executive
+Summary)</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">מודול
+&quot;פרוטוקל&quot; נמכר כתוסף </span></font>(Add-On)
+<font face="Noto Sans Devanagari"><span lang="hi-IN">לחבילת
+הבסיס של </span></font>TikTak <font face="Noto Sans Devanagari"><span lang="hi-IN">או
+ככלי עבודה ייעודי. מודל התמחור בנוי על
+ארבעה עקרונות יסוד</span></font>:</p>
+<ol>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">הפרדה
+	מבנית בין &quot;בניין מגורים&quot; לבין
+	&quot;יישוב / קהילה</span></font><b>&quot;:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">קצב
+	ייצור הפרוטוקולים וההחלטות ביישוב
+	קהילתי </span></font>(<font face="Noto Sans Devanagari"><span lang="hi-IN">לדוגמה:
+	ריחן עם 26 ישיבות בשנה </span></font>$\times$ 2
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">פרוטוקולים
+	+ 3 אסיפות = מעל 55 מסמכים בשנה</span></font>)
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">גבוה בעשרות
+	מונים מבניין מגורים באותו סדר גודל של
+	יחידות דיור (שמייצר 2–4 פרוטוקולים בשנה
+	בלבד). לכן, נבנתה מטריצה ייעודית ונפרדת
+	לכל סגמנט</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">איסור
+	מחיקה ושמירה לצמיתות </span></font><b>(Permanent
+	Retention by Law):</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">על
+	פי דיני המקרקעין ותקופות ההתיישנות,
+	פרוטוקולים והחלטות ועד אינם נמחקים
+	לעולם. אין &quot;תקרת מחיקה&quot;; כל מסמך
+	שמועלה מצטבר במאגר ונשאר זמין לתחקור
+	כל עוד המנוי פעיל</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">מענק
+	אינדוקס היסטורי ב</span></font><b>-Onboarding
+	(Backlog Grant):</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">כדי
+	לאפשר כניסה חלקה, כל חבילה כוללת כמות
+	מוגדרת של מסמכי עבר (סריקות וקבצים מ-5
+	עד 7 שנים אחורה) המאונדקסים במעמד העלייה
+	לאוויר ללא תוספת תשלום</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">עקרון
+	2 חודשים חינם בתשלום שנתי</span></font><b>:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">לקוח
+	הבוחר לשלם מראש לשנה שלמה זכאי להנחה
+	קבועה של חודשיים חינם (תשלום עבור 10
+	חודשים בלבד), בהתאם למדיניות המחירים
+	של </span></font>TikTak.</p></li>
+</ol>
+<hr/>
+
+<h2 class="western">2. <font face="Noto Sans Devanagari"><span lang="hi-IN">מסלול
+א': ועדי בתים ומבני מגורים </span></font>(Residential
+Buildings)</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">סגמנט זה
+מאופיין בקצב מסמכים שוטף נמוך (אסיפה
+שנתית, ישיבות ועד תקופתיות והסכמי תחזוקה
+בודדים)</span></font>:</p>
+<table width="100%" cellpadding="4" cellspacing="0">
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<thead>
+		<tr valign="top">
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">דרגת
+				רישוי </span></font>(Tier)</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">גודל
+				מתחם (יח״ד)</span></font></p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">אינדוקס
+				היסטורי כלול ב</span></font>-Onboarding</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">קצב
+				מסמכים שוטף (שמירה לתמיד)</span></font></p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">בנק
+				שאילתות חודשי </span></font>(WhatsApp)</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">תוספת
+				חודשית </span></font>(Add-On)</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מחיר
+				שנתי מראש (2 חודשים חינם)</span></font></p>
+			</th>
+			<th width="13%" style="border: 1px solid #000000; padding: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">חריגה
+				לשאילתה</span></font></p>
+			</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Starter</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 30 יח״ד</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 50
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 6
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				30 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪49</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪490</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪1.50</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Basic</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				31–70 <font face="Noto Sans Devanagari"><span lang="hi-IN">יח״ד</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 120
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 10
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				60 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪69</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪690</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪1.20</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Standard</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				71–120 <font face="Noto Sans Devanagari"><span lang="hi-IN">יח״ד</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 200
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 15
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				120 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪99</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪990</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪1.00</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Growth</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				121–200 <font face="Noto Sans Devanagari"><span lang="hi-IN">יח״ד</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 350
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 20
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				200 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪149</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪1,490</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪0.80</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Enterprise</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				201+ <font face="Noto Sans Devanagari"><span lang="hi-IN">יח״ד
+				/ מתחמים</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 500
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 30
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				350 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪199</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪1,990</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪0.60</p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+<p><br/>
+<br/>
+
+</p>
+<hr/>
+
+<h2 class="western">3. <font face="Noto Sans Devanagari"><span lang="hi-IN">מסלול
+ב': יישובים קהילתיים, קיבוצים ומועצות
+</span></font>(Communities &amp; Councils)</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">סגמנט זה
+מאופיין בפעילות מוניציפלית אינטנסיבית
+(ישיבות הנהלה דו-שבועיות, ועדות משנה,
+תקציבי תב&quot;ר והחלטות מליאה)</span></font>:</p>
+<table width="100%" cellpadding="4" cellspacing="0">
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<col width="32*"/>
+	<thead>
+		<tr valign="top">
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">דרגת
+				רישוי </span></font>(Tier)</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">גודל
+				יישוב (בתי אב)</span></font></p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">אינדוקס
+				היסטורי כלול ב</span></font>-Onboarding</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">קצב
+				מסמכים שוטף (שמירה לתמיד)</span></font></p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">בנק
+				שאילתות חודשי </span></font>(WhatsApp)</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">תוספת
+				חודשית </span></font>(Add-On)</p>
+			</th>
+			<th width="13%" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0.04in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מחיר
+				שנתי מראש (2 חודשים חינם)</span></font></p>
+			</th>
+			<th width="13%" style="border: 1px solid #000000; padding: 0.04in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">חריגה
+				לשאילתה</span></font></p>
+			</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Community Starter</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">יישוב
+				קטן (עד 80 בתי אב)</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 250
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 45
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				100 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪129</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪1,290</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪1.00</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Community Basic</b> <i>(</i><font face="Noto Sans Devanagari"><span lang="hi-IN">מודל
+				ריחן</span></font><i>)</i></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">יישוב
+				בינוני (81–160 בתי אב)</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 450
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 75
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				200 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪179</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪1,790</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪0.80</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Community Standard</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">יישוב
+				פעיל (161–300 בתי אב)</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 600
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 100
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				350 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪249</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪2,490</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪0.70</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Community Growth</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">יישוב
+				גדול (301–500 בתי אב)</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 800
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">עד 150
+				מסמכים בשנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				500 <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪349</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>₪3,490</b> / <font face="Noto Sans Devanagari"><span lang="hi-IN">שנה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪0.60</p>
+			</td>
+		</tr>
+		<tr valign="top">
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<b>Regional / Fleet</b></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מועצה /
+				אשכול יישובים</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מעל 1,200
+				מסמכי עבר</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">מותאם
+				אישית ללא הגבלה</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				1,000+ <font face="Noto Sans Devanagari"><span lang="hi-IN">שאילתות
+				/ חודש</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p>
+				<font face="Noto Sans Devanagari"><span lang="hi-IN">בהתאמה
+				אישית (מ-₪590/חודש)</span></font></p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: none; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0in"><p align="left">
+				—</p>
+			</td>
+			<td width="13%" style="border-top: none; border-bottom: 1px solid #000000; border-left: 1px solid #000000; border-right: 1px solid #000000; padding-top: 0in; padding-bottom: 0.04in; padding-left: 0.04in; padding-right: 0.04in"><p align="left">
+				₪0.50</p>
+			</td>
+		</tr>
+	</tbody>
+</table>
+<p><br/>
+<br/>
+
+</p>
+<hr/>
+
+<h2 class="western">4. <font face="Noto Sans Devanagari"><span lang="hi-IN">ניתוח
+כלכלי ורווחיות גולמית </span></font>(Unit
+Economics &amp; COGS)</h2>
+<p><font face="Noto Sans Devanagari"><span lang="hi-IN">התמחור
+נשען על עלויות התשתית האמיתיות ב</span></font>-Google
+Cloud Platform <font face="Noto Sans Devanagari"><span lang="hi-IN">וב</span></font>-Meta
+WhatsApp Business API <font face="Noto Sans Devanagari"><span lang="hi-IN">ומבטיח
+רווחיות גולמית של מעל 90%</span></font>:</p>
+<h3 class="western">4.1 <font face="Noto Sans Devanagari"><span lang="hi-IN">עלויות
+ענן משוערות לשאילתת תחקור בודדת</span></font>:</h3>
+<ul>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">אימות
+	ושליפה וקטורית ב</span></font><b>-Firestore:</b> 3
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">מקטעים +
+	קריאת מסמך אב </span></font>$\approx$ $0.00004 $$.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">עיבוד
+	שפה ומענה ב</span></font><b>-Gemini 2.5 Flash:</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">קלט
+	ממוצע של 1,000 טוקנים ופלט של 150 טוקנים
+	</span></font>$\approx$ $0.00015 $$.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">הודעת
+	</span></font><b>WhatsApp Utility (</b><font face="Noto Sans Devanagari"><span lang="hi-IN">בתרחיש
+	חלון חדש</span></font><b>):</b> <font face="Noto Sans Devanagari"><span lang="hi-IN">כ-0.0035$
+	(אם השאילתה מתבצעת בחלון 24 שעות פעיל –
+	העלות היא 0$)</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">סה״כ
+	עלות ישירה לשאילתה: כ-0.015 ₪ (אגורה וחצי
+	בלבד)</span></font>.</p></li>
+</ul>
+<h3 class="western">4.2 <font face="Noto Sans Devanagari"><span lang="hi-IN">עלויות
+תהליך ה</span></font>-Onboarding (<font face="Noto Sans Devanagari"><span lang="hi-IN">העלאה
+של 500 מסמכים בבת אחת</span></font>):</h3>
+<ul>
+	<li><p>500 <font face="Noto Sans Devanagari"><span lang="hi-IN">מסמכים
+	מחולצים ומעובדים </span></font>$\approx$ <font face="Noto Sans Devanagari"><span lang="hi-IN">כ-1,500
+	</span></font>Chunks.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">הפקת
+	</span></font>Embeddings <font face="Noto Sans Devanagari"><span lang="hi-IN">ב</span></font>-<font face="Liberation Mono, monospace">text-embedding-004</font>
+	<font face="Noto Sans Devanagari"><span lang="hi-IN">עבור כל
+	ה</span></font>-Chunks = <font face="Noto Sans Devanagari"><span lang="hi-IN">פחות
+	מ-0.50 ₪ חד-פעמי</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">כתיבות
+	</span></font>Batch <font face="Noto Sans Devanagari"><span lang="hi-IN">ל</span></font>-Firestore
+	= <font face="Noto Sans Devanagari"><span lang="hi-IN">פחות
+	מ-0.05 ₪</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">סה״כ
+	עלות </span></font><b>Onboarding </b><font face="Noto Sans Devanagari"><span lang="hi-IN">היסטורי
+	מלא לקוח: פחות מ-1.00 ₪</span></font><b>!</b><br/>
+<i>(</i><font face="Noto Sans Devanagari"><span lang="hi-IN">מכאן
+	נובעת ההצדקה המסחרית להעניק את האינדוקס
+	ההיסטורי בחינם ככלי סגירה במכירה</span></font><i>).</i></p></li>
+</ul>
+<hr/>
+
+<h2 class="western">5. <font face="Noto Sans Devanagari"><span lang="hi-IN">מדיניות
+שימוש הוגן, חריגות ו</span></font>-Rollover</h2>
+<ol>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">ללא
+	חסימת שירות פתאומית</span></font><b>:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">הגעה
+	לתקרת השאילתות החודשית אינה נועלת את
+	המערכת. הוועד/המזכירות מקבלים התראת
+	וואטסאפ שקטה ב-80% ניצול וב-100% ניצול,
+	והשאילתות הנוספות מחויבות לפי מחירון
+	החריגה של המדרגה</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">צבירת
+	שאילתות שלא נוצלו </span></font><b>(Rollover):</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">במסלולים
+	השנתיים, עד 20% מיתרת השאילתות שלא נוצלו
+	בחודש מסוים נצברות ומועברות לחודש
+	העוקב</span></font>.</p></li>
+	<li><p><font face="Noto Sans Devanagari"><span lang="hi-IN">שדרוג
+	מדרגה בזמן אמת</span></font><b>:</b><br/>
+<font face="Noto Sans Devanagari"><span lang="hi-IN">ארגון
+	שחווה תקופה עמוסה (למשל סביב אסיפת
+	בחירות או פרויקט שיפוץ גדול) יכול לשדרג
+	למדרגה הבאה בלחיצת כפתור בדשבורד, כאשר
+	ההפרש מחושב באופן יחסי </span></font>(Prorated).</p></li>
+</ol>
+<p><br/>
+<br/>
+
+</p>
+</body>
+</html>

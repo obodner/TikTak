@@ -18,6 +18,7 @@ import {
   sendWhatsAppTemplate,
   sendWhatsAppButtons
 } from "../shared/whatsappService";
+import { createInitialPhaseMetrics, pausePhaseTimer, TicketPhaseMetrics } from "../utils/slaEngine";
 
 /**
  * Helper to verify caller has SuperAdmin privileges ('role === super')
@@ -547,25 +548,50 @@ export async function handleForwardTicketToVendor(req: any, res: any) {
     const newCount = currentCount + 1;
     const resolvedVendorName = String(vendorName || '').trim() || vendorPhone;
     const outboundMessageId = apiResult?.messages?.[0]?.id || null;
+    const nowIso = new Date().toISOString();
 
     const newVendorEntry: Record<string, any> = {
+      dispatchId: randomUUID(),
       phone: vendorPhone,
       intlPhone: cleanPhone,
       name: resolvedVendorName,
       status: "ממתין לתשובה מהספק ...",
-      sentAt: new Date().toISOString(),
+      sentAt: nowIso,
       ...(outboundMessageId ? { whatsappMessageId: outboundMessageId } : {})
     };
 
+    // Keep separate entries per dispatch so every vendor attempt is tracked individually
     const existingVendors: any[] = Array.isArray(ticketData.vendors) ? ticketData.vendors : [];
-    const filteredVendors = existingVendors.filter((v: any) => v.phone !== vendorPhone && v.intlPhone !== cleanPhone);
-    const updatedVendors = [...filteredVendors, newVendorEntry];
+    const updatedVendors = [...existingVendors, newVendorEntry];
+
+    // Update Phase 2 (stop allocation timer) & Phase 3 (start vendor ack timer)
+    const pm: TicketPhaseMetrics = ticketData.phaseMetrics
+      ? JSON.parse(JSON.stringify(ticketData.phaseMetrics))
+      : createInitialPhaseMetrics(ticketData.createdAt || nowIso);
+
+    if (pm.p2?.currentStartedAt) {
+      pm.p2 = pausePhaseTimer(pm.p2, nowIso, true);
+    } else if (!pm.p2?.endedAt && ticketData.status === 'in-progress') {
+      const p2Start = pm.p2?.startedAt || ticketData.lastStatusChangeAt || ticketData.createdAt || nowIso;
+      pm.p2 = pausePhaseTimer({
+        startedAt: p2Start,
+        endedAt: null,
+        currentStartedAt: p2Start,
+        accumulatedMinutes: pm.p2?.accumulatedMinutes || 0
+      }, nowIso, true);
+    }
+
+    if (!pm.p3?.startedAt) {
+      pm.p3 = { startedAt: nowIso, endedAt: null, minutes: null };
+    }
 
     // 5. Update ticket document & Audit log
     await ticketRef.update({
       vendorForwardCount: newCount,
-      lastVendorForwardAt: new Date().toISOString(),
-      vendors: updatedVendors
+      lastVendorForwardAt: nowIso,
+      ...(ticketData.firstVendorForwardAt ? {} : { firstVendorForwardAt: nowIso }),
+      vendors: updatedVendors,
+      phaseMetrics: pm
     });
 
     await recordAuditLog({

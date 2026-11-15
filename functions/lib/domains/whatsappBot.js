@@ -44,6 +44,7 @@ const whatsappService_1 = require("../shared/whatsappService");
 const i18n_1 = require("../utils/i18n");
 const securityGuards_1 = require("../utils/securityGuards");
 const aiEngine_1 = require("../utils/aiEngine");
+const slaEngine_1 = require("../utils/slaEngine");
 function sanitizeInput(input) {
     if (!input)
         return "";
@@ -605,15 +606,17 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                 for (const docSnap of querySnapshot.docs) {
                                     const tData = docSnap.data();
                                     const vList = Array.isArray(tData.vendors) ? tData.vendors : [];
-                                    const vIndex = vList.findIndex((v) => v.phone === localPhone ||
-                                        v.rawPhone === localPhone ||
-                                        v.intlPhone === from ||
-                                        (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, '')) ||
-                                        (v.intlPhone && v.intlPhone.replace(/\D/g, '') === from.replace(/\D/g, '')));
-                                    if (vIndex !== -1) {
-                                        const vItem = vList[vIndex];
-                                        const sentAtMs = vItem.sentAt ? new Date(vItem.sentAt).getTime() : 0;
-                                        matches.push({ docSnap, tData, vIndex, vItem, sentAtMs });
+                                    for (let vIndex = 0; vIndex < vList.length; vIndex++) {
+                                        const v = vList[vIndex];
+                                        const isPhoneMatch = v.phone === localPhone ||
+                                            v.rawPhone === localPhone ||
+                                            v.intlPhone === from ||
+                                            (v.phone && v.phone.replace(/\D/g, '') === localPhone.replace(/\D/g, '')) ||
+                                            (v.intlPhone && v.intlPhone.replace(/\D/g, '') === from.replace(/\D/g, ''));
+                                        if (isPhoneMatch) {
+                                            const sentAtMs = v.sentAt ? new Date(v.sentAt).getTime() : 0;
+                                            matches.push({ docSnap, tData, vIndex, vItem: v, sentAtMs });
+                                        }
                                     }
                                 }
                                 let target = null;
@@ -685,6 +688,7 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                     const vList = [...tData.vendors];
                                     const now = new Date();
                                     const nowIso = now.toISOString();
+                                    const sentAtIso = vItem.sentAt || tData.lastVendorForwardAt || nowIso;
                                     const forwardDate = vItem.sentAt ? new Date(vItem.sentAt) : (tData.lastVendorForwardAt ? new Date(tData.lastVendorForwardAt) : null);
                                     const responseTimeMs = forwardDate ? Math.max(0, now.getTime() - forwardDate.getTime()) : null;
                                     const responseTimeSeconds = responseTimeMs !== null ? Math.round(responseTimeMs / 1000) : null;
@@ -696,17 +700,39 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                         executionTimeSeconds = Math.round(ackMs / 1000);
                                         executionTimeMinutes = Math.round(ackMs / (1000 * 60));
                                     }
+                                    else if (isDone) {
+                                        executionTimeSeconds = responseTimeSeconds;
+                                        executionTimeMinutes = responseTimeMinutes;
+                                    }
+                                    const pm = tData.phaseMetrics
+                                        ? JSON.parse(JSON.stringify(tData.phaseMetrics))
+                                        : (0, slaEngine_1.createInitialPhaseMetrics)(tData.createdAt || sentAtIso);
                                     if (isDone) {
+                                        const ackSkipped = !vItem.acknowledgedAt;
                                         vList[vIndex] = {
                                             ...vItem,
                                             status: 'בוצע',
                                             completedAt: nowIso,
                                             totalResolutionTimeSeconds: responseTimeSeconds,
                                             totalResolutionTimeMinutes: responseTimeMinutes,
+                                            ...(ackSkipped ? { responseTimeSeconds: 0, responseTimeMinutes: 0 } : {}),
                                             executionTimeSeconds,
                                             executionTimeMinutes,
                                             updatedAt: nowIso
                                         };
+                                        if (ackSkipped) {
+                                            pm.p3 = { startedAt: sentAtIso, endedAt: sentAtIso, minutes: 0 };
+                                            pm.p4 = { startedAt: sentAtIso, endedAt: nowIso, minutes: executionTimeMinutes };
+                                        }
+                                        else {
+                                            if (pm.p3?.minutes === null || pm.p3?.minutes === undefined) {
+                                                pm.p3 = { startedAt: sentAtIso, endedAt: vItem.acknowledgedAt, minutes: vItem.responseTimeMinutes ?? null };
+                                            }
+                                            pm.p4 = { startedAt: vItem.acknowledgedAt, endedAt: nowIso, minutes: executionTimeMinutes };
+                                        }
+                                        if (!['resolved', 'dismissed'].includes(String(tData.status || '').toLowerCase())) {
+                                            pm.p5 = (0, slaEngine_1.resumePhaseTimer)(pm.p5, nowIso);
+                                        }
                                     }
                                     else {
                                         vList[vIndex] = {
@@ -717,10 +743,13 @@ exports.whatsappWebhook = (0, https_1.onRequest)({ cors: true, secrets: ["WHATSA
                                             responseTimeMinutes,
                                             updatedAt: nowIso
                                         };
+                                        pm.p3 = { startedAt: sentAtIso, endedAt: nowIso, minutes: responseTimeMinutes };
+                                        pm.p4 = { startedAt: nowIso, endedAt: null, minutes: null };
                                     }
                                     await docSnap.ref.update({
                                         vendors: vList,
                                         lastVendorResponseAt: nowIso,
+                                        phaseMetrics: pm,
                                         ...(isDone ? { vendorCompletedAt: nowIso } : { vendorAcknowledgedAt: nowIso })
                                     });
                                     const pathParts = docSnap.ref.path.split('/');

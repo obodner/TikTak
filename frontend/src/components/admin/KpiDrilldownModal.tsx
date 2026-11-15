@@ -7,11 +7,21 @@ import {
   Eye
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { formatDurationMinutes } from '../../utils/slaEngine';
+
+export type DrilldownMetricType =
+  | 'mttr'
+  | 'first_touch'
+  | 'phase_1'
+  | 'phase_2'
+  | 'phase_3'
+  | 'phase_4'
+  | 'phase_5';
 
 export interface KpiDrilldownModalProps {
   isOpen: boolean;
   onClose: () => void;
-  type: 'mttr' | 'first_touch';
+  type: DrilldownMetricType;
   periodLabel: string;
   tickets: any[];
   isEn?: boolean;
@@ -34,9 +44,21 @@ export const KpiDrilldownModal: React.FC<KpiDrilldownModalProps> = ({
   if (!isOpen) return null;
 
   const isMttr = type === 'mttr';
+  const isPhase = type.startsWith('phase_');
+
+  const phaseTitles: Record<string, { he: string; en: string }> = {
+    phase_1: { he: 'שלב 1: פנייה חדשה ← בטיפול', en: 'Phase 1: New → In-Progress' },
+    phase_2: { he: 'שלב 2: בטיפול ← שיוך לספק', en: 'Phase 2: In-Progress → Sent to Vendor' },
+    phase_3: { he: 'שלב 3: שליחה לספק ← קבלת הודעה', en: 'Phase 3: Sent → Vendor Acknowledged' },
+    phase_4: { he: 'שלב 4: קבלת הודעה ← בוצע ע"י ספק', en: 'Phase 4: Vendor Ack → Completed' },
+    phase_5: { he: 'שלב 5: בוצע ע"י ספק ← סגירת פנייה', en: 'Phase 5: Vendor Done → Ticket Closed' }
+  };
+
   const title = isMttr
     ? (isEn ? 'Mean Time to Resolution (MTTR) Breakdown' : 'פירוט פניות למדד זמן סגירה ממוצע (MTTR)')
-    : (isEn ? 'First-Touch Response Breakdown' : 'פירוט פניות למדד זמן מענה ראשוני');
+    : isPhase
+      ? (isEn ? `${phaseTitles[type]?.en} Breakdown` : `פירוט פניות: ${phaseTitles[type]?.he}`)
+      : (isEn ? 'First-Touch Response Breakdown' : 'פירוט פניות למדד זמן מענה ראשוני');
 
   const subtitle = isEn
     ? `Detailed tickets contributing to the KPI calculation (${periodLabel})`
@@ -110,12 +132,18 @@ export const KpiDrilldownModal: React.FC<KpiDrilldownModalProps> = ({
                     <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase">
                       <th className="py-3 px-4 text-start">{isEn ? 'Ticket' : 'פנייה'}</th>
                       <th className="py-3 px-4 text-start">{isEn ? 'Summary & Location' : 'תיאור ומיקום'}</th>
-                      <th className="py-3 px-3 text-start">{isEn ? 'Created' : 'פתיחה'}</th>
                       <th className="py-3 px-3 text-start">
-                        {isMttr ? (isEn ? 'Resolved' : 'סגירה') : (isEn ? 'First Touch' : 'מענה ראשון')}
+                        {isPhase ? (isEn ? 'Phase Start' : 'תחילת שלב') : (isEn ? 'Created' : 'פתיחה')}
+                      </th>
+                      <th className="py-3 px-3 text-start">
+                        {isMttr
+                          ? (isEn ? 'Resolved' : 'סגירה')
+                          : isPhase
+                            ? (isEn ? 'Phase End' : 'סיום שלב')
+                            : (isEn ? 'First Touch' : 'מענה ראשון')}
                       </th>
                       <th className="py-3 px-4 text-center">
-                        {isMttr ? (isEn ? 'Working Days' : 'ימי עבודה') : (isEn ? 'Duration' : 'משך מענה')}
+                        {isMttr ? (isEn ? 'Working Days' : 'ימי עבודה') : (isEn ? 'Duration' : 'משך זמן')}
                       </th>
                       <th className="py-3 px-3 text-center">{isEn ? 'Action' : 'צפייה'}</th>
                     </tr>
@@ -130,6 +158,10 @@ export const KpiDrilldownModal: React.FC<KpiDrilldownModalProps> = ({
                         durationText = days === 0 
                           ? (isEn ? '0 (Immediate)' : '0 (מיידי)') 
                           : `${days.toFixed(1)} ${isEn ? 'days' : 'ימים'}`;
+                      } else if (isPhase) {
+                        durationText = t.phaseIsNa
+                          ? 'N/A'
+                          : formatDurationMinutes(t.phaseMinutes, isEn);
                       } else {
                         const mins = typeof t.responseMinutes === 'number' ? t.responseMinutes : 0;
                         durationText = mins < 60 
@@ -166,15 +198,32 @@ export const KpiDrilldownModal: React.FC<KpiDrilldownModalProps> = ({
                             )}
                           </td>
 
-                          {/* Created At */}
+                          {/* Created At / Phase Start */}
                           <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
-                            {formatDateStr(t.createdAt)}
+                            {isPhase ? formatDateStr(t.phaseStartedAt) : formatDateStr(t.createdAt)}
                           </td>
 
-                          {/* Resolved At / First Touch At */}
+                          {/* Resolved At / First Touch At / Phase End */}
                           <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
                             {isMttr ? (
                               formatDateStr(t.resolvedDate || t.resolvedAt || t.closedAt || t.updatedAt)
+                            ) : isPhase ? (
+                              <div>
+                                {t.phaseIsActive ? (
+                                  <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                    {isEn ? 'In Progress' : 'בתהליך'}
+                                  </span>
+                                ) : t.phaseIsNa ? (
+                                  <span className="text-slate-400">N/A</span>
+                                ) : (
+                                  formatDateStr(t.phaseEndedAt)
+                                )}
+                                {t.phaseVendorName && (
+                                  <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[140px]">
+                                    {t.phaseVendorName}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <div>
                                 <div>{formatDateStr(t.firstTouchTime)}</div>
@@ -192,7 +241,11 @@ export const KpiDrilldownModal: React.FC<KpiDrilldownModalProps> = ({
                             <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-black ${
                               isMttr
                                 ? days <= 2 ? 'bg-emerald-100 text-emerald-800' : days <= 5 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
-                                : 'bg-blue-100 text-blue-800'
+                                : isPhase && t.phaseIsNa
+                                  ? 'bg-slate-100 text-slate-500'
+                                  : isPhase && t.phaseIsActive
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-blue-100 text-blue-800'
                             }`}>
                               {durationText}
                             </span>

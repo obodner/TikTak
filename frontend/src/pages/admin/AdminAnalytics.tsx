@@ -37,10 +37,10 @@ import {
 } from 'recharts';
 import { format, subMonths, parseISO, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, eachMonthOfInterval, eachWeekOfInterval } from 'date-fns';
 import { he, enUS } from 'date-fns/locale';
-import { calculateWorkingDays, getSlaStatus } from '../../utils/slaEngine';
+import { calculateWorkingDays, getSlaStatus, computeTicketPhaseDurations, formatDurationMinutes, PhaseKey } from '../../utils/slaEngine';
 import { MonthYearRangePicker } from '../../components/admin/MonthYearRangePicker';
 import { HotspotNoticeModal, NoticeBannerData } from '../../components/admin/HotspotNoticeModal';
-import { KpiDrilldownModal } from '../../components/admin/KpiDrilldownModal';
+import { KpiDrilldownModal, DrilldownMetricType } from '../../components/admin/KpiDrilldownModal';
 import { TicketDetailsModal } from '../../components/admin/TicketDetailsModal';
 import { generateServiceInsights } from '../../utils/serviceInsightsEngine';
 import heJson from '../../locales/he.json';
@@ -102,7 +102,7 @@ export default function AdminAnalytics() {
   const [activeBanner, setActiveBanner] = useState<NoticeBannerData | null>(null);
 
   // KPI Drilldown Inspection State
-  const [drilldownType, setDrilldownType] = useState<'mttr' | 'first_touch' | null>(null);
+  const [drilldownType, setDrilldownType] = useState<DrilldownMetricType | null>(null);
   const [selectedTicketForDetails, setSelectedTicketForDetails] = useState<any | null>(null);
 
   useEffect(() => {
@@ -356,6 +356,58 @@ export default function AdminAnalytics() {
       tickets: detailedTickets
     };
   }, [rangeTickets, dict, isEn]);
+
+  // 3b. 5-Phase Lifecycle Averages & Per-Ticket Breakdown (includes all tickets in period)
+  const phaseSlaMetrics = useMemo(() => {
+    const now = new Date();
+    const keys: PhaseKey[] = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    const accum: Record<PhaseKey, { totalMinutes: number; validCount: number; tickets: any[] }> = {
+      p1: { totalMinutes: 0, validCount: 0, tickets: [] },
+      p2: { totalMinutes: 0, validCount: 0, tickets: [] },
+      p3: { totalMinutes: 0, validCount: 0, tickets: [] },
+      p4: { totalMinutes: 0, validCount: 0, tickets: [] },
+      p5: { totalMinutes: 0, validCount: 0, tickets: [] }
+    };
+
+    rangeTickets.forEach(t => {
+      const durations = computeTicketPhaseDurations(t, now);
+      keys.forEach(k => {
+        const d = durations[k];
+        if (!d.isNa && d.minutes !== null) {
+          accum[k].totalMinutes += d.minutes;
+          accum[k].validCount += 1;
+        }
+        accum[k].tickets.push({
+          ...t,
+          phaseStartedAt: d.startedAt,
+          phaseEndedAt: d.endedAt,
+          phaseMinutes: d.minutes,
+          phaseIsActive: d.isActive,
+          phaseIsNa: d.isNa,
+          phaseVendorName: d.vendorName
+        });
+      });
+    });
+
+    const buildPhaseResult = (k: PhaseKey) => {
+      const { totalMinutes, validCount, tickets: list } = accum[k];
+      const avgMinutes = validCount > 0 ? totalMinutes / validCount : null;
+      return {
+        avgMinutes,
+        formatted: avgMinutes !== null ? formatDurationMinutes(avgMinutes, isEn) : 'N/A',
+        validCount,
+        tickets: list
+      };
+    };
+
+    return {
+      p1: buildPhaseResult('p1'),
+      p2: buildPhaseResult('p2'),
+      p3: buildPhaseResult('p3'),
+      p4: buildPhaseResult('p4'),
+      p5: buildPhaseResult('p5')
+    };
+  }, [rangeTickets, isEn]);
 
   // 4. TOP KPI: Period Quota Consumption (aligned with active time filter)
   const quotaMetrics = useMemo(() => {
@@ -1199,6 +1251,105 @@ export default function AdminAnalytics() {
     );
   })()}
 
+      {/* 5-Phase Ticket Lifecycle SLA Averages */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 md:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <Clock size={18} className="text-blue-600" />
+              <span>{isEn ? 'Ticket Lifecycle Phase Averages' : 'זמן ממוצע לפי שלבי טיפול בפנייה'}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isEn
+                ? 'Average duration across all tickets per lifecycle phase (click any phase for per-ticket breakdown)'
+                : 'זמן ממוצע בכל שלב של מחזור חיי הפנייה (לחץ על כל שלב לפירוט מלא לפי פנייה)'}
+            </p>
+          </div>
+          {!(dateRange === 'current_month' || dateRange === 'last_3_months') && (
+            <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+              {isEn ? 'Drilldown available in 1M / 3M view' : 'פירוט פניות זמין בתצוגת חודש / 3 חודשים'}
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {([
+            {
+              key: 'p1' as PhaseKey,
+              drilldown: 'phase_1' as DrilldownMetricType,
+              step: '1',
+              title: isEn ? 'New → In-Progress' : 'חדש ← בטיפול',
+              accent: 'blue'
+            },
+            {
+              key: 'p2' as PhaseKey,
+              drilldown: 'phase_2' as DrilldownMetricType,
+              step: '2',
+              title: isEn ? 'In-Progress → Vendor' : 'בטיפול ← שליחה לספק',
+              accent: 'indigo'
+            },
+            {
+              key: 'p3' as PhaseKey,
+              drilldown: 'phase_3' as DrilldownMetricType,
+              step: '3',
+              title: isEn ? 'Sent → Vendor Ack' : 'שליחה ← קבלת הודעה',
+              accent: 'amber'
+            },
+            {
+              key: 'p4' as PhaseKey,
+              drilldown: 'phase_4' as DrilldownMetricType,
+              step: '4',
+              title: isEn ? 'Ack → Vendor Done' : 'קבלת הודעה ← בוצע',
+              accent: 'emerald'
+            },
+            {
+              key: 'p5' as PhaseKey,
+              drilldown: 'phase_5' as DrilldownMetricType,
+              step: '5',
+              title: isEn ? 'Vendor Done → Closed' : 'בוצע ← סגירת פנייה',
+              accent: 'slate'
+            }
+          ]).map((phase) => {
+            const metric = phaseSlaMetrics[phase.key];
+            const clickable = (dateRange === 'current_month' || dateRange === 'last_3_months') && metric.tickets.length > 0;
+            return (
+              <div
+                key={phase.key}
+                onClick={() => clickable && setDrilldownType(phase.drilldown)}
+                className={`rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 flex flex-col justify-between transition-all ${
+                  clickable
+                    ? 'hover:bg-white hover:border-blue-300 hover:shadow-md cursor-pointer active:scale-98 group'
+                    : ''
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-900 text-white text-[10px] font-black shrink-0">
+                      {phase.step}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      {metric.validCount} {isEn ? 'tickets' : 'פניות'}
+                    </span>
+                  </div>
+                  <div className="text-xs font-extrabold text-slate-700 mb-1.5 leading-snug">
+                    {phase.title}
+                  </div>
+                  <div className="text-lg font-black text-slate-900">
+                    {metric.formatted}
+                  </div>
+                </div>
+                {clickable && (
+                  <div className="flex items-center gap-1 text-[11px] font-bold text-blue-600 mt-3 pt-2 border-t border-slate-200/70">
+                    <Eye size={12} className="shrink-0" />
+                    <span>{dict.kpi_click_inspect}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ─────────────────────────────────────────────────────────────
           SUB-TABS NAVIGATION BAR (Option A - Categorized Views)
       ───────────────────────────────────────────────────────────── */}
@@ -1991,10 +2142,26 @@ export default function AdminAnalytics() {
         onClose={() => setDrilldownType(null)}
         type={drilldownType || 'mttr'}
         periodLabel={dateRange === 'current_month' ? (isEn ? 'Current Month' : 'חודש נוכחי') : (isEn ? 'Last 3 Months' : '3 חודשים אחרונים')}
-        tickets={drilldownType === 'mttr' ? mttrMetrics.tickets : firstTouchMetrics.tickets}
+        tickets={
+          drilldownType === 'mttr'
+            ? mttrMetrics.tickets
+            : drilldownType === 'first_touch'
+              ? firstTouchMetrics.tickets
+              : drilldownType?.startsWith('phase_')
+                ? phaseSlaMetrics[`p${drilldownType.split('_')[1]}` as PhaseKey].tickets
+                : []
+        }
         isEn={isEn}
         onSelectTicket={(ticket) => setSelectedTicketForDetails(ticket)}
-        avgValueFormatted={drilldownType === 'mttr' ? (mttrMetrics.formatted || mttrMetrics.text) : firstTouchMetrics.formatted}
+        avgValueFormatted={
+          drilldownType === 'mttr'
+            ? (mttrMetrics.formatted || mttrMetrics.text)
+            : drilldownType === 'first_touch'
+              ? firstTouchMetrics.formatted
+              : drilldownType?.startsWith('phase_')
+                ? phaseSlaMetrics[`p${drilldownType.split('_')[1]}` as PhaseKey].formatted
+                : undefined
+        }
         totalWorkingDays={drilldownType === 'mttr' ? mttrMetrics.totalWorkingDays : undefined}
       />
 

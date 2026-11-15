@@ -56,3 +56,88 @@ export function getSlaStatus(days: number): 'none' | 'stale-2' | 'stale-5' | 'st
   if (days >= 2) return 'stale-2';
   return 'none';
 }
+
+export interface PhaseTimer {
+  startedAt: string | null;
+  endedAt: string | null;
+  currentStartedAt: string | null;
+  accumulatedMinutes: number;
+}
+
+export interface SimplePhaseRecord {
+  startedAt: string | null;
+  endedAt: string | null;
+  minutes: number | null;
+}
+
+export interface TicketPhaseMetrics {
+  p1: PhaseTimer; // New (open) -> In-Progress
+  p2: PhaseTimer; // In-Progress -> Sent to Vendor
+  p3: SimplePhaseRecord; // Sent to Vendor -> Vendor Ack
+  p4: SimplePhaseRecord; // Vendor Ack -> Vendor Complete
+  p5: PhaseTimer; // Vendor Complete -> Ticket Closed
+}
+
+/**
+ * Computes elapsed non-negative minutes between two ISO timestamps.
+ */
+export function diffMinutes(startIso: string, endIso: string): number {
+  const startMs = new Date(startIso).getTime();
+  const endMs = new Date(endIso).getTime();
+  if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) return 0;
+  return Math.round((endMs - startMs) / (1000 * 60));
+}
+
+export function emptyPhaseTimer(): PhaseTimer {
+  return {
+    startedAt: null,
+    endedAt: null,
+    currentStartedAt: null,
+    accumulatedMinutes: 0
+  };
+}
+
+export function createInitialPhaseMetrics(createdAtIso: string): TicketPhaseMetrics {
+  return {
+    p1: {
+      startedAt: createdAtIso,
+      endedAt: null,
+      currentStartedAt: createdAtIso,
+      accumulatedMinutes: 0
+    },
+    p2: emptyPhaseTimer(),
+    p3: { startedAt: null, endedAt: null, minutes: null },
+    p4: { startedAt: null, endedAt: null, minutes: null },
+    p5: emptyPhaseTimer()
+  };
+}
+
+export function pausePhaseTimer(timer: PhaseTimer | undefined, nowIso: string, markEnded = true): PhaseTimer {
+  const base: PhaseTimer = timer
+    ? { ...timer }
+    : emptyPhaseTimer();
+
+  if (base.currentStartedAt) {
+    base.accumulatedMinutes = (base.accumulatedMinutes || 0) + diffMinutes(base.currentStartedAt, nowIso);
+    base.currentStartedAt = null;
+  }
+  if (markEnded) {
+    base.endedAt = nowIso;
+  }
+  return base;
+}
+
+export function resumePhaseTimer(timer: PhaseTimer | undefined, nowIso: string): PhaseTimer {
+  const base: PhaseTimer = timer
+    ? { ...timer }
+    : emptyPhaseTimer();
+
+  if (!base.startedAt) {
+    base.startedAt = nowIso;
+  }
+  if (!base.currentStartedAt) {
+    base.currentStartedAt = nowIso;
+  }
+  base.endedAt = null;
+  return base;
+}
