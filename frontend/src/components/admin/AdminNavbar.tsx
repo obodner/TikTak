@@ -197,24 +197,13 @@ export function AdminNavbar({
   return (
     <>
       <header className="md:hidden bg-slate-900 text-white p-3 sticky top-0 z-50 shadow-md border-b border-slate-800" dir={isEn ? 'ltr' : 'rtl'}>
-        <div className="max-w-7xl mx-auto flex justify-between items-center px-2">
-          {/* Right/Start Section: Logo & Building Switcher */}
-          <div className="flex items-center gap-2 md:gap-4">
-            <Link 
-              to={`/admin/${tenantId}/dashboard`}
-              className="flex items-center justify-center transition-transform hover:scale-105 shrink-0"
-            >
-              <img
-                src="/logo_transparent.png"
-                alt="TikTak"
-                className="h-10 md:h-16 w-auto object-contain filter drop-shadow-[0_0_1px_rgba(255,255,255,0.5)]"
-              />
-            </Link>
-
+        <div className="max-w-7xl mx-auto flex justify-between items-center gap-2 px-1">
+          {/* Start Section: Customer-First Branding (Customer Logo + Name/Switcher) */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
             {showTenantLogo && (
               <Link
                 to={`/admin/${tenantId}/dashboard`}
-                className="h-8 max-w-[64px] bg-white/95 rounded-lg px-1.5 py-0.5 flex items-center justify-center overflow-hidden shrink-0 border border-slate-700/60 shadow-sm"
+                className="h-9 max-w-[76px] bg-white rounded-lg px-2 py-1 flex items-center justify-center overflow-hidden shrink-0 border border-slate-700/60 shadow-sm"
                 title={tenantName || tenantId}
                 data-testid="navbar-tenant-logo"
               >
@@ -227,15 +216,14 @@ export function AdminNavbar({
               </Link>
             )}
 
-            <span className="text-slate-700 font-light text-xl md:text-2xl hidden sm:inline">|</span>
-
             {/* Tenant Selector or Name */}
             {myTenants.length > 1 ? (
-              <div className="relative">
+              <div className="relative min-w-0 flex-1 max-w-[200px]">
                 <select
                   value={tenantId}
                   onChange={(e) => handleTenantChange(e.target.value)}
-                  className="bg-slate-800 text-slate-200 text-xs md:text-base font-semibold py-1.5 pl-8 pr-3 md:px-4 md:pl-10 rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none cursor-pointer hover:bg-slate-750 transition-colors truncate max-w-[130px] sm:max-w-[200px] md:max-w-none"
+                  className="w-full bg-slate-800 text-white text-xs font-bold py-1.5 rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none cursor-pointer hover:bg-slate-750 transition-colors truncate"
+                  style={{ paddingInlineStart: '0.625rem', paddingInlineEnd: '1.75rem' }}
                   dir={isEn ? "ltr" : "rtl"}
                 >
                   {myTenants.map(t => (
@@ -246,13 +234,17 @@ export function AdminNavbar({
                 </select>
                 <ChevronDown 
                   className={`absolute top-1/2 -translate-y-1/2 ${isEn ? 'right-2' : 'left-2'} text-slate-400 pointer-events-none`} 
-                  size={16} 
+                  size={15} 
                 />
               </div>
             ) : (
-              <span className="text-xs md:text-base text-slate-300 font-semibold truncate max-w-[120px] sm:max-w-[200px] md:max-w-none">
+              <Link
+                to={`/admin/${tenantId}/dashboard`}
+                className="text-sm font-extrabold text-white tracking-tight truncate min-w-0"
+                title={tenantName || tenantId}
+              >
                 {tenantName || tenantId}
-              </span>
+              </Link>
             )}
           </div>
 
@@ -350,7 +342,7 @@ export function AdminNavbar({
           </div>
 
           {/* Mobile Hamburger & Quick Action Buttons */}
-          <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
+          <div className="flex md:hidden items-center gap-1 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsNotificationsOpen(true)}
@@ -673,6 +665,23 @@ export function AdminNavbar({
                 <LogOut size={18} />
                 <span>{isEn ? 'Logout' : 'התנתק'}</span>
               </button>
+
+              {/* Subtle Powered by TikTak Credit */}
+              <div
+                className="pt-2 border-t border-slate-800/70 flex items-center justify-center gap-2 opacity-90"
+                dir="ltr"
+                title="Powered by: TikTak"
+                data-testid="navbar-powered-by"
+              >
+                <span className="text-[11px] font-medium text-slate-400 tracking-wide shrink-0">
+                  Powered by:
+                </span>
+                <img
+                  src="/logo_transparent.png"
+                  alt="TikTak"
+                  className="h-10 w-auto object-contain drop-shadow"
+                />
+              </div>
             </div>
           </div>
         </div>
