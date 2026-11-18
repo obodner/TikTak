@@ -30,6 +30,7 @@ import { NotificationItem } from '../../utils/notificationsEngine';
 interface AdminNavbarProps {
   tenantId: string;
   tenantName?: string;
+  tenantLogoUrl?: string;
   currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics' | 'quotes';
   myTenants?: { id: string; name?: string }[];
   isFleet?: boolean;
@@ -48,6 +49,7 @@ interface AdminNavbarProps {
 export function AdminNavbar({
   tenantId,
   tenantName,
+  tenantLogoUrl,
   currentPage,
   myTenants = [],
   isFleet = false,
@@ -68,6 +70,13 @@ export function AdminNavbar({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [isSettingsAccordionOpen, setIsSettingsAccordionOpen] = useState(currentPage === 'settings');
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [tenantLogoUrl]);
+
+  const showTenantLogo = Boolean(tenantLogoUrl && !logoError);
 
   const isQuotesActive = currentPage === 'quotes' || location.pathname.includes('/quotes');
   const [isQuotesAccordionOpen, setIsQuotesAccordionOpen] = useState(isQuotesActive);
@@ -201,6 +210,22 @@ export function AdminNavbar({
                 className="h-10 md:h-16 w-auto object-contain filter drop-shadow-[0_0_1px_rgba(255,255,255,0.5)]"
               />
             </Link>
+
+            {showTenantLogo && (
+              <Link
+                to={`/admin/${tenantId}/dashboard`}
+                className="h-8 max-w-[64px] bg-white/95 rounded-lg px-1.5 py-0.5 flex items-center justify-center overflow-hidden shrink-0 border border-slate-700/60 shadow-sm"
+                title={tenantName || tenantId}
+                data-testid="navbar-tenant-logo"
+              >
+                <img
+                  src={tenantLogoUrl}
+                  alt={tenantName || 'Customer Logo'}
+                  onError={() => setLogoError(true)}
+                  className="max-h-full max-w-full w-auto h-auto object-contain"
+                />
+              </Link>
+            )}
 
             <span className="text-slate-700 font-light text-xl md:text-2xl hidden sm:inline">|</span>
 

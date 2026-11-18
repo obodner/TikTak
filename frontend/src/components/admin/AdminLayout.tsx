@@ -155,6 +155,22 @@ export function AdminLayout() {
     };
   }, [user, tenantId]);
 
+  // Real-time listener for tenant config (e.g. logoUrl, name, language updates) - only run if authorized
+  useEffect(() => {
+    if (!user || !tenantId || isUnauthorized || loading) return;
+
+    const tenantRef = doc(db, "tenants", tenantId);
+    const unsubscribe = onSnapshot(tenantRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setTenantConfig(snapshot.data());
+      }
+    }, (err) => {
+      console.error("Error listening to tenant config:", err);
+    });
+
+    return () => unsubscribe();
+  }, [user, tenantId, isUnauthorized, loading]);
+
   // Real-time listener for ticket counters - only run if authorized
   useEffect(() => {
     if (!user || !tenantId || isUnauthorized || loading) return;
@@ -379,6 +395,7 @@ export function AdminLayout() {
       <AdminNavbar
         tenantId={tenantId as string}
         tenantName={tenantConfig?.name}
+        tenantLogoUrl={tenantConfig?.logoUrl}
         currentPage={currentPage}
         myTenants={myTenants}
         isFleet={Boolean(tenantConfig?.isPoolMaster || tenantConfig?.usesParentPool)}
@@ -399,6 +416,7 @@ export function AdminLayout() {
         <AdminSidebar
           tenantId={tenantId as string}
           tenantName={tenantConfig?.name}
+          tenantLogoUrl={tenantConfig?.logoUrl}
           currentPage={currentPage}
           myTenants={myTenants}
           isFleet={Boolean(tenantConfig?.isPoolMaster || tenantConfig?.usesParentPool)}

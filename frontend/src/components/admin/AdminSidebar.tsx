@@ -32,6 +32,7 @@ import { NotificationItem } from '../../utils/notificationsEngine';
 export interface AdminSidebarProps {
   tenantId: string;
   tenantName?: string;
+  tenantLogoUrl?: string;
   currentPage: 'dashboard' | 'backlog' | 'settings' | 'fleet' | 'analytics' | 'quotes';
   myTenants?: { id: string; name?: string }[];
   isFleet?: boolean;
@@ -50,6 +51,7 @@ export interface AdminSidebarProps {
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   tenantId,
   tenantName,
+  tenantLogoUrl,
   currentPage,
   myTenants = [],
   isFleet = false,
@@ -90,6 +92,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   // Modals
   const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
   const [isContactOpen, setIsContactOpen] = useState<boolean>(false);
+  const [logoError, setLogoError] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [tenantLogoUrl]);
+
+  const showTenantLogo = Boolean(tenantLogoUrl && !logoError);
 
   // Sync accordion if user navigates to settings or quotes
   useEffect(() => {
@@ -206,20 +215,32 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         data-testid="admin-sidebar"
         data-collapsed={isCollapsed}
       >
-        {/* Header Section */}
-        <div className="p-3.5 border-b border-slate-800 flex flex-col justify-center min-h-[82px]">
+        {/* Header Section: Customer-First Branding */}
+        <div className="p-3 border-b border-slate-800 flex flex-col justify-center">
           {isCollapsed ? (
             <div className="flex flex-col items-center gap-2.5">
               <Link
                 to={`/admin/${tenantId}/dashboard`}
-                className="flex items-center justify-center p-1 rounded-lg hover:bg-slate-800 transition-colors"
-                title="TikTak"
+                className={`w-11 h-11 rounded-xl p-1.5 flex items-center justify-center overflow-hidden shadow-sm border transition-transform hover:scale-105 ${
+                  showTenantLogo
+                    ? 'bg-white border-slate-700/80'
+                    : 'bg-slate-800 border-slate-700/80 text-white'
+                }`}
+                title={tenantName || tenantId}
+                data-testid="sidebar-tenant-avatar-collapsed"
               >
-                <img
-                  src="/logo_transparent.png"
-                  alt="TikTak"
-                  className="h-9 w-auto object-contain drop-shadow"
-                />
+                {showTenantLogo ? (
+                  <img
+                    src={tenantLogoUrl}
+                    alt={tenantName || 'Customer Logo'}
+                    onError={() => setLogoError(true)}
+                    className="max-h-full max-w-full w-auto h-auto object-contain"
+                  />
+                ) : (
+                  <span className="text-base font-extrabold text-white">
+                    {(tenantName || tenantId || '?').charAt(0).toUpperCase()}
+                  </span>
+                )}
               </Link>
               <button
                 onClick={handleToggleCollapse}
@@ -232,39 +253,44 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {/* Top Row: Larger TikTak Logo & Collapse Button */}
-              <div className="flex items-center justify-between">
+            <div
+              className="relative w-full bg-slate-800/70 text-white rounded-xl p-3 shadow-sm border border-slate-700/80 flex flex-col items-center text-center gap-2.5"
+              data-testid="sidebar-tenant-card"
+            >
+              {/* Collapse button pinned to top-end corner so logo & name stay centered */}
+              <button
+                onClick={handleToggleCollapse}
+                className={`absolute top-2 ${isEn ? 'right-2' : 'left-2'} p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/70 rounded-lg transition-colors z-10`}
+                title={isEn ? "Collapse menu" : "כווץ תפריט"}
+                aria-label={isEn ? "Collapse menu" : "כווץ תפריט"}
+                data-testid="sidebar-toggle-collapse"
+              >
+                <CollapseIcon size={17} />
+              </button>
+
+              {showTenantLogo && (
                 <Link
                   to={`/admin/${tenantId}/dashboard`}
-                  className="shrink-0 transition-transform hover:scale-105 flex items-center"
+                  className="inline-flex items-center justify-center bg-white rounded-xl px-3 py-2 shadow-sm border border-slate-700/50 max-w-[172px] overflow-hidden hover:opacity-95 transition-opacity"
+                  title={tenantName || tenantId}
                 >
                   <img
-                    src="/logo_transparent.png"
-                    alt="TikTak"
-                    className="h-11 w-auto object-contain drop-shadow"
+                    src={tenantLogoUrl}
+                    alt={tenantName || 'Customer Logo'}
+                    onError={() => setLogoError(true)}
+                    className="h-14 max-w-full w-auto object-contain"
+                    data-testid="sidebar-tenant-logo"
                   />
                 </Link>
+              )}
 
-                {/* Collapse button inside header */}
-                <button
-                  onClick={handleToggleCollapse}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors shrink-0"
-                  title={isEn ? "Collapse menu" : "כווץ תפריט"}
-                  aria-label={isEn ? "Collapse menu" : "כווץ תפריט"}
-                  data-testid="sidebar-toggle-collapse"
-                >
-                  <CollapseIcon size={18} />
-                </button>
-              </div>
-
-              {/* Bottom Row: Customer / Building Name underneath logo */}
+              {/* Customer / Building Name or Switcher */}
               {myTenants.length > 1 ? (
-                <div className="relative w-full">
+                <div className={`relative w-full ${!showTenantLogo ? (isEn ? 'pr-8' : 'pl-8') : ''}`}>
                   <select
                     value={tenantId}
                     onChange={(e) => handleTenantChange(e.target.value)}
-                    className="w-full bg-slate-800 text-slate-200 text-xs font-semibold py-1.5 px-2.5 rounded-lg border border-slate-700/80 focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none cursor-pointer hover:bg-slate-750 transition-colors truncate"
+                    className="w-full bg-slate-900/70 text-white text-xs font-bold py-1.5 px-2.5 rounded-lg border border-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none cursor-pointer hover:bg-slate-900 transition-colors truncate text-center"
                     style={{ paddingInlineEnd: '1.75rem' }}
                     dir={isEn ? "ltr" : "rtl"}
                   >
@@ -280,15 +306,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   />
                 </div>
               ) : (
-                <div
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/60 border border-slate-750 text-slate-300 min-w-0"
+                <Link
+                  to={`/admin/${tenantId}/dashboard`}
+                  className={`text-base font-extrabold text-white tracking-tight truncate leading-tight w-full text-center ${!showTenantLogo ? 'px-7 py-0.5' : ''}`}
                   title={tenantName || tenantId}
                 >
-                  <Building2 size={13} className="text-slate-400 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-200 truncate">
-                    {tenantName || tenantId}
-                  </span>
-                </div>
+                  {tenantName || tenantId}
+                </Link>
               )}
             </div>
           )}
@@ -700,7 +724,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         </nav>
 
         {/* Footer Section (Pinned Bottom) */}
-        <div className="p-3 border-t border-slate-800 bg-slate-950/40">
+        <div className="p-3 border-t border-slate-800 bg-slate-950/40 space-y-2.5">
           <button
             onClick={handleLogout}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors border border-transparent hover:border-red-500/20 ${isCollapsed ? 'justify-center px-2' : ''
@@ -713,6 +737,25 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <span className="truncate">{isEn ? 'Logout' : 'התנתק'}</span>
             )}
           </button>
+
+          {/* Subtle Powered by TikTak Credit */}
+          <div
+            className="pt-2 border-t border-slate-800/70 flex items-center justify-center gap-2 opacity-90 hover:opacity-100 transition-opacity"
+            dir="ltr"
+            title="Powered by: TikTak"
+            data-testid="sidebar-powered-by"
+          >
+            {!isCollapsed && (
+              <span className="text-[11px] font-medium text-slate-400 tracking-wide shrink-0">
+                Powered by:
+              </span>
+            )}
+            <img
+              src="/logo_transparent.png"
+              alt="TikTak"
+              className={`${isCollapsed ? 'h-9' : 'h-10'} w-auto object-contain drop-shadow`}
+            />
+          </div>
         </div>
       </aside>
 
