@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { CreditCard, AlertTriangle, Clock, CheckCircle2, RotateCcw, AlertCircle, Layers } from 'lucide-react';
+import { CreditCard, AlertTriangle, Clock, CheckCircle2, RotateCcw, AlertCircle, Layers, ChevronDown } from 'lucide-react';
 
 interface QuotaProgressWidgetProps {
   tenantData: any;
@@ -15,6 +15,7 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
   const isEn = i18n.language === 'en';
 
   const [masterTenantData, setMasterTenantData] = useState<any>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // If this tenant uses a parent pool, fetch the master pool host tenant data
   useEffect(() => {
@@ -81,59 +82,102 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
 
   return (
     <div
-      className={`bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 transition-all duration-200 hover:shadow-md flex flex-col justify-between ${
+      className={`bg-white rounded-xl shadow-sm border border-slate-200 ${
+        isExpanded ? 'p-4 sm:p-5' : 'px-4 py-3'
+      } transition-all duration-200 hover:shadow-md flex flex-col justify-between ${
         className !== undefined ? className : 'mb-6'
       }`}
     >
       <div>
         {/* Header Row */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-              <CreditCard className="w-5 h-5" />
+        <div
+          onClick={() => setIsExpanded(prev => !prev)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsExpanded(prev => !prev);
+            }
+          }}
+          aria-expanded={isExpanded}
+          className={`flex items-center justify-between gap-2 cursor-pointer select-none ${
+            isExpanded ? 'flex-wrap gap-3 mb-3' : 'mb-2'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`${isExpanded ? 'p-2' : 'p-1.5'} rounded-lg bg-blue-50 text-blue-600 shrink-0`}>
+              <CreditCard className={isExpanded ? 'w-5 h-5' : 'w-4 h-4'} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 tracking-wider">
+                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 tracking-wider shrink-0">
                   TikTak
                 </span>
-                <span className="font-bold text-slate-900 text-base">
+                <span className={`font-bold text-slate-900 truncate ${isExpanded ? 'text-base' : 'text-sm'}`}>
                   {tierNames[tier] || tier.toUpperCase()}
                 </span>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
-                  {monthlyQuota} {t('Reporting.send', 'פניות')}/{isEn ? 'mo' : 'חודש'}
-                </span>
-                {isPooled && (
-                  <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
-                    <Layers className="w-3 h-3" />
-                    {isEn ? 'Shared Fleet Pool' : 'מאגר משותף'}
-                  </span>
+                {isExpanded && (
+                  <>
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                      {monthlyQuota} {t('Reporting.send', 'פניות')}/{isEn ? 'mo' : 'חודש'}
+                    </span>
+                    {isPooled && (
+                      <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
+                        <Layers className="w-3 h-3" />
+                        {isEn ? 'Shared Fleet Pool' : 'מאגר משותף'}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {t('Quota.monthlyQuota', 'מכסה חודשית')}: <strong className="text-slate-700">{monthlyQuota}</strong>
-              {rolloverTickets > 0 && (
-                <span className="ms-1.5 text-emerald-600 font-medium">
-                  (+{rolloverTickets} {t('Quota.rolloverTickets', 'פניות צבורות')})
-                </span>
+              {isExpanded && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {t('Quota.monthlyQuota', 'מכסה חודשית')}: <strong className="text-slate-700">{monthlyQuota}</strong>
+                  {rolloverTickets > 0 && (
+                    <span className="ms-1.5 text-emerald-600 font-medium">
+                      (+{rolloverTickets} {t('Quota.rolloverTickets', 'פניות צבורות')})
+                    </span>
+                  )}
+                </p>
               )}
-            </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!isExpanded && (
+              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                <strong className="text-slate-900">{netUsedTickets}</strong> / {effectiveQuota} ({usagePercentage}%)
+              </span>
+            )}
+
+            {isExpanded && (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <span>
+                  {daysRemaining === 1
+                    ? t('Quota.daysRemainingOne', 'נותר יום אחד למחזור החיוב')
+                    : t('Quota.daysRemaining', 'נותרו {{days}} ימים למחזור החיוב', { days: daysRemaining })}
+                </span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(prev => !prev);
+              }}
+              aria-label={isExpanded ? (isEn ? 'Collapse' : 'כווץ') : (isEn ? 'Expand' : 'הרחב')}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
           </div>
         </div>
 
-        {/* Days remaining badge */}
-        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">
-          <Clock className="w-4 h-4 text-slate-500" />
-          <span>
-            {daysRemaining === 1
-              ? t('Quota.daysRemainingOne', 'נותר יום אחד למחזור החיוב')
-              : t('Quota.daysRemaining', 'נותרו {{days}} ימים למחזור החיוב', { days: daysRemaining })}
-          </span>
-        </div>
-      </div>
-
         {/* Progress Bar Container */}
-        <div className="relative w-full bg-slate-100 rounded-full h-3.5 overflow-hidden mb-3">
+        <div className={`relative w-full bg-slate-100 rounded-full overflow-hidden ${isExpanded ? 'h-3.5 mb-3' : 'h-2.5'}`}>
           <div
             className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor()}`}
             style={{ width: `${usagePercentage}%` }}
@@ -141,8 +185,9 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
         </div>
       </div>
 
-      {/* Footer Stats Row */}
-      <div className="flex flex-wrap items-center justify-between text-xs gap-2 pt-1">
+      {/* Footer Stats Row (Expanded only) */}
+      {isExpanded && (
+        <div className="flex flex-wrap items-center justify-between text-xs gap-2 pt-1">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-semibold text-slate-700">
             {t('Quota.netUsed', 'ניצול בפועל (לחיוב)')}: <strong className="text-slate-900">{netUsedTickets}</strong> / {effectiveQuota} ({usagePercentage}%)
@@ -197,6 +242,7 @@ export const QuotaProgressWidget: React.FC<QuotaProgressWidgetProps> = ({ tenant
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

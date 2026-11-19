@@ -1949,7 +1949,7 @@ export default function ActiveQuotesPage() {
                                               <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-amber-300 text-amber-950 text-xs font-black shadow-2xs">
                                                 <Star size={13} className="fill-amber-400 text-amber-500" />
                                                 <span>דירוג: {rfq.rating.stars}/5</span>
-                                                {rfq.rating.wouldRehire && <span className="text-emerald-700 text-[11px] mr-1">👍 יזמין שוב</span>}
+                                                {rfq.rating.wouldRehire && <span className="text-emerald-700 text-[11px] mr-1">👍 אזמין שוב</span>}
                                                 <button
                                                   type="button"
                                                   onClick={() => handleOpenRatingModal(rfq)}
@@ -2095,27 +2095,29 @@ export default function ActiveQuotesPage() {
                                             <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
                                               {/* Discussion / Coordination Button */}
                                               <div className="flex items-center gap-2 flex-wrap">
-                                                <a
-                                                  href={buildVendorDiscussionWhatsAppUrl(rfq, vendor, quote)}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors ${rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId
-                                                      ? 'border-emerald-400 bg-emerald-100/90 hover:bg-emerald-200 text-emerald-950 font-black shadow-sm'
-                                                      : 'border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 text-emerald-800'
-                                                    }`}
-                                                  title={
-                                                    rfq.status === 'awarded'
-                                                      ? (rfq.awardedVendorId === vendor.vendorId ? 'תיאום מועד ביצוע עם הקבלן הזוכה' : 'שיחה עם הקבלן ב-WhatsApp')
-                                                      : 'פתח שיחה עם הקבלן ב-WhatsApp לבירור פרטי ההצעה'
-                                                  }
-                                                >
-                                                  <MessageCircle size={13} className={rfq.status === 'awarded' && rfq.awardedVendorId === vendor.vendorId ? 'text-emerald-700' : 'text-emerald-600'} />
-                                                  <span>
-                                                    {rfq.status === 'awarded'
-                                                      ? (rfq.awardedVendorId === vendor.vendorId ? 'תיאום ביצוע עם הזוכה 📲' : 'שיחה עם הקבלן 💬')
-                                                      : 'שיחה לבירור ההצעה 💬'}
-                                                  </span>
-                                                </a>
+                                                {(rfq.status === 'open' || rfq.awardedVendorId === vendor.vendorId) && (
+                                                  <a
+                                                    href={buildVendorDiscussionWhatsAppUrl(rfq, vendor, quote)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-colors ${(rfq.status === 'awarded' || rfq.status === 'completed') && rfq.awardedVendorId === vendor.vendorId
+                                                        ? 'border-emerald-400 bg-emerald-100/90 hover:bg-emerald-200 text-emerald-950 font-black shadow-sm'
+                                                        : 'border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 text-emerald-800'
+                                                      }`}
+                                                    title={
+                                                      (rfq.status === 'awarded' || rfq.status === 'completed') && rfq.awardedVendorId === vendor.vendorId
+                                                        ? 'תיאום מועד ביצוע עם הקבלן הזוכה'
+                                                        : 'פתח שיחה עם הקבלן ב-WhatsApp לבירור פרטי ההצעה'
+                                                    }
+                                                  >
+                                                    <MessageCircle size={13} className={(rfq.status === 'awarded' || rfq.status === 'completed') && rfq.awardedVendorId === vendor.vendorId ? 'text-emerald-700' : 'text-emerald-600'} />
+                                                    <span>
+                                                      {(rfq.status === 'awarded' || rfq.status === 'completed') && rfq.awardedVendorId === vendor.vendorId
+                                                        ? 'תיאום ביצוע עם הזוכה 📲'
+                                                        : 'שיחה לבירור ההצעה 💬'}
+                                                    </span>
+                                                  </a>
+                                                )}
 
                                                 {/* If awarded/completed to this vendor: Quick access to Contract, Completion & Rating */}
                                                 {(rfq.status === 'awarded' || rfq.status === 'completed') && rfq.awardedVendorId === vendor.vendorId && (

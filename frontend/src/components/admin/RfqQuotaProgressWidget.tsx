@@ -10,7 +10,8 @@ import {
   AlertTriangle,
   AlertCircle,
   ArrowUpRight,
-  Layers
+  Layers,
+  ChevronDown
 } from 'lucide-react';
 
 interface RfqQuotaProgressWidgetProps {
@@ -29,6 +30,7 @@ export const RfqQuotaProgressWidget: React.FC<RfqQuotaProgressWidgetProps> = ({
 
   const [masterTenantData, setMasterTenantData] = useState<any>(null);
   const [loadingMaster, setLoadingMaster] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     if (tenantData?.parentEnterpriseId) {
@@ -118,87 +120,130 @@ export const RfqQuotaProgressWidget: React.FC<RfqQuotaProgressWidgetProps> = ({
 
   return (
     <div
-      className={`bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 transition-all duration-200 hover:shadow-md flex flex-col justify-between ${
+      className={`bg-white rounded-xl shadow-sm border border-slate-200 ${
+        isExpanded ? 'p-4 sm:p-5' : 'px-4 py-3'
+      } transition-all duration-200 hover:shadow-md flex flex-col justify-between ${
         className !== undefined ? className : 'mb-6'
       }`}
     >
       <div>
         {/* Header Row */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-purple-50 text-purple-600">
-              <Receipt className="w-5 h-5" />
+        <div
+          onClick={() => setIsExpanded(prev => !prev)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsExpanded(prev => !prev);
+            }
+          }}
+          aria-expanded={isExpanded}
+          className={`flex items-center justify-between gap-2 cursor-pointer select-none ${
+            isExpanded ? 'flex-wrap gap-3 mb-3' : 'mb-2'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`${isExpanded ? 'p-2' : 'p-1.5'} rounded-lg bg-purple-50 text-purple-600 shrink-0`}>
+              <Receipt className={isExpanded ? 'w-5 h-5' : 'w-4 h-4'} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 tracking-wider">
+                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 tracking-wider shrink-0">
                   RFQ
                 </span>
-                <span className="font-bold text-slate-900 text-base">
+                <span className={`font-bold text-slate-900 truncate ${isExpanded ? 'text-base' : 'text-sm'}`}>
                   {tierNames[tier] || tier.toUpperCase()}
                 </span>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-50 text-purple-700 border border-purple-100">
-                  {annualQuota} {t('RfqQuota.rfqsPerYear', 'מכרזים/שנה')}
-                </span>
-                {isPooled && (
-                  <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
-                    <Layers className="w-3 h-3" />
-                    {isEn ? 'Shared Fleet Pool' : 'מאגר משותף'}
-                  </span>
+                {isExpanded && (
+                  <>
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                      {annualQuota} {t('RfqQuota.rfqsPerYear', 'מכרזים/שנה')}
+                    </span>
+                    {isPooled && (
+                      <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-purple-100 text-purple-700 flex items-center gap-1">
+                        <Layers className="w-3 h-3" />
+                        {isEn ? 'Shared Fleet Pool' : 'מאגר משותף'}
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        enforcementMode === 'hard'
+                          ? 'bg-slate-100 text-slate-600'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}
+                    >
+                      {enforcementMode === 'hard'
+                        ? 'Hard Cap'
+                        : `Soft Cap (₪${overageRate})`}
+                    </span>
+                  </>
                 )}
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                    enforcementMode === 'hard'
-                      ? 'bg-slate-100 text-slate-600'
-                      : 'bg-blue-50 text-blue-700'
-                  }`}
-                >
-                  {enforcementMode === 'hard'
-                    ? 'Hard Cap'
-                    : `Soft Cap (₪${overageRate})`}
-                </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {t('RfqQuota.annualQuota', 'מכסה שנתית')}:{' '}
-                <strong className="text-slate-700">{annualQuota}</strong>
-                <span className="ms-1.5 text-slate-400 font-normal">
-                  {enforcementMode === 'hard'
-                    ? `• ${t('RfqQuota.hardCapPolicy', 'מדיניות חסימה מלאה (Hard Cap)')}`
-                    : `• ${t('RfqQuota.overagePolicy', 'חריגה: ₪{{rate}} למכרז נוסף (Soft Cap)', { rate: overageRate })}`}
-                </span>
-              </p>
+              {isExpanded && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {t('RfqQuota.annualQuota', 'מכסה שנתית')}:{' '}
+                  <strong className="text-slate-700">{annualQuota}</strong>
+                  <span className="ms-1.5 text-slate-400 font-normal">
+                    {enforcementMode === 'hard'
+                      ? `• ${t('RfqQuota.hardCapPolicy', 'מדיניות חסימה מלאה (Hard Cap)')}`
+                      : `• ${t('RfqQuota.overagePolicy', 'חריגה: ₪{{rate}} למכרז נוסף (Soft Cap)', { rate: overageRate })}`}
+                  </span>
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Days remaining or expiration badge */}
-          <div className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600">
-            {isExpired ? (
-              <>
-                <AlertCircle className="w-4 h-4 text-red-500" />
-                <span className="text-red-600 font-bold">
-                  {t('RfqQuota.licenseExpired', 'פג תוקף הרישוי השנתי!')}
-                </span>
-              </>
-            ) : daysRemaining !== null ? (
-              <>
-                <Clock className="w-4 h-4 text-purple-500" />
-                <span>
-                  {daysRemaining === 1
-                    ? t('RfqQuota.daysRemainingOne', 'נותר יום אחד לתוקף השנתי')
-                    : t('RfqQuota.daysRemaining', 'נותרו {{days}} ימים לתוקף השנתי', { days: daysRemaining })}
-                </span>
-              </>
-            ) : (
-              <>
-                <Clock className="w-4 h-4 text-slate-500" />
-                <span>{t('RfqQuota.licenseActive', 'רישוי שנתי פעיל')}</span>
-              </>
+          <div className="flex items-center gap-2 shrink-0">
+            {!isExpanded && (
+              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                <strong className="text-slate-900">{dispatchedCount}</strong> / {annualQuota} ({usagePercentage}%)
+              </span>
             )}
+
+            {isExpanded && (
+              <div className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600">
+                {isExpired ? (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <span className="text-red-600 font-bold">
+                      {t('RfqQuota.licenseExpired', 'פג תוקף הרישוי השנתי!')}
+                    </span>
+                  </>
+                ) : daysRemaining !== null ? (
+                  <>
+                    <Clock className="w-4 h-4 text-purple-500" />
+                    <span>
+                      {daysRemaining === 1
+                        ? t('RfqQuota.daysRemainingOne', 'נותר יום אחד לתוקף השנתי')
+                        : t('RfqQuota.daysRemaining', 'נותרו {{days}} ימים לתוקף השנתי', { days: daysRemaining })}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-4 h-4 text-slate-500" />
+                    <span>{t('RfqQuota.licenseActive', 'רישוי שנתי פעיל')}</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(prev => !prev);
+              }}
+              aria-label={isExpanded ? (isEn ? 'Collapse' : 'כווץ') : (isEn ? 'Expand' : 'הרחב')}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
           </div>
         </div>
 
         {/* Progress Bar Container */}
-        <div className="relative w-full bg-slate-100 rounded-full h-3.5 overflow-hidden mb-3">
+        <div className={`relative w-full bg-slate-100 rounded-full overflow-hidden ${isExpanded ? 'h-3.5 mb-3' : 'h-2.5'}`}>
           <div
             className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor()}`}
             style={{ width: `${usagePercentage}%` }}
@@ -206,8 +251,9 @@ export const RfqQuotaProgressWidget: React.FC<RfqQuotaProgressWidgetProps> = ({
         </div>
       </div>
 
-      {/* Footer Stats Row */}
-      <div className="flex flex-wrap items-center justify-between text-xs gap-2 pt-1 border-t border-slate-50">
+      {/* Footer Stats Row (Expanded only) */}
+      {isExpanded && (
+        <div className="flex flex-wrap items-center justify-between text-xs gap-2 pt-1 border-t border-slate-50">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-semibold text-slate-700">
             {t('RfqQuota.netUsed', 'ניצול שנתי בפועל')}:{' '}
@@ -264,6 +310,7 @@ export const RfqQuotaProgressWidget: React.FC<RfqQuotaProgressWidgetProps> = ({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

@@ -14,9 +14,8 @@ import { RfqRatingModal } from '../../components/admin/RfqRatingModal';
 import { markRfqCompleted } from '../../utils/vendorReviewService';
 import { WorkQuoteRequest } from '../../types/rfq';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert, HelpCircle } from 'lucide-react';
+import { ChevronDown, MessageSquare, Mic, Download, Search, X, Calendar, Image as ImageIcon, Pause, GripVertical, Share2, SlidersHorizontal, RefreshCw, Bell, ShieldAlert } from 'lucide-react';
 import { format, parseISO, subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
-import { HelpModal } from '../../components/admin/HelpModal';
 import { MonthYearRangePicker } from '../../components/admin/MonthYearRangePicker';
 import { calculateWorkingDays, getSlaStatus, getSlaColorClasses } from '../../utils/slaEngine';
 import { QuotaProgressWidget } from '../../components/admin/QuotaProgressWidget';
@@ -271,7 +270,6 @@ export default function AdminDashboard() {
   const [adminProfile, setAdminProfile] = useState<{ firstName: string; lastName: string } | null>(null);
   const [holidays, setHolidays] = useState<string[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
     title: string;
@@ -2054,10 +2052,10 @@ export default function AdminDashboard() {
 
           if (isRfqActive) {
             return (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 items-start">
                 <QuotaProgressWidget
                   tenantData={currentTenantData}
-                  className="mb-0 h-full"
+                  className="mb-0"
                   onExclusionsClick={() => {
                     const cycleStart = tenantConfig?.subscription?.cycleStartDate;
                     const cycleDate = cycleStart ? parseTicketDate(cycleStart) : null;
@@ -2077,7 +2075,7 @@ export default function AdminDashboard() {
                 <RfqQuotaProgressWidget
                   tenantData={currentTenantData}
                   tenantId={tenantId}
-                  className="mb-0 h-full"
+                  className="mb-0"
                 />
               </div>
             );
@@ -2449,15 +2447,6 @@ export default function AdminDashboard() {
                     </span>
                   )}
                 </button>
-
-                <button
-                  onClick={() => setIsHelpOpen(true)}
-                  className="h-[38px] w-[38px] flex items-center justify-center bg-white hover:bg-blue-50 active:scale-95 text-slate-500 hover:text-blue-600 rounded-xl transition-all border border-slate-200 shadow-sm shrink-0 cursor-pointer"
-                  title={isEn ? "Help & Guide" : "עזרה ומדריך"}
-                  aria-label={isEn ? "Help & Guide" : "עזרה ומדריך"}
-                >
-                  <HelpCircle size={18} />
-                </button>
               </div>
             </div>
           </div>
@@ -2683,14 +2672,6 @@ export default function AdminDashboard() {
               setDetailsTicket(prev => prev ? { ...prev, status: newStatus } : null);
             }
           }}
-        />
-
-        <HelpModal
-          isOpen={isHelpOpen}
-          onClose={() => setIsHelpOpen(false)}
-          language={isEn ? 'en' : 'he'}
-          tenantId={tenantId || ''}
-          tenantName={tenantConfig?.name || ''}
         />
 
         <ConfirmModal
