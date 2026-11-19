@@ -21,7 +21,8 @@ import {
   BarChart3,
   Receipt,
   FilePlus,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Lock
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
@@ -36,6 +37,7 @@ interface AdminNavbarProps {
   isFleet?: boolean;
   isSuper?: boolean;
   isEn?: boolean;
+  isRfqLicensed?: boolean;
   onOpenHelp?: () => void;
   dashboardCount?: number;
   backlogCount?: number;
@@ -55,6 +57,7 @@ export function AdminNavbar({
   isFleet = false,
   isSuper = false,
   isEn = false,
+  isRfqLicensed = false,
   onOpenHelp,
   dashboardCount,
   backlogCount,
@@ -428,6 +431,34 @@ export function AdminNavbar({
                 const Icon = item.icon;
                 const isActive = currentPage === item.id;
                 if (item.id === 'quotes') {
+                  if (!isRfqLicensed) {
+                    return (
+                      <Link
+                        key={item.id}
+                        to={`/admin/${tenantId}/quotes`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold transition-all ${
+                          isQuotesActive
+                            ? 'bg-slate-800 text-white border border-slate-700/80'
+                            : 'text-[#94A3B8] hover:bg-slate-800 hover:text-slate-200'
+                        }`}
+                        data-testid="navbar-quotes-locked-link"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Receipt
+                            size={20}
+                            className={`shrink-0 ${isQuotesActive ? 'text-blue-400' : 'text-[#94A3B8]'}`}
+                          />
+                          <span>{item.label}</span>
+                        </div>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700/80 shrink-0">
+                          <Lock size={11} className="text-amber-400" />
+                          <span>{isEn ? 'PRO' : 'שדרוג'}</span>
+                        </span>
+                      </Link>
+                    );
+                  }
+
                   return (
                     <div key={item.id} className="space-y-1">
                       <button

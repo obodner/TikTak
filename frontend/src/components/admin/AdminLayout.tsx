@@ -21,6 +21,7 @@ export interface AdminLayoutContext {
   myTenants: { id: string; name?: string }[];
   isSuper: boolean;
   isEn: boolean;
+  isRfqLicensed: boolean;
   openHelp: () => void;
   dashboardCount?: number;
   backlogCount?: number;
@@ -39,6 +40,7 @@ export function AdminLayout() {
   const [isSuper, setIsSuper] = useState(false);
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isTenantFrozen, setIsTenantFrozen] = useState(false);
+  const [isRfqLicensed, setIsRfqLicensed] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dashboardCount, setDashboardCount] = useState<number | undefined>(undefined);
@@ -125,16 +127,29 @@ export function AdminLayout() {
           if (isMounted) setTenantConfig(bData);
 
           let frozen = bData.isActive === false || bData.subscription?.status === 'frozen';
-          if (!frozen && bData.parentEnterpriseId) {
+          let effectiveRfqLicensing = bData.rfqLicensing;
+          if (bData.parentEnterpriseId) {
             const parentDoc = await getDoc(doc(db, "tenants", bData.parentEnterpriseId));
             if (parentDoc.exists()) {
               const pData = parentDoc.data();
-              if (pData.isActive === false || pData.subscription?.status === 'frozen') {
+              if (!frozen && (pData.isActive === false || pData.subscription?.status === 'frozen')) {
                 frozen = true;
+              }
+              if (pData.rfqLicensing) {
+                effectiveRfqLicensing = pData.rfqLicensing;
               }
             }
           }
-          if (isMounted) setIsTenantFrozen(frozen);
+          const rfqActive = Boolean(
+            effectiveRfqLicensing &&
+            effectiveRfqLicensing.status === 'active' &&
+            effectiveRfqLicensing.tier &&
+            effectiveRfqLicensing.tier !== 'disabled'
+          );
+          if (isMounted) {
+            setIsTenantFrozen(frozen);
+            setIsRfqLicensed(rfqActive);
+          }
         } else {
           if (isMounted) setIsUnauthorized(true);
         }
@@ -401,6 +416,7 @@ export function AdminLayout() {
         isFleet={Boolean(tenantConfig?.isPoolMaster || tenantConfig?.usesParentPool)}
         isSuper={isSuper}
         isEn={isEn}
+        isRfqLicensed={isRfqLicensed}
         onOpenHelp={() => setIsHelpOpen(true)}
         dashboardCount={dashboardCount}
         backlogCount={backlogCount}
@@ -422,6 +438,7 @@ export function AdminLayout() {
           isFleet={Boolean(tenantConfig?.isPoolMaster || tenantConfig?.usesParentPool)}
           isSuper={isSuper}
           isEn={isEn}
+          isRfqLicensed={isRfqLicensed}
           onOpenHelp={() => setIsHelpOpen(true)}
           dashboardCount={dashboardCount}
           backlogCount={backlogCount}
@@ -439,6 +456,7 @@ export function AdminLayout() {
             myTenants,
             isSuper,
             isEn,
+            isRfqLicensed,
             openHelp: () => setIsHelpOpen(true),
             dashboardCount,
             backlogCount,

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useSearchParams, useLocation, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams, useLocation, useParams, useOutletContext } from 'react-router-dom';
 import ResidentFlow from './pages/ResidentFlow';
 import LandingPage from './pages/LandingPage';
 import ResidentDashboard from './pages/ResidentDashboard';
@@ -15,7 +15,8 @@ import ContractorQuotePortal from './pages/ContractorQuotePortal';
 import RfqProductLandingPage from './pages/RfqProductLandingPage';
 import ResidentSelfJoinPage from './pages/ResidentSelfJoinPage';
 
-import { AdminLayout } from './components/admin/AdminLayout';
+import { AdminLayout, type AdminLayoutContext } from './components/admin/AdminLayout';
+import { RfqUpgradeView } from './components/admin/RfqUpgradeView';
 import { SessionEnforcer } from './components/admin/SessionEnforcer';
 import { SuperAdminEnforcer } from './components/admin/SuperAdminEnforcer';
 import { useEffect } from 'react';
@@ -209,6 +210,14 @@ function AdminQuotesIndexRedirect() {
     return <Navigate to={`active${search ? `?${search}` : ''}`} replace />;
 }
 
+function RfqLicensedGate({ children }: { children: React.ReactNode }) {
+    const layoutCtx = useOutletContext<AdminLayoutContext | undefined>();
+    if (layoutCtx && !layoutCtx.isRfqLicensed) {
+        return <RfqUpgradeView />;
+    }
+    return <>{children}</>;
+}
+
 export default function App() {
     const isProdDomain =
         typeof window !== 'undefined' &&
@@ -292,9 +301,9 @@ export default function App() {
                 <Route path="backlog" element={<TasksBacklog />} />
                 <Route path="analytics" element={<AdminAnalytics />} />
                 <Route path="fleet" element={<EnterpriseFleetDashboard />} />
-                <Route path="quotes" element={<AdminQuotesIndexRedirect />} />
-                <Route path="quotes/new" element={<NewRfqPage />} />
-                <Route path="quotes/active" element={<ActiveQuotesPage />} />
+                <Route path="quotes" element={<RfqLicensedGate><AdminQuotesIndexRedirect /></RfqLicensedGate>} />
+                <Route path="quotes/new" element={<RfqLicensedGate><NewRfqPage /></RfqLicensedGate>} />
+                <Route path="quotes/active" element={<RfqLicensedGate><ActiveQuotesPage /></RfqLicensedGate>} />
             </Route>
 
             {/* Fallback */}

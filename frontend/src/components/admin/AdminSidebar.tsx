@@ -23,7 +23,8 @@ import {
   BarChart3,
   FileSpreadsheet,
   FilePlus,
-  Receipt
+  Receipt,
+  Lock
 } from 'lucide-react';
 import { NotificationsModal } from './NotificationsModal';
 import { ContactModal } from './ContactModal';
@@ -38,6 +39,7 @@ export interface AdminSidebarProps {
   isFleet?: boolean;
   isSuper?: boolean;
   isEn?: boolean;
+  isRfqLicensed?: boolean;
   onOpenHelp?: () => void;
   dashboardCount?: number;
   backlogCount?: number;
@@ -57,6 +59,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   isFleet = false,
   isSuper = false,
   isEn = false,
+  isRfqLicensed = false,
   onOpenHelp,
   dashboardCount,
   backlogCount,
@@ -385,9 +388,48 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             )}
           </Link>
 
-          {/* Work Quotes (RFQ) Section (Accordion in Expanded / Flyout in Collapsed) */}
+          {/* Work Quotes (RFQ) Section */}
           <div className="relative">
-            {isCollapsed ? (
+            {!isRfqLicensed ? (
+              isCollapsed ? (
+                <Link
+                  to={`/admin/${tenantId}/quotes`}
+                  className={`w-full flex items-center justify-center p-2.5 rounded-xl text-sm font-bold transition-all group relative ${isQuotesActive
+                      ? 'bg-slate-800 text-white border border-slate-700/80'
+                      : 'text-[#94A3B8] hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                  title={isEn ? 'Work Quotes (RFQ) - Upgrade' : 'הצעות מחיר (RFQ) - שדרוג'}
+                  data-testid="sidebar-quotes-locked-link"
+                >
+                  <Receipt size={20} className="shrink-0" />
+                  <span className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                    <Lock size={9} className="text-amber-400" />
+                  </span>
+                </Link>
+              ) : (
+                <Link
+                  to={`/admin/${tenantId}/quotes`}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 group ${isQuotesActive
+                      ? 'bg-slate-800/90 text-white border border-slate-700/80 shadow-sm'
+                      : 'text-[#94A3B8] hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                  data-testid="sidebar-quotes-locked-link"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Receipt
+                      size={20}
+                      className={`shrink-0 transition-transform duration-300 ease-out ${isQuotesActive ? 'text-blue-400' : 'text-[#94A3B8] group-hover:text-slate-200'
+                        }`}
+                    />
+                    <span className="truncate">{isEn ? 'Work Quotes (RFQ)' : 'הצעות מחיר (RFQ)'}</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800/90 text-slate-300 border border-slate-700/80 shrink-0">
+                    <Lock size={10} className="text-amber-400" />
+                    <span>{isEn ? 'PRO' : 'שדרוג'}</span>
+                  </span>
+                </Link>
+              )
+            ) : isCollapsed ? (
               // Collapsed Mode Quotes Button (Triggers Flyout)
               <div>
                 <button
